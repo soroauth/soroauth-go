@@ -33,7 +33,7 @@ jobs:
             exit 1
           fi
       - name: publish coverage
-        uses: codecov/codecov-action@8d0bdba7b098a9e4c8e0c8e6c0c7e0e5e # v5
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage.out
           fail_ci_if_error: false
