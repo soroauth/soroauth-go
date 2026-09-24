@@ -81,6 +81,14 @@ const SIGNER_2 = "soroauth-vector-signer-2";
 // differs for a reason the vector names.
 const VALID_UNTIL_LEDGER = 1234567;
 
+// Per-case override for validUntilLedger. Used for expiration boundary
+// vectors (#116).
+const caseValidUntilLedger = (name) => {
+  if (name === "v2_expiration_boundary_1") return 1;
+  if (name === "v2_expiration_boundary_max") return 4294967295;
+  return VALID_UNTIL_LEDGER;
+};
+
 // Fixed nonces, chosen to cover the interesting int64 values: an ordinary
 // positive one, the maximum, and the minimum (negative). A nonce is a signed
 // int64 on the wire, so sign handling is part of what these vectors prove.
@@ -227,6 +235,13 @@ const addressCredentials = (label, nonce) =>
     signature: xdr.ScVal.scvVec([]),
   });
 
+// A source-account entry passes through unchanged.
+const sourceAccountEntry = (signerLabel) =>
+  new xdr.SorobanAuthorizationEntry({
+    rootInvocation: invocationWithManyArgTypes(),
+    credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+  });
+
 // authV2 is always passed explicitly, never left to the default, so a change
 // to that default in a future SDK cannot silently change these vectors.
 const unsignedEntry = ({ signerLabel, nonce, invocation, authV2 }) => {
@@ -244,6 +259,7 @@ const unsignedEntry = ({ signerLabel, nonce, invocation, authV2 }) => {
 // ---------------------------------------------------------------------------
 
 const CASES = [
+  // §5.9 case 1: legacy arm, single G signer, testnet.
   {
     name: "legacy_single_testnet",
     networkPassphrase: Networks.TESTNET,
@@ -256,9 +272,8 @@ const CASES = [
       }),
     steps: [{ signerLabel: SIGNER_1, forAddress: null }],
   },
+  // §5.9 case 2: legacy arm, public passphrase.
   {
-    // Identical to the case above apart from the network. The payload must
-    // differ, or a signature would replay from testnet onto the public network.
     name: "legacy_single_public",
     networkPassphrase: Networks.PUBLIC,
     entry: () =>
@@ -270,9 +285,8 @@ const CASES = [
       }),
     steps: [{ signerLabel: SIGNER_1, forAddress: null }],
   },
+  // §5.9 case 3: V2 arm, single G signer, testnet.
   {
-    // Same invocation and nonce as legacy_single_testnet, on the V2 arm. The
-    // payload must differ, because V2 binds the address into the signed bytes.
     name: "v2_single_testnet",
     networkPassphrase: Networks.TESTNET,
     entry: () =>
@@ -284,6 +298,7 @@ const CASES = [
       }),
     steps: [{ signerLabel: SIGNER_1, forAddress: null }],
   },
+  // §5.9 case 4: V2 arm, sub-invocation tree.
   {
     name: "v2_sub_invocations",
     networkPassphrase: Networks.TESTNET,
@@ -296,8 +311,8 @@ const CASES = [
       }),
     steps: [{ signerLabel: SIGNER_1, forAddress: null }],
   },
+  // §5.9 case 5: V2 arm, create-contract invocation.
   {
-    // Also carries the maximum int64 nonce.
     name: "v2_create_contract",
     networkPassphrase: Networks.TESTNET,
     entry: () =>
@@ -309,9 +324,8 @@ const CASES = [
       }),
     steps: [{ signerLabel: SIGNER_1, forAddress: null }],
   },
+  // §5.9 case 9: legacy arm, negative nonce.
   {
-    // The minimum int64 nonce. Differs from legacy_single_testnet only in the
-    // nonce, so it isolates sign handling in the encoding.
     name: "legacy_negative_nonce",
     networkPassphrase: Networks.TESTNET,
     entry: () =>
@@ -323,11 +337,8 @@ const CASES = [
       }),
     steps: [{ signerLabel: SIGNER_1, forAddress: null }],
   },
+  // §5.9 case 6: delegates arm, three unsorted delegates with one nested.
   {
-    // §5.9 case 6: three delegates in unsorted input order, one of them
-    // carrying a nested delegate. The top-level signature stays scvVoid — the
-    // account authenticates purely through its delegates (CAP-71-01) — and
-    // each delegate, including the nested one, is signed via forAddress.
     name: "delegates_unsorted_with_nested",
     networkPassphrase: Networks.TESTNET,
     entry: () =>
@@ -352,10 +363,8 @@ const CASES = [
       },
     ],
   },
+  // §5.9 case 7: one address at two nesting levels.
   {
-    // §5.9 case 7: one address at two different nesting levels. Exactly one
-    // authorizeEntry call must fill both nodes, because under CAP-71-01 both
-    // commit to the same payload. There is deliberately only one step.
     name: "delegates_same_address_two_levels",
     networkPassphrase: Networks.TESTNET,
     entry: () =>
@@ -365,8 +374,6 @@ const CASES = [
         invocation: invocationWithSubInvocations(),
         authV2: true,
       }),
-    // Ascending XDR order is delegate-2 < delegate-1, so this input is
-    // deliberately the wrong way round.
     delegates: [
       delegate(DELEGATE_1),
       delegate(DELEGATE_2, [delegate(DELEGATE_1)]),
@@ -375,10 +382,8 @@ const CASES = [
       { signerLabel: DELEGATE_1, forAddress: keypairFor(DELEGATE_1).publicKey() },
     ],
   },
+  // §5.9 case 8: legacy entry wrapped into the delegates arm.
   {
-    // §5.9 case 8: a legacy entry wrapped into the delegates arm. The wrap
-    // changes the payload from ENVELOPE_TYPE_SOROBAN_AUTHORIZATION to the
-    // address-bound variant, so this is the legacy-to-delegates conversion.
     name: "delegates_from_legacy",
     networkPassphrase: Networks.TESTNET,
     entry: () =>
@@ -388,9 +393,6 @@ const CASES = [
         invocation: invocationWithManyArgTypes(),
         authV2: false,
       }),
-    // Unsorted at both levels: ascending XDR order is
-    // delegate-2 < delegate-nested-1 < delegate-1 < delegate-3, so the top
-    // level and the nested array are each given the wrong way round.
     delegates: [
       delegate(DELEGATE_1),
       delegate(DELEGATE_2, [delegate(DELEGATE_3), delegate(DELEGATE_NESTED)]),
@@ -405,6 +407,49 @@ const CASES = [
       },
     ],
   },
+  // #115: source-account arm vectors pass through unchanged.
+  // The signed_entry_xdr must equal the unsigned_entry_xdr.
+  {
+    name: "source_account_testnet",
+    networkPassphrase: Networks.TESTNET,
+    entry: () => sourceAccountEntry(SIGNER_1),
+    steps: [],
+  },
+  {
+    name: "source_account_public",
+    networkPassphrase: Networks.PUBLIC,
+    entry: () => sourceAccountEntry(SIGNER_1),
+    steps: [],
+  },
+  // #116: expiration boundary vectors.
+  // Expiration 1 is the minimum valid value (see ExpirationAfter).
+  {
+    name: "v2_expiration_boundary_1",
+    networkPassphrase: Networks.TESTNET,
+    validUntilLedger: 1,
+    entry: () =>
+      unsignedEntry({
+        signerLabel: SIGNER_1,
+        nonce: NONCE_ORDINARY,
+        invocation: invocationWithManyArgTypes(),
+        authV2: true,
+      }),
+    steps: [{ signerLabel: SIGNER_1, forAddress: null }],
+  },
+  // MaxUint32 expiration: near the maximum ledger value.
+  {
+    name: "v2_expiration_boundary_max",
+    networkPassphrase: Networks.TESTNET,
+    validUntilLedger: 4294967295,
+    entry: () =>
+      unsignedEntry({
+        signerLabel: SIGNER_1,
+        nonce: NONCE_ORDINARY,
+        invocation: invocationWithManyArgTypes(),
+        authV2: true,
+      }),
+    steps: [{ signerLabel: SIGNER_1, forAddress: null }],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -412,6 +457,9 @@ const CASES = [
 // ---------------------------------------------------------------------------
 
 const generate = async (testCase) => {
+  // Per-case expiration ledger, used for boundary vectors (#116).
+  const validUntil = caseValidUntilLedger(testCase.name);
+
   // A case that declares delegates is built in two stages, and both are
   // recorded: the address entry before wrapping, and the wrapped entry. That
   // lets the Go side reproduce the wrap itself rather than starting from JS's
@@ -422,7 +470,7 @@ const generate = async (testCase) => {
     preWrapEntry = testCase.entry();
     entry = buildWithDelegatesEntry({
       entry: preWrapEntry,
-      validUntilLedgerSeq: VALID_UNTIL_LEDGER,
+      validUntilLedgerSeq: validUntil,
       delegates: toSdkDelegates(testCase.delegates),
       // signature omitted, so the top-level node is scvVoid
     });
@@ -432,12 +480,25 @@ const generate = async (testCase) => {
 
   const unsignedXdr = entry.toXDR("base64");
 
-  const preimage = buildAuthorizationEntryPreimage(
-    entry,
-    VALID_UNTIL_LEDGER,
-    testCase.networkPassphrase,
-  );
-  const payload = hash(preimage.toXDR());
+  // Source-account entries have no preimage or payload; they pass through
+  // unchanged. See Preimage() which returns ErrSourceAccountCredentials.
+  const isSourceAccount =
+    entry.credentials.type ===
+    "sorobanCredentialsSourceAccount";
+
+  let preimageXdr = "";
+  let payloadHex = "";
+
+  if (!isSourceAccount) {
+    const preimage = buildAuthorizationEntryPreimage(
+      entry,
+      validUntil,
+      testCase.networkPassphrase,
+    );
+    preimageXdr = preimage.toXDR("base64");
+    const payload = hash(preimage.toXDR());
+    payloadHex = Buffer.from(payload).toString("hex");
+  }
 
   // Each step signs the entry produced by the step before it, which is how a
   // delegate tree gets filled in one signer at a time.
@@ -446,17 +507,19 @@ const generate = async (testCase) => {
     signed = await authorizeEntry(
       signed,
       keypairFor(step.signerLabel),
-      VALID_UNTIL_LEDGER,
+      validUntil,
       testCase.networkPassphrase,
       step.forAddress ?? undefined,
     );
   }
 
+  const signedXdr = signed.toXDR("base64");
+
   return {
     name: testCase.name,
     sdk: SDK,
     network_passphrase: testCase.networkPassphrase,
-    valid_until_ledger: VALID_UNTIL_LEDGER,
+    valid_until_ledger: validUntil,
     pre_wrap_entry_xdr: preWrapEntry ? preWrapEntry.toXDR("base64") : "",
     unsigned_entry_xdr: unsignedXdr,
     delegates: testCase.delegates ?? [],
@@ -464,9 +527,9 @@ const generate = async (testCase) => {
       signer_label: step.signerLabel,
       for_address: step.forAddress ?? null,
     })),
-    preimage_xdr: preimage.toXDR("base64"),
-    payload_hex: Buffer.from(payload).toString("hex"),
-    signed_entry_xdr: signed.toXDR("base64"),
+    preimage_xdr: preimageXdr,
+    payload_hex: payloadHex,
+    signed_entry_xdr: signedXdr,
   };
 };
 

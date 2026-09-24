@@ -9,6 +9,36 @@ permissions:
   contents: read
 
 jobs:
+  coverage:
+    name: coverage above floor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: run tests with coverage
+        run: |
+          go test -coverprofile=coverage.out -covermode=atomic ./...
+          echo "=== Coverage report ==="
+          go tool cover -func=coverage.out
+      - name: check coverage floor
+        run: |
+          floor=80
+          total=$(go tool cover -func=coverage.out | awk '/total/{print $3}' | tr -d '%')
+          echo "Total coverage: ${total}%"
+          if python3 -c "import sys; sys.exit(0 if float('${total}') < float('${floor}') else 1)"; then
+            echo "Coverage ${total}% is below the floor of ${floor}%"
+            exit 1
+          fi
+      - name: publish coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.out
+          fail_ci_if_error: false
+          verbose: true
+
   build:
     name: vet and test
     runs-on: ubuntu-latest

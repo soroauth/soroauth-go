@@ -211,6 +211,38 @@ at.
 See [e2e/README.md](e2e/README.md) for what each scenario proves and why the two
 rejection scenarios exist.
 
+## Scheduled e2e runs (CI)
+
+A GitHub Actions workflow (`.github/workflows/e2e.yml`) runs the e2e suite on a
+schedule (every 6 hours) and on `workflow_dispatch`. This catches testnet resets,
+protocol upgrades, and RPC changes that would otherwise break the suite silently
+between releases.
+
+- The workflow **does not** commit `e2e/RESULTS.md` automatically — that remains
+  a deliberate act from a verified local run.
+- On scheduled failure, the workflow opens a GitHub issue with the run details
+  so the regression is visible without digging through logs.
+- To reproduce a scheduled failure locally:
+  ```sh
+  export SOROAUTH_RPC_URL=https://soroban-testnet.stellar.org
+  go test -tags e2e -v ./e2e/...
+  ```
+
+## Coverage reporting (CI)
+
+The CI pipeline (`coverage` job in `.github/workflows/ci.yml`) measures test
+coverage on every push and PR, enforces a floor of **80%**, and publishes the
+report via Codecov.
+
+- Run locally to check your coverage before pushing:
+  ```sh
+  go test -coverprofile=coverage.out -covermode=atomic ./...
+  go tool cover -func=coverage.out | awk '/total/{print $3}'
+  ```
+- The floor is set to 80%. If it drops, the `coverage` job fails.
+- The report is visible in the CI logs and on Codecov without digging through
+  artifacts.
+
 ## Property-based tests
 
 The address package includes property-based tests using [gopter](https://github.com/leanovate/gopter).
