@@ -75,6 +75,27 @@ When you add a benchmark, add a budget in the same commit. The checker prints
 `FAIL … benchmark not found` if a budgeted name is missing from the output —
 so a renamed benchmark cannot silently drop out of the gate.
 
+## GitHub Actions are pinned to commit SHAs
+
+Every `uses:` in `.github/workflows/*.yml` names a full commit SHA with the
+version in a trailing comment, e.g. `actions/checkout@3d3c42e… # v7`, never a
+mutable tag like `@v7`. A major-version tag can be retagged to point at a
+different commit; pinning to the SHA means a compromised or retagged action
+cannot silently start running with this repository's CI permissions.
+
+Dependabot (`.github/dependabot.yml`) watches the `github-actions` ecosystem
+and opens a PR updating both the SHA and its version comment together when a
+new release comes out, so the two can never drift apart. To pin a new action
+by hand, resolve the tag to a commit first:
+
+```sh
+git ls-remote --tags https://github.com/<owner>/<repo> | grep 'refs/tags/v7$'
+```
+
+Use the first column's SHA (for an *annotated* tag, `git ls-remote` also
+prints a `refs/tags/v7^{}` line — use that dereferenced commit SHA, not the
+tag object's own SHA).
+
 ## Golden vectors
 
 `testdata/vectors/*.json` are generated, committed artefacts. They are the

@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Security
+
+- CI: every GitHub Action is now pinned to a full commit SHA (with the
+  version recorded in a trailing comment), replacing mutable tags like
+  `@v7`. A retagged or compromised action can no longer silently gain this
+  repository's CI permissions. `.github/dependabot.yml` keeps the pins
+  current by opening a PR that updates the SHA and its comment together.
+
 ### Added
 
 **`soroauth doctor`**
