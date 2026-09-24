@@ -88,6 +88,16 @@ func Preimage(entry xdr.SorobanAuthorizationEntry, validUntilLedger uint32, netw
 		return xdr.HashIdPreimage{}, fmt.Errorf("soroauth: build preimage: network passphrase is empty")
 	}
 
+	behavior, err := GetArmBehavior(entry.Credentials)
+	if err != nil {
+		return xdr.HashIdPreimage{}, fmt.Errorf("soroauth: build preimage: %w", err)
+	}
+
+	// Source account has no preimage
+	if behavior.CredentialTypeName() == CredentialTypeSourceAccount {
+		return xdr.HashIdPreimage{}, fmt.Errorf("soroauth: build preimage: %w", ErrSourceAccountCredentials)
+	}
+
 	credentials, err := addressCredentials(entry.Credentials)
 	if err != nil {
 		return xdr.HashIdPreimage{}, fmt.Errorf("soroauth: build preimage: %w", err)
@@ -95,35 +105,30 @@ func Preimage(entry xdr.SorobanAuthorizationEntry, validUntilLedger uint32, netw
 
 	networkID := xdr.Hash(network.ID(networkPassphrase))
 
-	var preimage xdr.HashIdPreimage
-	switch entry.Credentials.Type {
-	case xdr.SorobanCredentialsTypeSorobanCredentialsAddress:
-		preimage = xdr.HashIdPreimage{
-			Type: xdr.EnvelopeTypeEnvelopeTypeSorobanAuthorization,
-			SorobanAuthorization: &xdr.HashIdPreimageSorobanAuthorization{
-				NetworkId:                 networkID,
-				Nonce:                     credentials.Nonce,
-				SignatureExpirationLedger: xdr.Uint32(validUntilLedger),
-				Invocation:                entry.RootInvocation,
-			},
-		}
+	preimage := xdr.HashIdPreimage{
+		Type: behavior.PreimageVariant(),
+	}
 
-	case xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2,
-		xdr.SorobanCredentialsTypeSorobanCredentialsAddressWithDelegates:
-		preimage = xdr.HashIdPreimage{
-			Type: xdr.EnvelopeTypeEnvelopeTypeSorobanAuthorizationWithAddress,
-			SorobanAuthorizationWithAddress: &xdr.HashIdPreimageSorobanAuthorizationWithAddress{
-				NetworkId:                 networkID,
-				Nonce:                     credentials.Nonce,
-				SignatureExpirationLedger: xdr.Uint32(validUntilLedger),
-				Address:                   credentials.Address,
-				Invocation:                entry.RootInvocation,
-			},
+	switch behavior.PreimageVariant() {
+	case xdr.EnvelopeTypeEnvelopeTypeSorobanAuthorization:
+		preimage.SorobanAuthorization = &xdr.HashIdPreimageSorobanAuthorization{
+			NetworkId:                 networkID,
+			Nonce:                     credentials.Nonce,
+			SignatureExpirationLedger: xdr.Uint32(validUntilLedger),
+			Invocation:                entry.RootInvocation,
 		}
-
-	default:
-		// addressCredentials already rejected every arm that reaches here.
-		return xdr.HashIdPreimage{}, fmt.Errorf("soroauth: build preimage: %w", ErrUnsupportedCredentials)
+	case xdr.EnvelopeTypeEnvelopeTypeSorobanAuthorizationWithAddress:
+		_, err := behavior.GetAddress(entry.Credentials)
+		if err != nil {
+			return xdr.HashIdPreimage{}, fmt.Errorf("soroauth: build preimage: %w", err)
+		}
+		preimage.SorobanAuthorizationWithAddress = &xdr.HashIdPreimageSorobanAuthorizationWithAddress{
+			NetworkId:                 networkID,
+			Nonce:                     credentials.Nonce,
+			SignatureExpirationLedger: xdr.Uint32(validUntilLedger),
+			Address:                   credentials.Address,
+			Invocation:                entry.RootInvocation,
+		}
 	}
 
 	// The preimage above still points into the caller's entry through the

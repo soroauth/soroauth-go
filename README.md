@@ -328,6 +328,30 @@ host rather than inferred:
 
 Zero is refused: by the rule above it is already expired, not permissive.
 
+## CAP-85 / Protocol 28
+
+As of this release (using `github.com/stellar/go-stellar-sdk` v0.7.3), **no changes
+are required** for CAP-85 / Protocol 28 support.
+
+Evidence:
+- The Go SDK v0.7.3 (released 2026-08-06) does not contain Protocol 28 / CAP-85
+  helpers. Its `go.mod` declares `go 1.25.0` and the XDR types are from the
+  `go-xdr` module at `v0.0.0-20260806060815-dc590f17552a`, which predates
+  Protocol 28.
+- Testnet is on Protocol 28 (confirmed via `stellar.expert` and RPC
+  `getLedger` responses), but the authorization entry wire format
+  (`SorobanAuthorizationEntry`, `SorobanCredentials`, `SorobanDelegateSignature`)
+  has not changed in CAP-85. CAP-85 (Protocol 28) introduces new *host
+  functions* and *diagnostic events*, not new credential arms or preimage
+  variants for Soroban authorization.
+- The soroauth codebase has been run against live testnet (see
+  [e2e/RESULTS.md](e2e/RESULTS.md)) with no protocol-level failures.
+
+When the Go SDK releases Protocol 28 helpers (expected in a future minor
+version), this section will be updated. At that time, if the wire format
+changes, a golden vector will be added and an e2e scenario will be run. If
+nothing changes, this section will explicitly state that.
+
 ## Differences from the JS SDK
 
 soroauth is proven byte-for-byte against `@stellar/stellar-sdk@17.1.0`, and
