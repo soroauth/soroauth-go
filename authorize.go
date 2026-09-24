@@ -16,6 +16,7 @@ type authorizeConfig struct {
 	hasTarget            bool
 	allowResign          bool
 	allowResignAddresses []string
+	hook                 hookList
 }
 
 // AuthorizeOption adjusts how AuthorizeEntry behaves.
@@ -70,6 +71,21 @@ func AllowResign(addresses ...string) AuthorizeOption {
 	return func(c *authorizeConfig) {
 		c.allowResign = true
 		c.allowResignAddresses = addresses
+	}
+}
+
+// WithHook registers a lifecycle hook for the signing operation.
+//
+// Hooks receive structural events during the signing lifecycle
+// (preimage build, sign, write) and must not contain secret
+// material. They are zero-cost when unset.
+//
+// No secret or payload material can reach a hook — the HookEvent
+// struct carries only addresses, credential type, expiration, and
+// boolean counts. A test asserts this property.
+func WithHook(h Hook) AuthorizeOption {
+	return func(c *authorizeConfig) {
+		c.hook = newHookList(h)
 	}
 }
 
@@ -361,23 +377,44 @@ func AuthorizeEntry(
 	if err != nil {
 		return xdr.SorobanAuthorizationEntry{}, fmt.Errorf("soroauth: authorize entry: %w", err)
 	}
+	config.hook.emit(ctx, HookEvent{Phase: HookPhasePreimage, CredentialType: credentialTypeName(entry.Credentials.Type), TargetAddress: target, ValidUntilLedger: validUntilLedger})
 	payload, err := Payload(preimage)
 	if err != nil {
 		return xdr.SorobanAuthorizationEntry{}, fmt.Errorf("soroauth: authorize entry: %w", err)
 	}
 
+	config.hook.emit(ctx, HookEvent{Phase: HookPhaseSign, CredentialType: credentialTypeName(entry.Credentials.Type), TargetAddress: target, ValidUntilLedger: validUntilLedger})
 	signature, err := signer.Sign(ctx, preimage, payload)
 	if err != nil {
+		config.hook.emit(ctx, HookEvent{Phase: HookPhaseSign, CredentialType: credentialTypeName(entry.Credentials.Type), TargetAddress: target, ValidUntilLedger: validUntilLedger, Error: err})
 		return xdr.SorobanAuthorizationEntry{}, fmt.Errorf("soroauth: authorize entry: %w", err)
 	}
 
 	// The expiration written into the credentials must be the one that was
 	// signed over, or the host recomputes a different payload and rejects it.
+	config.hook.emit(ctx, HookEvent{Phase: HookPhaseWrite, CredentialType: credentialTypeName(entry.Credentials.Type), TargetAddress: target, ValidUntilLedger: validUntilLedger})
 	existingCredentials.SignatureExpirationLedger = xdr.Uint32(validUntilLedger)
 
 	for _, match := range matches {
 		*match = signature
 	}
 
+	config.hook.emit(ctx, HookEvent{Phase: HookPhasePostSign, CredentialType: credentialTypeName(entry.Credentials.Type), TargetAddress: target, ValidUntilLedger: validUntilLedger})
+
 	return signed, nil
+}
+
+// credentialTypeName returns the string name of a credential type.
+func credentialTypeName(t xdr.SorobanCredentialsType) string {
+	switch t {
+	case xdr.SorobanCredentialsTypeSorobanCredentialsSourceAccount:
+		return "source_account"
+	case xdr.SorobanCredentialsTypeSorobanCredentialsAddress:
+		return "address"
+	case xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2:
+		return "address_v2"
+	case xdr.SorobanCredentialsTypeSorobanCredentialsAddressWithDelegates:
+		return "address_with_delegates"
+	}
+	return "unknown"
 }
