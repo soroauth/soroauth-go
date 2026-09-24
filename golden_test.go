@@ -118,13 +118,50 @@ func signerForLabel(t *testing.T, label string) Signer {
 
 // TestGoldenVectors is the correctness gate: for every recorded case, the
 // preimage, the payload hash and the final signed entry must match the JS
-// reference implementation byte for byte.
+// reference implementation byte for byte. Source-account entries pass
+// through unchanged, so they are checked differently.
 func TestGoldenVectors(t *testing.T) {
 	for _, v := range loadVectors(t) {
 		t.Run(v.Name, func(t *testing.T) {
 			var entry xdr.SorobanAuthorizationEntry
 			if err := xdr.SafeUnmarshalBase64(v.UnsignedEntryXDR, &entry); err != nil {
 				t.Fatalf("decoding the unsigned entry: %v", err)
+			}
+
+			// Source-account entries pass through unchanged.
+			// Preimage returns ErrSourceAccountCredentials for this arm,
+			// and the signed entry must be byte-identical to the unsigned
+			// entry.
+			if entry.Credentials.Type == xdr.SorobanCredentialsTypeSorobanCredentialsSourceAccount {
+				// Verify the entry is byte-identical before and after.
+				wantUnsigned, err := base64.StdEncoding.DecodeString(v.UnsignedEntryXDR)
+				if err != nil {
+					t.Fatalf("decoding the expected unsigned entry: %v", err)
+				}
+				gotSigned, err := entry.MarshalBinary()
+				if err != nil {
+					t.Fatalf("marshalling the entry: %v", err)
+				}
+				if !equalBytes(gotSigned, wantUnsigned) {
+					t.Errorf("source-account entry was mutated\n before %x\n  after %x", wantUnsigned, gotSigned)
+				}
+				// Also verify AuthorizeEntry returns a copy that is
+				// byte-identical (the pass-through behavior).
+				// For source-account vectors, the signer is always SIGNER_1.
+				copied, err := AuthorizeEntry(context.Background(), entry,
+					signerForLabel(t, "soroauth-vector-signer-1"),
+					v.ValidUntilLedger, v.NetworkPassphrase)
+				if err != nil {
+					t.Fatalf("AuthorizeEntry returned an unexpected error for source-account: %v", err)
+				}
+				gotCopied, err := copied.MarshalBinary()
+				if err != nil {
+					t.Fatalf("marshalling the copied entry: %v", err)
+				}
+				if !equalBytes(gotCopied, wantUnsigned) {
+					t.Errorf("AuthorizeEntry changed a source-account entry\n want %x\n  got %x", wantUnsigned, gotCopied)
+				}
+				return
 			}
 
 			// 0. the wrap itself, for vectors that record a pre-wrap entry.
@@ -227,6 +264,12 @@ func TestGoldenVectorsCoverTheRequiredCases(t *testing.T) {
 		"delegates_unsorted_with_nested",    // §5.9 case 6
 		"delegates_same_address_two_levels", // §5.9 case 7
 		"delegates_from_legacy",             // §5.9 case 8
+
+		"source_account_testnet", // #115: source-account pass-through
+		"source_account_public",  // #115: source-account on public network
+
+		"v2_expiration_boundary_1",   // #116: minimum valid expiration
+		"v2_expiration_boundary_max", // #116: near-maximum expiration
 	}
 
 	present := map[string]bool{}
@@ -264,6 +307,18 @@ func TestGoldenPayloadsAreDistinct(t *testing.T) {
 			a: "legacy_single_testnet", b: "legacy_negative_nonce",
 			reason: "the nonce is what makes a signature single-use",
 		},
+		{
+			a: "v2_single_testnet", b: "v2_expiration_boundary_1",
+			reason: "different expiration produces a different payload",
+		},
+		{
+			a: "v2_single_testnet", b: "v2_expiration_boundary_max",
+			reason: "different expiration produces a different payload",
+		},
+		{
+			a: "v2_expiration_boundary_1", b: "v2_expiration_boundary_max",
+			reason: "boundary expirations must differ from each other",
+		},
 	}
 
 	for _, pair := range pairs {
@@ -277,6 +332,103 @@ func TestGoldenPayloadsAreDistinct(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestGoldenSourceAccountPassThrough asserts that source-account
+// entries are byte-identical after AuthorizeEntry and AuthorizeAll,
+// covering #115.
+func TestGoldenSourceAccountPassThrough(t *testing.T) {
+	for _, name := range []string{"source_account_testnet", "source_account_public"} {
+		t.Run(name, func(t *testing.T) {
+			v := findVector(t, name)
+			var entry xdr.SorobanAuthorizationEntry
+			if err := xdr.SafeUnmarshalBase64(v.UnsignedEntryXDR, &entry); err != nil {
+				t.Fatalf("decoding the unsigned entry: %v", err)
+			}
+
+			before, err := entry.MarshalBinary()
+			if err != nil {
+				t.Fatalf("marshalling: %v", err)
+			}
+
+			signed, err := AuthorizeEntry(context.Background(), entry,
+				signerForLabel(t, "soroauth-vector-signer-1"),
+				v.ValidUntilLedger, v.NetworkPassphrase)
+			if err != nil {
+				t.Fatalf("AuthorizeEntry returned an unexpected error: %v", err)
+			}
+
+			after, err := signed.MarshalBinary()
+			if err != nil {
+				t.Fatalf("marshalling: %v", err)
+			}
+			if !equalBytes(before, after) {
+				t.Errorf("AuthorizeEntry changed a source-account entry\n before %x\n  after %x", before, after)
+			}
+
+			// Also verify AuthorizeAll leaves it unchanged.
+			allSigned, err := AuthorizeAll(context.Background(),
+				[]xdr.SorobanAuthorizationEntry{entry},
+				[]Signer{NewEd25519Signer(testKeypair(t, "soroauth-vector-signer-1"))},
+				v.ValidUntilLedger, v.NetworkPassphrase)
+			if err != nil {
+				t.Fatalf("AuthorizeAll returned an unexpected error: %v", err)
+			}
+			allBefore, err := entry.MarshalBinary()
+			if err != nil {
+				t.Fatalf("re-marshalling: %v", err)
+			}
+			allAfter, err := allSigned[0].MarshalBinary()
+			if err != nil {
+				t.Fatalf("marshalling the all-signed entry: %v", err)
+			}
+			if !equalBytes(allBefore, allAfter) {
+				t.Errorf("AuthorizeAll changed a source-account entry\n before %x\n  after %x", allBefore, allAfter)
+			}
+		})
+	}
+}
+
+// TestGoldenExpirationBoundaries asserts that the expiration boundary
+// vectors (#116) have the correct valid_until_ledger values and that
+// their payloads differ from the standard-case vectors.
+func TestGoldenExpirationBoundaries(t *testing.T) {
+	for _, name := range []string{"v2_expiration_boundary_1", "v2_expiration_boundary_max"} {
+		t.Run(name, func(t *testing.T) {
+			v := findVector(t, name)
+			if name == "v2_expiration_boundary_1" && v.ValidUntilLedger != 1 {
+				t.Errorf("valid_until_ledger = %d, want 1", v.ValidUntilLedger)
+			}
+			if name == "v2_expiration_boundary_max" && v.ValidUntilLedger != 4294967295 {
+				t.Errorf("valid_until_ledger = %d, want 4294967295", v.ValidUntilLedger)
+			}
+			// The signed entry must differ from the unsigned entry
+			// since it now carries a signature.
+			unsignedBytes, err := base64.StdEncoding.DecodeString(v.UnsignedEntryXDR)
+			if err != nil {
+				t.Fatalf("decoding unsigned entry: %v", err)
+			}
+			signedBytes, err := base64.StdEncoding.DecodeString(v.SignedEntryXDR)
+			if err != nil {
+				t.Fatalf("decoding signed entry: %v", err)
+			}
+			if equalBytes(unsignedBytes, signedBytes) {
+				t.Errorf("the signed entry is byte-identical to the unsigned entry")
+			}
+		})
+	}
+}
+
+// findVector finds a vector by name, or fatals.
+func findVector(t *testing.T, name string) vector {
+	t.Helper()
+	for _, v := range loadVectors(t) {
+		if v.Name == name {
+			return v
+		}
+	}
+	t.Fatalf("golden vector %q is missing", name)
+	return vector{}
 }
 
 // equalBytes is bytes.Equal, named here so the golden assertions read as
