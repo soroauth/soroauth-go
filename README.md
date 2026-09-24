@@ -39,6 +39,7 @@ pipe the output to `jq` without stripping usage text.
 | `sign` | `signed_entry` | `error` |
 | `delegates` | `wrapped_entry` | `error` |
 | `inspect` | (the `EntryInfo` struct) | `error` |
+| `doctor` | `checks`, `ok` | (checks carry their own `pass`/`detail`; see below) |
 | `cross-compile` | `target`, `size`, `sha256` (one per line) | `error` |
 
 ### Worked invocation — JSON output
@@ -61,6 +62,33 @@ SEED=SABC... ./soroauth sign \
   --delegate GAAAA... --delegate GBBBB... --json |
   jq -r .wrapped_entry
 ```
+
+### Doctor — check the local environment for common first-run problems
+
+Most first-run problems are environmental — an unreachable RPC endpoint, a
+mistyped secret variable name, a Go toolchain older than this module needs —
+and the error from `sign` or `payload` does not say so. `doctor` checks three
+things and reports each as pass or fail: never printing a secret, only
+whether it is set.
+
+```sh
+# Human-readable
+./soroauth doctor --rpc-url https://soroban-testnet.stellar.org --secret-env SEED
+
+# JSON
+./soroauth doctor --rpc-url https://soroban-testnet.stellar.org --secret-env SEED --json
+```
+
+```json
+{"checks":[{"name":"go toolchain","pass":true,"detail":"go1.25.4"},{"name":"network","pass":true,"detail":"https://soroban-testnet.stellar.org reachable (HTTP 405)"},{"name":"secret env: SEED","pass":true,"detail":"SEED is set"}],"ok":true}
+```
+
+`--secret-env` is optional; when omitted, that check is skipped rather than
+reported as a failure. `--rpc-url` defaults to the public testnet RPC, and any
+HTTP response — including a non-2xx status — counts the network check as
+passing, since it proves DNS, TCP and TLS all worked; only a transport-level
+error (DNS failure, connection refused, timeout) fails it. Exit code is 0 when
+every check passes, 1 if any fails.
 
 ### Cross-compile — build binaries for multiple targets
 

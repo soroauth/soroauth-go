@@ -9,6 +9,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+**`soroauth doctor`**
+
+- New CLI subcommand checking the local environment for the failures that are
+  usually the real cause of a confusing `sign` or `payload` error: an old Go
+  toolchain, an unreachable RPC endpoint, or a mistyped `--secret-env`
+  variable name. Reports each check as pass/fail, with `--json` for
+  structured output, and never prints a secret's value — only whether it is
+  set. Exit code reflects overall status (0 all passed, 1 something failed).
+
 **Scoped `AllowResign`**
 
 - `AllowResign` now accepts optional addresses:
