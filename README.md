@@ -226,6 +226,20 @@ Because every node commits to the same payload, the expiration is fixed once any
 node is signed: signing another node at a different `validUntilLedger` would
 leave the entry's signatures disagreeing, so soroauth refuses it.
 
+Replacing one delegate's signature needs `AllowResign`, scoped to that
+delegate's address so the override does not also apply to a different call
+touching another node in the same entry:
+
+```go
+resigned, err := soroauth.AuthorizeEntry(ctx, wrapped, soroauth.NewEd25519Signer(k1),
+    validUntil, passphrase, soroauth.ForAddress(d1), soroauth.AllowResign(d1))
+```
+
+`AllowResign()` with no arguments keeps its original, unscoped meaning: the
+guard is lifted for whatever address that call targets. Naming one or more
+addresses restricts it to those; a target outside the list still refuses with
+`ErrAlreadySigned`. Either way, the expiration guard above is never lifted.
+
 One consequence worth stating plainly: the delegates arm and V2 share the same
 address-bound preimage, so the same address, nonce, invocation, expiration and
 network produce an **identical payload** on both arms — golden vectors 3 and 6

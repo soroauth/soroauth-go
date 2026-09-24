@@ -9,6 +9,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+**Scoped `AllowResign`**
+
+- `AllowResign` now accepts optional addresses:
+  `AllowResign(addresses ...string)`. With no arguments it behaves exactly as
+  before — the guard is lifted for whatever address the call targets. With one
+  or more addresses, the guard is lifted only when the call's target
+  (`ForAddress`, or the signer's own `Address()`) is among them; a target that
+  is not named still refuses with `ErrAlreadySigned`, even though
+  `AllowResign` was passed. This lets a caller replacing one delegate's
+  signature grant the override to just that address, instead of every
+  already-signed node an `AuthorizeEntry` call in the same batch might touch.
+  The delegates arm's expiration guard (§5.4) is unaffected either way: no
+  address list can lift it.
+
+  **Migration:** none required. `AllowResign()` with no arguments is
+  unchanged, so every existing call site keeps its current behaviour. No
+  emitted signature or entry bytes change, so golden vectors are unaffected.
+
 **Typed address errors**
 
 - `NoMatchingCredentialNodeError`, `DuplicateDelegateError` and
