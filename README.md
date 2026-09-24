@@ -179,6 +179,9 @@ sim, err := client.SimulateTransaction(ctx, rpc.SimulateTransactionRequest{
     Transaction: encodedTx,
     AuthMode:    rpc.AuthModeRecord,
 })
+if err != nil {
+    return err
+}
 
 entries := make([]xdr.SorobanAuthorizationEntry, 0, len(*sim.Results[0].AuthXDR))
 for _, encoded := range *sim.Results[0].AuthXDR {
@@ -190,7 +193,13 @@ for _, encoded := range *sim.Results[0].AuthXDR {
 }
 
 ledger, err := client.GetLatestLedger(ctx)
+if err != nil {
+    return err
+}
 validUntil, err := soroauth.ExpirationAfter(ledger.Sequence, 1000)
+if err != nil {
+    return err
+}
 
 signed, err := soroauth.AuthorizeAll(ctx, entries,
     []soroauth.Signer{soroauth.NewEd25519Signer(sender)},
@@ -201,6 +210,9 @@ if err != nil {
 
 op.Auth = signed // then re-simulate in enforce mode, assemble, sign, submit
 ```
+
+This example is compiled by CI as `internal/readmesnippets/quickstart.go` —
+see [Verifying README snippets](CONTRIBUTING.md#verifying-readme-snippets-compile).
 
 Source-account entries pass straight through untouched, so you can hand over
 everything simulation returned without sorting by arm first.
@@ -237,13 +249,22 @@ wrapped, err := soroauth.WithDelegates(entry, validUntil,
         {Address: d1},
         {Address: d2, Nested: []soroauth.Delegate{{Address: d3}}},
     }, nil) // nil top-level signature → ScvVoid, which CAP-71-01 permits
+if err != nil {
+    return wrapped, err
+}
 
 for _, kp := range []*keypair.Full{k1, k2, k3} {
     wrapped, err = soroauth.AuthorizeEntry(ctx, wrapped,
         soroauth.NewEd25519Signer(kp), validUntil, passphrase,
         soroauth.ForAddress(kp.Address()))
+    if err != nil {
+        return wrapped, err
+    }
 }
 ```
+
+This example is compiled by CI as `internal/readmesnippets/delegates.go` — see
+[Verifying README snippets](CONTRIBUTING.md#verifying-readme-snippets-compile).
 
 Each delegates array is sorted by the XDR encoding of the address and checked
 for duplicates within that level, as CAP-71-01 requires; the same address at two
@@ -262,6 +283,9 @@ touching another node in the same entry:
 resigned, err := soroauth.AuthorizeEntry(ctx, wrapped, soroauth.NewEd25519Signer(k1),
     validUntil, passphrase, soroauth.ForAddress(d1), soroauth.AllowResign(d1))
 ```
+
+This example is compiled by CI as `internal/readmesnippets/allowresign.go` —
+see [Verifying README snippets](CONTRIBUTING.md#verifying-readme-snippets-compile).
 
 `AllowResign()` with no arguments keeps its original, unscoped meaning: the
 guard is lifted for whatever address that call targets. Naming one or more

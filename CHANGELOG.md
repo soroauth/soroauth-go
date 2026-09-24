@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added (docs correctness)
+
+- The README's three Go examples (Quickstart, Delegates, the inline
+  `AllowResign` snippet) are now extracted verbatim, at test time, from real,
+  compiling source in `internal/readmesnippets/`, instead of living only as
+  free-standing markdown text nothing checked. `TestReadmeSnippetsMatchTheirSource`
+  fails and names the snippet if the README drifts from its source; the
+  source itself is compiled by the `go build ./...` / `go vet ./...` CI
+  already runs, since it carries no build tag, so a snippet that stops
+  compiling fails the same way any other compile error does. See
+  CONTRIBUTING.md § Verifying README snippets compile. In the course of this,
+  the Quickstart and Delegates examples gained the error checks they were
+  previously missing (three unchecked errors in Quickstart; the Delegates
+  loop swallowed its error entirely, which would not even have compiled once
+  wrapped in a real function — `declared and not used: err`).
+
 ### Security
 
 - CI: every GitHub Action is now pinned to a full commit SHA (with the

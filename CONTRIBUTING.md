@@ -75,6 +75,38 @@ When you add a benchmark, add a budget in the same commit. The checker prints
 `FAIL … benchmark not found` if a budgeted name is missing from the output —
 so a renamed benchmark cannot silently drop out of the gate.
 
+## Verifying README snippets compile
+
+The README's two Go examples (Quickstart, Delegates) are not free-standing
+markdown text: each is extracted verbatim from a real, compiling source file
+in `internal/readmesnippets/`, between a `// snippet:start <name>` and
+`// snippet:end <name>` comment pair. `TestReadmeSnippetsMatchTheirSource` in
+`readme_test.go` at the repository root asserts the fenced code block in
+README.md is byte-identical (modulo tabs-vs-spaces) to that marked region.
+
+This means two different things can fail, and the test names which:
+
+- **The snippet source stops compiling.** It is an ordinary package with no
+  build tag, so `go build ./...` and `go vet ./...` — which CI already runs
+  on every push — catch this like any other compile error, naming the file
+  and line.
+- **The README drifts from its source**, for example a hand-edit to the
+  fenced block without updating `internal/readmesnippets/`, or the reverse.
+  `TestReadmeSnippetsMatchTheirSource` fails and prints both texts.
+
+To reproduce either failure locally:
+
+```sh
+go build ./...                        # catches a snippet that no longer compiles
+go test -run TestReadmeSnippets -v .  # catches README/source drift, naming the snippet
+```
+
+To change an example, edit the marked region in
+`internal/readmesnippets/*.go` and copy it verbatim (as, or converted from,
+tabs) into the matching fenced block in README.md. Never edit the fenced
+block alone: it is not the source of truth, and the drift test will fail on
+the next run.
+
 ## GitHub Actions are pinned to commit SHAs
 
 Every `uses:` in `.github/workflows/*.yml` names a full commit SHA with the
