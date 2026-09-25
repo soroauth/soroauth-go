@@ -60,6 +60,22 @@ func extractMissing(err error) (string, bool) {
 	return e.Address, true
 }
 
+func extractUnsigned(err error) (string, bool) {
+	var e *UnsignedCredentialNodeError
+	if !errors.As(err, &e) {
+		return "", false
+	}
+	return e.Address, true
+}
+
+func extractPlanUnmatched(err error) (string, bool) {
+	var e *DelegatePlanUnmatchedError
+	if !errors.As(err, &e) {
+		return "", false
+	}
+	return e.Address, true
+}
+
 // TestNoMatchingCredentialNodeErrorTyped proves errors.As recovers the target
 // address from AuthorizeEntry's no-match failure while errors.Is still matches
 // the sentinel, and that the message still names the address.
@@ -157,6 +173,45 @@ func TestMissingSignerErrorTypedFromAuthorizeAll(t *testing.T) {
 	}
 }
 
+// TestUnsignedCredentialNodeErrorTypedFromAuthorizeAll proves errors.As
+// recovers the unsigned node's address from a RequireAllSigned rejection
+// while errors.Is still matches.
+func TestUnsignedCredentialNodeErrorTypedFromAuthorizeAll(t *testing.T) {
+	owner := testKeypair(t, "soroauth-preimage-signer")
+	base := entryForArm(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 42)
+	d1 := testKeypair(t, "soroauth-delegate-1")
+	d2 := testKeypair(t, "soroauth-delegate-2")
+
+	entry, err := WithDelegates(base, testValidUntilLedger,
+		[]Delegate{{Address: d1.Address()}, {Address: d2.Address()}}, nil)
+	if err != nil {
+		t.Fatalf("building the entry: %v", err)
+	}
+
+	_, err = AuthorizeAll(context.Background(), []xdr.SorobanAuthorizationEntry{entry},
+		[]Signer{NewEd25519Signer(owner), NewEd25519Signer(d1)}, // d2 never signs
+		testValidUntilLedger, network.TestNetworkPassphrase, RequireAllSigned())
+	wantAddressError(t, err, ErrUnsignedCredentialNode, d2.Address(), extractUnsigned)
+}
+
+// TestDelegatePlanUnmatchedErrorTypedFromAuthorizeAll proves errors.As
+// recovers the unmatched plan address from AuthorizeAll while errors.Is
+// still matches.
+func TestDelegatePlanUnmatchedErrorTypedFromAuthorizeAll(t *testing.T) {
+	present := testKeypair(t, "soroauth-err-present")
+	absent := testKeypair(t, "soroauth-err-absent")
+	delegate := testKeypair(t, "soroauth-delegate-1")
+	entry := entryForSigner(t, "soroauth-err-present", xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 1)
+
+	_, err := AuthorizeAll(context.Background(), []xdr.SorobanAuthorizationEntry{entry},
+		[]Signer{NewEd25519Signer(present), NewEd25519Signer(delegate)},
+		testValidUntilLedger, network.TestNetworkPassphrase,
+		WithDelegatePlans(map[string]DelegatePlan{
+			absent.Address(): {Delegates: []Delegate{{Address: delegate.Address()}}},
+		}))
+	wantAddressError(t, err, ErrDelegatePlanUnmatched, absent.Address(), extractPlanUnmatched)
+}
+
 // TestMissingSignerErrorTypedFromMultiSigner proves errors.As recovers the
 // classic account address from NewAccountMultiSigner's zero-key rejection
 // while errors.Is still matches.
@@ -186,6 +241,8 @@ func TestTypedErrorsCarrySentinelText(t *testing.T) {
 		{"no matching credential node", &NoMatchingCredentialNodeError{Address: addr}, ErrNoMatchingCredentialNode},
 		{"duplicate delegate", &DuplicateDelegateError{Address: addr}, ErrDuplicateDelegate},
 		{"missing signer", &MissingSignerError{Address: addr}, ErrMissingSigner},
+		{"unsigned credential node", &UnsignedCredentialNodeError{Address: addr}, ErrUnsignedCredentialNode},
+		{"delegate plan unmatched", &DelegatePlanUnmatchedError{Address: addr}, ErrDelegatePlanUnmatched},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -251,6 +308,36 @@ func ExampleMissingSignerError() {
 
 	var addrErr *MissingSignerError
 	if errors.Is(err, ErrMissingSigner) && errors.As(err, &addrErr) {
+		fmt.Println("sentinel matched; address =", addrErr.Address)
+	}
+	// Output:
+	// sentinel matched; address = GBEXAMPLE
+}
+
+func ExampleUnsignedCredentialNodeError() {
+	// AuthorizeAll returns this when RequireAllSigned was given and a
+	// credential node in the resulting batch carries no signature.
+	err := fmt.Errorf("soroauth: authorize all: entry 0: %s: %w",
+		"GBEXAMPLE",
+		&UnsignedCredentialNodeError{Address: "GBEXAMPLE"})
+
+	var addrErr *UnsignedCredentialNodeError
+	if errors.Is(err, ErrUnsignedCredentialNode) && errors.As(err, &addrErr) {
+		fmt.Println("sentinel matched; address =", addrErr.Address)
+	}
+	// Output:
+	// sentinel matched; address = GBEXAMPLE
+}
+
+func ExampleDelegatePlanUnmatchedError() {
+	// AuthorizeAll returns this when a WithDelegatePlans key matches no
+	// entry's top-level address in the batch.
+	err := fmt.Errorf("soroauth: authorize all: %s: %w",
+		"GBEXAMPLE",
+		&DelegatePlanUnmatchedError{Address: "GBEXAMPLE"})
+
+	var addrErr *DelegatePlanUnmatchedError
+	if errors.Is(err, ErrDelegatePlanUnmatched) && errors.As(err, &addrErr) {
 		fmt.Println("sentinel matched; address =", addrErr.Address)
 	}
 	// Output:

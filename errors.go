@@ -134,6 +134,32 @@ var (
 	// envelope was built against a protocol this build does not implement, so
 	// reading it would be a guess about a wire format that has not been read.
 	ErrUnsupportedEnvelope = errors.New("unsupported transaction envelope type")
+
+	// ErrUnsignedCredentialNode is returned by AuthorizeAll, when
+	// RequireAllSigned was given, when a credential node in a signed entry's
+	// tree carries no signature.
+	//
+	// AuthorizeAll cannot know an account's own policy — a 2-of-3 delegate
+	// tree, or an account that authenticates purely through delegates and
+	// leaves its own top-level node Void, are both legitimate under
+	// CAP-71-01 — so by default it stops at "at least one signer matched
+	// somewhere". RequireAllSigned is the opt-in for a caller who does know
+	// their policy requires every node signed, such as an account whose
+	// custom __check_auth calls delegate_account_auth for every stored
+	// delegate. The wrapped error names the first unsigned node found, in
+	// entry order and then tree order.
+	ErrUnsignedCredentialNode = errors.New("credential node was left unsigned")
+
+	// ErrDelegatePlanUnmatched is returned by AuthorizeAll when a delegate
+	// plan passed to WithDelegatePlans names an address that matches no
+	// entry's top-level address in the batch.
+	//
+	// A plan entry that matches nothing is very likely a typo or a stale
+	// plan left over from a removed entry, and applying it silently would
+	// mean the caller's intended delegate wrapping never happened — the same
+	// fail-closed reasoning AuthorizeAll already applies to a missing
+	// signer.
+	ErrDelegatePlanUnmatched = errors.New("delegate plan address matches no entry in the batch")
 )
 
 // NoMatchingCredentialNodeError is returned when no credential node in the
@@ -225,4 +251,56 @@ func (e *MissingSignerError) Error() string {
 // Unwrap returns ErrMissingSigner so errors.Is keeps working.
 func (e *MissingSignerError) Unwrap() error {
 	return ErrMissingSigner
+}
+
+// UnsignedCredentialNodeError is returned by AuthorizeAll, when
+// RequireAllSigned was given, for the first credential node found with no
+// signature, and exposes that address as a field so callers can recover it
+// with errors.As instead of parsing the error string.
+//
+// It wraps ErrUnsignedCredentialNode, so errors.Is keeps matching the
+// sentinel. The Error text is exactly the sentinel's text; the address is
+// formatted into the surrounding message by the call site and is available
+// here as Address.
+type UnsignedCredentialNodeError struct {
+	// Address is the credential node's address that carries no signature.
+	Address string
+}
+
+// Error implements error. The text is identical to
+// ErrUnsignedCredentialNode.Error so existing message assertions and log
+// parsers see no change; Address is carried separately for errors.As.
+func (e *UnsignedCredentialNodeError) Error() string {
+	return ErrUnsignedCredentialNode.Error()
+}
+
+// Unwrap returns ErrUnsignedCredentialNode so errors.Is keeps working.
+func (e *UnsignedCredentialNodeError) Unwrap() error {
+	return ErrUnsignedCredentialNode
+}
+
+// DelegatePlanUnmatchedError is returned by AuthorizeAll when a delegate plan
+// names an address that matches no entry in the batch, and exposes that
+// address as a field so callers can recover it with errors.As instead of
+// parsing the error string.
+//
+// It wraps ErrDelegatePlanUnmatched, so errors.Is keeps matching the
+// sentinel. The Error text is exactly the sentinel's text; the address is
+// formatted into the surrounding message by the call site and is available
+// here as Address.
+type DelegatePlanUnmatchedError struct {
+	// Address is the delegate plan's address that matched no entry.
+	Address string
+}
+
+// Error implements error. The text is identical to
+// ErrDelegatePlanUnmatched.Error so existing message assertions and log
+// parsers see no change; Address is carried separately for errors.As.
+func (e *DelegatePlanUnmatchedError) Error() string {
+	return ErrDelegatePlanUnmatched.Error()
+}
+
+// Unwrap returns ErrDelegatePlanUnmatched so errors.Is keeps working.
+func (e *DelegatePlanUnmatchedError) Unwrap() error {
+	return ErrDelegatePlanUnmatched
 }

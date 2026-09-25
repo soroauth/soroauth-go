@@ -143,6 +143,17 @@ type credentialNode struct {
 	signature *xdr.ScVal
 }
 
+// formatAddressBytes is the inverse of addressBytes: it decodes an address's
+// XDR encoding back into a strkey string, for reporting a credentialNode's
+// address in an error after only its encoded bytes were kept.
+func formatAddressBytes(encoded []byte) (string, error) {
+	var address xdr.ScAddress
+	if err := address.UnmarshalBinary(encoded); err != nil {
+		return "", fmt.Errorf("decoding address: %w", err)
+	}
+	return FormatAddress(address)
+}
+
 // delegateNodesOf flattens a delegates array and everything nested under it.
 //
 // Under CAP-71-01 a delegate may itself delegate, to any depth, and every one

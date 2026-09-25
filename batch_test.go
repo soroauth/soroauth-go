@@ -3,10 +3,13 @@ package soroauth
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/network"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
@@ -307,6 +310,233 @@ func TestAuthorizeAllDoesNotMutateItsInput(t *testing.T) {
 	}
 }
 
+// TestAuthorizeAllRequireAllSignedRejectsAPartiallySignedDelegateTree proves
+// RequireAllSigned catches what the default behaviour deliberately lets
+// through: a delegate whose signer never matched, in an otherwise fully
+// signed tree (including the top-level node, so the unsigned delegate is
+// unambiguously the cause).
+func TestAuthorizeAllRequireAllSignedRejectsAPartiallySignedDelegateTree(t *testing.T) {
+	owner := testKeypair(t, "soroauth-preimage-signer") // entryForArm's account
+	base := entryForArm(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 42)
+	d1 := testKeypair(t, "soroauth-delegate-1")
+	d2 := testKeypair(t, "soroauth-delegate-2")
+
+	entry, err := WithDelegates(base, testValidUntilLedger,
+		[]Delegate{{Address: d1.Address()}, {Address: d2.Address()}}, nil)
+	if err != nil {
+		t.Fatalf("building the entry: %v", err)
+	}
+
+	got, err := AuthorizeAll(context.Background(),
+		[]xdr.SorobanAuthorizationEntry{entry},
+		[]Signer{NewEd25519Signer(owner), NewEd25519Signer(d1)}, // d2 never signs
+		testValidUntilLedger, network.TestNetworkPassphrase, RequireAllSigned())
+	if err == nil {
+		t.Fatal("AuthorizeAll with RequireAllSigned accepted a partially signed tree")
+	}
+	if !errors.Is(err, ErrUnsignedCredentialNode) {
+		t.Errorf("error %q does not match ErrUnsignedCredentialNode", err)
+	}
+	if !strings.Contains(err.Error(), d2.Address()) {
+		t.Errorf("error %q does not name the unsigned delegate", err)
+	}
+	if got != nil {
+		t.Error("AuthorizeAll returned entries alongside an error")
+	}
+}
+
+// TestAuthorizeAllRequireAllSignedNoOpOnFullySignedSingleNode proves
+// RequireAllSigned is a no-op for the ordinary case: a legacy or V2 entry
+// with its one node signed, which is everything AuthorizeAll ever returns
+// for those arms.
+func TestAuthorizeAllRequireAllSignedNoOpOnFullySignedSingleNode(t *testing.T) {
+	label := "soroauth-batch-1"
+	entries := []xdr.SorobanAuthorizationEntry{
+		entryForArm(t, xdr.SorobanCredentialsTypeSorobanCredentialsSourceAccount, 1),
+		entryForSigner(t, label, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 2),
+	}
+
+	got, err := AuthorizeAll(context.Background(), entries,
+		[]Signer{NewEd25519Signer(testKeypair(t, label))},
+		testValidUntilLedger, network.TestNetworkPassphrase, RequireAllSigned())
+	if err != nil {
+		t.Fatalf("RequireAllSigned rejected a fully signed batch: %v", err)
+	}
+	if len(got) != len(entries) {
+		t.Fatalf("got %d entries, want %d", len(got), len(entries))
+	}
+}
+
+// TestAuthorizeAllRequireAllSignedAcceptsAFullySignedDelegateTree is the
+// positive half: every node signed, including the top-level node, passes.
+// (RequireAllSigned checks the top-level node literally; see its doc
+// comment for why a delegates-only account, which leaves that node Void on
+// purpose, should not use this option.)
+func TestAuthorizeAllRequireAllSignedAcceptsAFullySignedDelegateTree(t *testing.T) {
+	owner := testKeypair(t, "soroauth-preimage-signer") // entryForArm's account
+	base := entryForArm(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 42)
+	d1 := testKeypair(t, "soroauth-delegate-1")
+	d2 := testKeypair(t, "soroauth-delegate-2")
+
+	entry, err := WithDelegates(base, testValidUntilLedger,
+		[]Delegate{{Address: d1.Address()}, {Address: d2.Address()}}, nil)
+	if err != nil {
+		t.Fatalf("building the entry: %v", err)
+	}
+
+	got, err := AuthorizeAll(context.Background(),
+		[]xdr.SorobanAuthorizationEntry{entry},
+		[]Signer{NewEd25519Signer(owner), NewEd25519Signer(d1), NewEd25519Signer(d2)},
+		testValidUntilLedger, network.TestNetworkPassphrase, RequireAllSigned())
+	if err != nil {
+		t.Fatalf("RequireAllSigned rejected a fully signed delegate tree: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d entries, want 1", len(got))
+	}
+}
+
+// TestAuthorizeAllRequireAllSignedRejectsAnIntentionallyVoidTopLevel pins
+// down the documented boundary: RequireAllSigned checks the top-level node
+// literally, so a delegates-only entry whose top-level signature is Void on
+// purpose (CAP-71-01) is reported as unsigned rather than silently accepted.
+func TestAuthorizeAllRequireAllSignedRejectsAnIntentionallyVoidTopLevel(t *testing.T) {
+	owner := testKeypair(t, "soroauth-preimage-signer")
+	base := entryForArm(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 42)
+	delegate := testKeypair(t, "soroauth-delegate-1")
+
+	entry, err := WithDelegates(base, testValidUntilLedger,
+		[]Delegate{{Address: delegate.Address()}}, nil)
+	if err != nil {
+		t.Fatalf("building the entry: %v", err)
+	}
+
+	got, err := AuthorizeAll(context.Background(),
+		[]xdr.SorobanAuthorizationEntry{entry},
+		[]Signer{NewEd25519Signer(delegate)}, // owner never signs, by design
+		testValidUntilLedger, network.TestNetworkPassphrase, RequireAllSigned())
+	if err == nil {
+		t.Fatal("RequireAllSigned accepted an entry with an intentionally Void top-level node")
+	}
+	if !errors.Is(err, ErrUnsignedCredentialNode) {
+		t.Errorf("error %q does not match ErrUnsignedCredentialNode", err)
+	}
+	if !strings.Contains(err.Error(), owner.Address()) {
+		t.Errorf("error %q does not name the unsigned top-level address", err)
+	}
+	if got != nil {
+		t.Error("AuthorizeAll returned entries alongside an error")
+	}
+}
+
+// TestAuthorizeAllWithDelegatePlansWrapsTheNamedEntry proves the plan is
+// applied before signing: an entry that arrived as plain V2 comes back as
+// the delegates arm, with the planned delegate signed.
+func TestAuthorizeAllWithDelegatePlansWrapsTheNamedEntry(t *testing.T) {
+	owner := testKeypair(t, "soroauth-batch-1")
+	delegate := testKeypair(t, "soroauth-delegate-1")
+	entry := entryForSigner(t, "soroauth-batch-1", xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 1)
+
+	got, err := AuthorizeAll(context.Background(),
+		[]xdr.SorobanAuthorizationEntry{entry},
+		[]Signer{NewEd25519Signer(delegate)},
+		testValidUntilLedger, network.TestNetworkPassphrase,
+		WithDelegatePlans(map[string]DelegatePlan{
+			owner.Address(): {Delegates: []Delegate{{Address: delegate.Address()}}},
+		}))
+	if err != nil {
+		t.Fatalf("AuthorizeAll with a delegate plan returned an unexpected error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d entries, want 1", len(got))
+	}
+
+	info, err := Inspect(got[0])
+	if err != nil {
+		t.Fatalf("inspecting: %v", err)
+	}
+	if info.CredentialType != CredentialTypeAddressWithDelegates {
+		t.Errorf("credential_type = %q, want %q", info.CredentialType, CredentialTypeAddressWithDelegates)
+	}
+	if len(info.Delegates) != 1 || !info.Delegates[0].Signed {
+		t.Error("the planned delegate was not signed")
+	}
+}
+
+// TestAuthorizeAllWithDelegatePlansLeavesUnplannedEntriesAsIs proves an entry
+// with no matching plan key is signed exactly as AuthorizeAll always signed
+// it — the plan is additive, never a global behaviour change.
+func TestAuthorizeAllWithDelegatePlansLeavesUnplannedEntriesAsIs(t *testing.T) {
+	planned := testKeypair(t, "soroauth-batch-1")
+	unplanned := testKeypair(t, "soroauth-batch-2")
+	delegate := testKeypair(t, "soroauth-delegate-1")
+
+	entries := []xdr.SorobanAuthorizationEntry{
+		entryForSigner(t, "soroauth-batch-1", xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 1),
+		entryForSigner(t, "soroauth-batch-2", xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 2),
+	}
+
+	got, err := AuthorizeAll(context.Background(), entries,
+		[]Signer{NewEd25519Signer(delegate), NewEd25519Signer(unplanned)},
+		testValidUntilLedger, network.TestNetworkPassphrase,
+		WithDelegatePlans(map[string]DelegatePlan{
+			planned.Address(): {Delegates: []Delegate{{Address: delegate.Address()}}},
+		}))
+	if err != nil {
+		t.Fatalf("AuthorizeAll returned an unexpected error: %v", err)
+	}
+
+	infoPlanned, err := Inspect(got[0])
+	if err != nil {
+		t.Fatalf("inspecting entry 0: %v", err)
+	}
+	if infoPlanned.CredentialType != CredentialTypeAddressWithDelegates {
+		t.Errorf("entry 0 credential_type = %q, want %q", infoPlanned.CredentialType, CredentialTypeAddressWithDelegates)
+	}
+
+	infoUnplanned, err := Inspect(got[1])
+	if err != nil {
+		t.Fatalf("inspecting entry 1: %v", err)
+	}
+	if infoUnplanned.CredentialType != CredentialTypeAddressV2 {
+		t.Errorf("entry 1 credential_type = %q, want %q (unplanned entries stay as they arrived)",
+			infoUnplanned.CredentialType, CredentialTypeAddressV2)
+	}
+	if !infoUnplanned.TopLevelSigned {
+		t.Error("entry 1 (unplanned) was not signed")
+	}
+}
+
+// TestAuthorizeAllWithDelegatePlansUnmatchedAddressErrors proves a plan for
+// an address absent from the batch fails loudly instead of being ignored.
+func TestAuthorizeAllWithDelegatePlansUnmatchedAddressErrors(t *testing.T) {
+	present := testKeypair(t, "soroauth-batch-1")
+	absent := testKeypair(t, "soroauth-batch-2")
+	delegate := testKeypair(t, "soroauth-delegate-1")
+
+	entry := entryForSigner(t, "soroauth-batch-1", xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 1)
+
+	got, err := AuthorizeAll(context.Background(),
+		[]xdr.SorobanAuthorizationEntry{entry},
+		[]Signer{NewEd25519Signer(present), NewEd25519Signer(delegate)},
+		testValidUntilLedger, network.TestNetworkPassphrase,
+		WithDelegatePlans(map[string]DelegatePlan{
+			absent.Address(): {Delegates: []Delegate{{Address: delegate.Address()}}},
+		}))
+	if err == nil {
+		t.Fatal("AuthorizeAll accepted a delegate plan for an address absent from the batch")
+	}
+	if !errors.Is(err, ErrDelegatePlanUnmatched) {
+		t.Errorf("error %q does not match ErrDelegatePlanUnmatched", err)
+	}
+	if !strings.Contains(err.Error(), absent.Address()) {
+		t.Errorf("error %q does not name the unmatched plan address", err)
+	}
+	if got != nil {
+		t.Error("AuthorizeAll returned entries alongside an error")
+	}
+}
+
 func TestAuthorizeAllEmptyBatch(t *testing.T) {
 	got, err := AuthorizeAll(context.Background(), nil, nil,
 		testValidUntilLedger, network.TestNetworkPassphrase)
@@ -316,4 +546,115 @@ func TestAuthorizeAllEmptyBatch(t *testing.T) {
 	if len(got) != 0 {
 		t.Errorf("got %d entries for an empty batch", len(got))
 	}
+}
+
+// exampleV2Entry builds a minimal, unsigned V2 entry for owner, for use in
+// package examples that need a real entry without a *testing.T.
+func exampleV2Entry(owner *keypair.Full, nonce int64) (xdr.SorobanAuthorizationEntry, error) {
+	address, err := ParseAddress(owner.Address())
+	if err != nil {
+		return xdr.SorobanAuthorizationEntry{}, err
+	}
+	var contractID xdr.ContractId
+	for i := range contractID {
+		contractID[i] = byte(i)
+	}
+	return xdr.SorobanAuthorizationEntry{
+		Credentials: xdr.SorobanCredentials{
+			Type: xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2,
+			AddressV2: &xdr.SorobanAddressCredentials{
+				Address:   address,
+				Nonce:     xdr.Int64(nonce),
+				Signature: xdr.ScVal{Type: xdr.ScValTypeScvVec, Vec: newScVec()},
+			},
+		},
+		RootInvocation: xdr.SorobanAuthorizedInvocation{
+			Function: xdr.SorobanAuthorizedFunction{
+				Type: xdr.SorobanAuthorizedFunctionTypeSorobanAuthorizedFunctionTypeContractFn,
+				ContractFn: &xdr.InvokeContractArgs{
+					ContractAddress: xdr.ScAddress{
+						Type:       xdr.ScAddressTypeScAddressTypeContract,
+						ContractId: &contractID,
+					},
+					FunctionName: xdr.ScSymbol("transfer"),
+				},
+			},
+		},
+	}, nil
+}
+
+// ExampleWithDelegatePlans shows AuthorizeAll wrapping one address's entry
+// in the delegates arm and signing it, in a single call, from a plan keyed
+// by that address.
+func ExampleWithDelegatePlans() {
+	owner, err := keypair.FromRawSeed(sha256.Sum256([]byte("soroauth-example-plan-owner")))
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+	delegate, err := keypair.FromRawSeed(sha256.Sum256([]byte("soroauth-example-plan-delegate")))
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+	entry, err := exampleV2Entry(owner, 1)
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+
+	signed, err := AuthorizeAll(context.Background(),
+		[]xdr.SorobanAuthorizationEntry{entry},
+		[]Signer{NewEd25519Signer(delegate)},
+		1234567, network.TestNetworkPassphrase,
+		WithDelegatePlans(map[string]DelegatePlan{
+			owner.Address(): {Delegates: []Delegate{{Address: delegate.Address()}}},
+		}))
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+
+	info, err := Inspect(signed[0])
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+	fmt.Println(info.CredentialType, "delegate signed:", info.Delegates[0].Signed)
+	// Output:
+	// address_with_delegates delegate signed: true
+}
+
+// ExampleRequireAllSigned shows AuthorizeAll rejecting a batch that its
+// default behaviour would accept: a delegates entry whose top-level node
+// was never signed, once the caller opts into the stricter check.
+func ExampleRequireAllSigned() {
+	owner, err := keypair.FromRawSeed(sha256.Sum256([]byte("soroauth-example-require-owner")))
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+	delegate, err := keypair.FromRawSeed(sha256.Sum256([]byte("soroauth-example-require-delegate")))
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+	base, err := exampleV2Entry(owner, 1)
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+	entry, err := WithDelegates(base, 1234567, []Delegate{{Address: delegate.Address()}}, nil)
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+
+	_, err = AuthorizeAll(context.Background(),
+		[]xdr.SorobanAuthorizationEntry{entry},
+		[]Signer{NewEd25519Signer(delegate)}, // the account's own key never signs
+		1234567, network.TestNetworkPassphrase, RequireAllSigned())
+	fmt.Println("rejected:", errors.Is(err, ErrUnsignedCredentialNode))
+	// Output:
+	// rejected: true
 }

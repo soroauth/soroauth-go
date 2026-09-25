@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+**Delegate plans and stricter batch signing for `AuthorizeAll`**
+
+- `AuthorizeAll` now takes optional `AuthorizeAllOption`s. `WithDelegatePlans`
+  wraps a named address's entry in the delegates arm (via `WithDelegates`)
+  before signing, so using delegates through the batch helper no longer
+  means unpacking the batch, wrapping one entry by hand, and repacking. An
+  entry with no plan is signed exactly as before — this is additive, not a
+  behavior change — and a plan address that matches no entry in the batch
+  is `ErrDelegatePlanUnmatched`, never a silent no-op. (#104)
+- `RequireAllSigned` makes `AuthorizeAll` fail with the new
+  `ErrUnsignedCredentialNode` if any credential node in the resulting
+  batch — including a delegates entry's top-level node — is left
+  unsigned. It is opt-in and literal: a delegates-only account that
+  deliberately leaves its top-level node `Void` should not pass this
+  option for that entry. No migration is needed; existing callers that
+  never pass these options see no behavior change, since `AuthorizeAll`'s
+  signature only gained a trailing variadic parameter. (#103)
+
 ### Added (docs correctness)
 
 - The README's three Go examples (Quickstart, Delegates, the inline
