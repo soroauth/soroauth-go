@@ -82,7 +82,7 @@ func TestAnalyzeFarFutureExpiration(t *testing.T) {
 		entry.Credentials.AddressV2.SignatureExpirationLedger = 2000000
 	}
 	cfg := &RiskConfig{
-		CurrentLedger:           1000000,
+		CurrentLedger:            1000000,
 		MaxValidUntilLedgerDelta: 100,
 	}
 
@@ -399,10 +399,10 @@ func TestAnalyzeSeverityOrdering(t *testing.T) {
 	entry.Credentials.AddressWithDelegates.AddressCredentials.SignatureExpirationLedger = 0
 
 	cfg := &RiskConfig{
-		CurrentLedger:           1000000,
-		MaxValidUntilLedgerDelta: 100, // Far future = warning
-		MaxTotalDelegates:       0,   // Any delegates = warning
-		KnownContracts:          map[string]bool{}, // Unknown contract = warning
+		CurrentLedger:            1000000,
+		MaxValidUntilLedgerDelta: 100,               // Far future = warning
+		MaxTotalDelegates:        0,                 // Any delegates = warning
+		KnownContracts:           map[string]bool{}, // Unknown contract = warning
 	}
 
 	findings, err := Analyze(entry, cfg)

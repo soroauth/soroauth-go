@@ -22,8 +22,6 @@ import (
 	"github.com/soroauth/soroauth-go"
 	"github.com/stellar/go-stellar-sdk/network"
 	"github.com/stellar/go-stellar-sdk/xdr"
-
-	"github.com/soroauth/soroauth-go"
 )
 
 // Exit codes for distinct failure classes.

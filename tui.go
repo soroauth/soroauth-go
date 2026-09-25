@@ -26,23 +26,23 @@ type TUIModel struct {
 	findings []Finding
 
 	// Config
-	validUntilLedger uint32
+	validUntilLedger  uint32
 	networkPassphrase string
-	secretEnvVar string
-	forAddress string
+	secretEnvVar      string
+	forAddress        string
 
 	// UI state
-	stage int // 0=inspect, 1=sign, 2=done
-	cursor int
+	stage        int // 0=inspect, 1=sign, 2=done
+	cursor       int
 	selectedNode string
-	width int
-	height int
-	err error
-	quitting bool
-	done bool
+	width        int
+	height       int
+	err          error
+	quitting     bool
+	done         bool
 
 	// Signing state
-	signer Signer
+	signer      Signer
 	signedEntry *xdr.SorobanAuthorizationEntry
 
 	// Styles
@@ -51,17 +51,17 @@ type TUIModel struct {
 
 // TUIStyles holds the lipgloss styles for the TUI.
 type TUIStyles struct {
-	base          lipgloss.Style
-	header        lipgloss.Style
-	section       lipgloss.Style
-	item          lipgloss.Style
-	selectedItem  lipgloss.Style
+	base            lipgloss.Style
+	header          lipgloss.Style
+	section         lipgloss.Style
+	item            lipgloss.Style
+	selectedItem    lipgloss.Style
 	findingCritical lipgloss.Style
 	findingWarning  lipgloss.Style
 	findingInfo     lipgloss.Style
-	help          lipgloss.Style
-	success       lipgloss.Style
-	error         lipgloss.Style
+	help            lipgloss.Style
+	success         lipgloss.Style
+	error           lipgloss.Style
 }
 
 // NewTUIStyles creates the default styles.
@@ -152,15 +152,15 @@ func TUI(ctx context.Context, entryB64 string, validUntilLedger uint32, networkP
 	signer := NewEd25519Signer(kp)
 
 	model := &TUIModel{
-		entry:            &entry,
-		info:             &info,
-		findings:         findings,
-		validUntilLedger: validUntilLedger,
+		entry:             &entry,
+		info:              &info,
+		findings:          findings,
+		validUntilLedger:  validUntilLedger,
 		networkPassphrase: networkPassphrase,
-		secretEnvVar:     secretEnvVar,
-		forAddress:       forAddress,
-		signer:           signer,
-		styles:           NewTUIStyles(),
+		secretEnvVar:      secretEnvVar,
+		forAddress:        forAddress,
+		signer:            signer,
+		styles:            NewTUIStyles(),
 	}
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
@@ -466,7 +466,7 @@ func (m *TUIModel) viewInspect() string {
 func (m *TUIModel) viewNodeDetail() string {
 	var b strings.Builder
 
-	b.WriteString(m.styles.header.Render("Node Detail: "+m.selectedNode))
+	b.WriteString(m.styles.header.Render("Node Detail: " + m.selectedNode))
 	b.WriteString("\n\n")
 
 	b.WriteString(m.styles.help.Render("Enter: back  q: quit"))
@@ -484,7 +484,7 @@ func (m *TUIModel) viewSigning() string {
 
 	if m.done {
 		if m.err != nil {
-			b.WriteString(m.styles.error.Render("Signing failed: "+m.err.Error()))
+			b.WriteString(m.styles.error.Render("Signing failed: " + m.err.Error()))
 		} else {
 			b.WriteString(m.styles.success.Render("Entry signed successfully!"))
 			signedBytes, _ := m.signedEntry.MarshalBinary()
@@ -502,7 +502,7 @@ func (m *TUIModel) viewDone() string {
 	var b strings.Builder
 
 	if m.err != nil {
-		b.WriteString(m.styles.error.Render("Error: "+m.err.Error()))
+		b.WriteString(m.styles.error.Render("Error: " + m.err.Error()))
 	} else {
 		b.WriteString(m.styles.success.Render("Done!"))
 		if m.signedEntry != nil {

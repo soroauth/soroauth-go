@@ -1,12 +1,10 @@
 package soroauth
 
 import (
-	"context"
 	"crypto/sha256"
 	"testing"
 
 	"github.com/stellar/go-stellar-sdk/keypair"
-	"github.com/stellar/go-stellar-sdk/network"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
@@ -79,48 +77,10 @@ func benchmarkEntryAndSigner(b *testing.B) (xdr.SorobanAuthorizationEntry, *keyp
 	return entry, kp
 }
 
-func BenchmarkPreimage(b *testing.B) {
-	entry, _ := benchmarkEntryAndSigner(b)
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		if _, err := Preimage(entry, benchmarkValidUntilLedger, network.TestNetworkPassphrase); err != nil {
-			b.Fatalf("Preimage returned an unexpected error: %v", err)
-		}
-	}
-}
-
-func BenchmarkPayload(b *testing.B) {
-	entry, _ := benchmarkEntryAndSigner(b)
-	preimage, err := Preimage(entry, benchmarkValidUntilLedger, network.TestNetworkPassphrase)
-	if err != nil {
-		b.Fatalf("building the benchmark preimage: %v", err)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		if _, err := Payload(preimage); err != nil {
-			b.Fatalf("Payload returned an unexpected error: %v", err)
-		}
-	}
-}
-
-func BenchmarkAuthorizeEntry(b *testing.B) {
-	entry, kp := benchmarkEntryAndSigner(b)
-	signer := NewEd25519Signer(kp)
-	ctx := context.Background()
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		if _, err := AuthorizeEntry(ctx, entry, signer, benchmarkValidUntilLedger, network.TestNetworkPassphrase); err != nil {
-			b.Fatalf("AuthorizeEntry returned an unexpected error: %v", err)
-		}
-	}
-}
-
+// BenchmarkPreimage, BenchmarkPayload and BenchmarkAuthorizeEntry live in
+// bench_signing_test.go, which also carries their committed budgets in
+// testdata/bench/budgets.json. Only the benchmark this file was added for is
+// defined here.
 func BenchmarkDecodeAuthorizationEntry(b *testing.B) {
 	entry, _ := benchmarkEntryAndSigner(b)
 	encoded, err := xdr.MarshalBase64(entry)

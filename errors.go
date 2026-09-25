@@ -119,6 +119,22 @@ var (
 	// envelope was built against a protocol this build does not implement, so
 	// reading it would be a guess about a wire format that has not been read.
 	ErrUnsupportedEnvelope = errors.New("unsupported transaction envelope type")
+
+	// ErrDecodeLimit is returned when an untrusted authorization entry is
+	// refused for exceeding one of the deliberate bounds this library applies
+	// to input it did not build itself: MaxDecodeDepth levels of nesting, or
+	// MaxDecodeInputBytes of decoded input.
+	//
+	// The Go SDK's defaults are not bounds chosen for untrusted input
+	// (go-xdr's DecodeDefaultMaxDepth is 1500, and SafeUnmarshalBase64 sets
+	// MaxInputLen from the input it was handed), so a call that decodes or
+	// walks an entry from a simulation, the network or a caller applies the
+	// explicit limits documented on those constants instead and reports a
+	// refusal as this error. It is distinct from a malformed-input error: the
+	// bytes may be well-formed, and a caller that hits it has an entry too
+	// deep or too large for this library to read rather than a corrupt one.
+	// See MaxDecodeDepth and MaxDecodeInputBytes in decode.go.
+	ErrDecodeLimit = errors.New("input exceeds the decode limit")
 )
 
 // NoMatchingCredentialNodeError is returned when no credential node in the

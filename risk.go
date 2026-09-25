@@ -59,12 +59,12 @@ type RiskConfig struct {
 // DefaultRiskConfig returns a configuration with conservative defaults.
 func DefaultRiskConfig() RiskConfig {
 	return RiskConfig{
-		MaxDelegateDepth:        3,
-		MaxTotalDelegates:       10,
+		MaxDelegateDepth:         3,
+		MaxTotalDelegates:        10,
 		MaxValidUntilLedgerDelta: 10000,
-		KnownContracts:          make(map[string]bool),
-		MaxSubInvocations:       50,
-		CurrentLedger:           0,
+		KnownContracts:           make(map[string]bool),
+		MaxSubInvocations:        50,
+		CurrentLedger:            0,
 	}
 }
 
