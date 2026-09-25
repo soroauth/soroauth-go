@@ -209,14 +209,15 @@ func TestScenarioE(t *testing.T) {
 	t.Logf("RAW ERROR:\n%s", result.RawError)
 
 	record(scenarioResult{
-		ID:        "E",
-		Name:      "the host rejects an unregistered delegate",
-		Proves:    "A delegates entry naming an address the account has not registered is refused by the contract's __check_auth with its UnknownDelegate error.",
-		TxHash:    result.Hash,
-		Ledger:    result.Ledger,
-		Arm:       result.Arm,
-		Succeeded: result.Status != rpc.TransactionStatusSuccess,
-		RawError:  result.RawError,
+		ID:              "E",
+		Name:            "the host rejects an unregistered delegate",
+		Proves:          "A delegates entry naming an address the account has not registered is refused by the contract's __check_auth with its UnknownDelegate error.",
+		TxHash:          result.Hash,
+		Ledger:          result.Ledger,
+		Arm:             result.Arm,
+		Succeeded:       result.Status != rpc.TransactionStatusSuccess,
+		ExpectRejection: true,
+		RawError:        result.RawError,
 		Notes: []string{
 			"modular-account contract: " + deployed.ContractAddress,
 			"contract deploy tx: " + deployed.CreateTxHash,

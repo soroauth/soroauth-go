@@ -15,8 +15,12 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-// wasmPath is where `stellar contract build` puts the fixture contract.
-const wasmPath = "contracts/target/wasm32v1-none/release/modular_account.wasm"
+// wasmPath is where `stellar contract build` puts a workspace member's wasm.
+// Cargo writes a crate's dashes as underscores in the file name, so the
+// "session-keys" crate builds to "session_keys.wasm".
+func wasmPath(wasmName string) string {
+	return filepath.Join("contracts", "target", "wasm32v1-none", "release", wasmName+".wasm")
+}
 
 // deployment records what a deploy produced, so RESULTS.md can name it.
 type deployment struct {
@@ -26,16 +30,22 @@ type deployment struct {
 	WasmHash        string
 }
 
-// deployModularAccount uploads the fixture wasm and instantiates it with the
-// given delegate signer set.
-func (h *harness) deployModularAccount(t *testing.T, deployer *keypair.Full, signers []string) deployment {
+// deployFixture uploads a fixture's wasm and instantiates it with the given
+// constructor arguments.
+func (h *harness) deployFixture(
+	t *testing.T,
+	deployer *keypair.Full,
+	wasmName string,
+	ctorArgs []xdr.ScVal,
+) deployment {
 	t.Helper()
 
-	wasm, err := os.ReadFile(wasmPath)
+	path := wasmPath(wasmName)
+	wasm, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("reading %s: %v\nBuild it first: cd e2e/contracts && stellar contract build", wasmPath, err)
+		t.Fatalf("reading %s: %v\nBuild it first: cd e2e/contracts && stellar contract build", path, err)
 	}
-	t.Logf("wasm: %s (%d bytes)", filepath.Base(wasmPath), len(wasm))
+	t.Logf("wasm: %s (%d bytes)", filepath.Base(path), len(wasm))
 
 	// 1. upload the wasm
 	uploadOp := txnbuild.InvokeHostFunction{
@@ -69,13 +79,6 @@ func (h *harness) deployModularAccount(t *testing.T, deployer *keypair.Full, sig
 		t.Fatalf("decoding the deployer address: %v", err)
 	}
 
-	signerVals := make([]xdr.ScVal, 0, len(signers))
-	for _, signer := range signers {
-		signerVals = append(signerVals, scAddressVal(scAddressOf(t, signer)))
-	}
-	signerVec := xdr.ScVec(signerVals)
-	signerVecPtr := &signerVec
-
 	createOp := txnbuild.InvokeHostFunction{
 		HostFunction: xdr.HostFunction{
 			Type: xdr.HostFunctionTypeHostFunctionTypeCreateContractV2,
@@ -94,9 +97,7 @@ func (h *harness) deployModularAccount(t *testing.T, deployer *keypair.Full, sig
 					Type:     xdr.ContractExecutableTypeContractExecutableWasm,
 					WasmHash: &wasmHash,
 				},
-				ConstructorArgs: []xdr.ScVal{
-					{Type: xdr.ScValTypeScvVec, Vec: &signerVecPtr},
-				},
+				ConstructorArgs: ctorArgs,
 			},
 		},
 		SourceAccount: deployer.Address(),
@@ -126,6 +127,101 @@ func (h *harness) deployModularAccount(t *testing.T, deployer *keypair.Full, sig
 		CreateTxHash:    createResult.Hash,
 		WasmHash:        hexOf(wasmHash[:]),
 	}
+}
+
+// deployModularAccount uploads the modular-account fixture and instantiates it
+// with the given delegate signer set.
+func (h *harness) deployModularAccount(t *testing.T, deployer *keypair.Full, signers []string) deployment {
+	t.Helper()
+	return h.deployFixture(t, deployer, "modular_account", []xdr.ScVal{
+		scAddressVecVal(t, signers),
+	})
+}
+
+// sessionKey is one entry of the SessionKey vector the session-keys fixture
+// takes in its constructor: an address and the ledger window it is valid in,
+// both bounds inclusive.
+type sessionKey struct {
+	Address    string
+	ValidFrom  uint32
+	ValidUntil uint32
+}
+
+// deploySessionKeys uploads the session-keys fixture and instantiates it with
+// the given session keys.
+func (h *harness) deploySessionKeys(t *testing.T, deployer *keypair.Full, keys []sessionKey) deployment {
+	t.Helper()
+	values := make([]xdr.ScVal, 0, len(keys))
+	for _, key := range keys {
+		values = append(values, sessionKeyVal(t, key))
+	}
+	return h.deployFixture(t, deployer, "session_keys", []xdr.ScVal{scVecVal(values)})
+}
+
+// deployThresholdAccount uploads the threshold-account fixture and
+// instantiates it with the given signer set and threshold.
+func (h *harness) deployThresholdAccount(
+	t *testing.T,
+	deployer *keypair.Full,
+	signers []string,
+	threshold uint32,
+) deployment {
+	t.Helper()
+	return h.deployFixture(t, deployer, "threshold_account", []xdr.ScVal{
+		scAddressVecVal(t, signers),
+		scU32Val(threshold),
+	})
+}
+
+// scSymbolVal wraps a symbol as an ScVal, the type an ScMap's keys must use.
+func scSymbolVal(symbol string) xdr.ScVal {
+	value := xdr.ScSymbol(symbol)
+	return xdr.ScVal{Type: xdr.ScValTypeScvSymbol, Sym: &value}
+}
+
+// scU32Val wraps a u32 as an ScVal argument.
+func scU32Val(value uint32) xdr.ScVal {
+	u32 := xdr.Uint32(value)
+	return xdr.ScVal{Type: xdr.ScValTypeScvU32, U32: &u32}
+}
+
+// scVecVal wraps ScVals as an ScVal vector argument.
+func scVecVal(values []xdr.ScVal) xdr.ScVal {
+	vec := xdr.ScVec(values)
+	ptr := &vec
+	return xdr.ScVal{Type: xdr.ScValTypeScvVec, Vec: &ptr}
+}
+
+// scAddressVecVal wraps G… or C… addresses as an ScVal vector argument.
+func scAddressVecVal(t *testing.T, addresses []string) xdr.ScVal {
+	t.Helper()
+	values := make([]xdr.ScVal, 0, len(addresses))
+	for _, address := range addresses {
+		values = append(values, scAddressVal(scAddressOf(t, address)))
+	}
+	return scVecVal(values)
+}
+
+// sessionKeyVal encodes one SessionKey for the constructor.
+//
+// A #[contracttype] struct is an ScMap keyed by its field names as symbols, and
+// an ScMap must be sorted by key, so the entries are written in that order:
+// "key", then "valid_from_ledger", then "valid_until_ledger". The field names
+// are the ones in e2e/contracts/session-keys/src/lib.rs.
+func sessionKeyVal(t *testing.T, key sessionKey) xdr.ScVal {
+	t.Helper()
+
+	address := scAddressOf(t, key.Address)
+	from := xdr.Uint32(key.ValidFrom)
+	until := xdr.Uint32(key.ValidUntil)
+
+	entries := xdr.ScMap{
+		{Key: scSymbolVal("key"), Val: xdr.ScVal{Type: xdr.ScValTypeScvAddress, Address: &address}},
+		{Key: scSymbolVal("valid_from_ledger"), Val: xdr.ScVal{Type: xdr.ScValTypeScvU32, U32: &from}},
+		{Key: scSymbolVal("valid_until_ledger"), Val: xdr.ScVal{Type: xdr.ScValTypeScvU32, U32: &until}},
+	}
+	ptr := &entries
+	return xdr.ScVal{Type: xdr.ScValTypeScvMap, Map: &ptr}
 }
 
 func hexOf(b []byte) string {

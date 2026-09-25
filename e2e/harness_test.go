@@ -38,16 +38,21 @@ const (
 
 // scenarioResult is one recorded outcome, collected for RESULTS.md.
 type scenarioResult struct {
-	ID          string
-	Name        string
-	Proves      string
-	TxHash      string
-	Ledger      uint32
-	Arm         string
-	Notes       []string
-	RawError    string
-	Succeeded   bool
-	ExplorerURL string
+	ID        string
+	Name      string
+	Proves    string
+	TxHash    string
+	Ledger    uint32
+	Arm       string
+	Notes     []string
+	RawError  string
+	Succeeded bool
+	// ExpectRejection records that this scenario is meant to fail. It decides
+	// how RESULTS.md labels the outcome, and it is a field rather than a list
+	// of scenario IDs so a new rejection scenario cannot be labelled
+	// "accepted" by omission.
+	ExpectRejection bool
+	ExplorerURL     string
 }
 
 var (

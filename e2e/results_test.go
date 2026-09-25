@@ -11,10 +11,11 @@ import (
 	"time"
 )
 
-// requiredScenarios is the full set §5.10 defines. RESULTS.md is only written
-// when every one of them ran, so the committed file can never be a partial
-// record of a single-scenario run.
-var requiredScenarios = []string{"A", "B", "C", "C-control", "D", "E"}
+// requiredScenarios is the full set §5.10 defines, plus the contract-fixture
+// scenarios added with the session-keys and threshold-account fixtures.
+// RESULTS.md is only written when every one of them ran, so the committed file
+// can never be a partial record of a single-scenario run.
+var requiredScenarios = []string{"A", "B", "C", "C-control", "D", "E", "F", "G", "H", "I"}
 
 func TestMain(m *testing.M) {
 	code := m.Run()
@@ -48,7 +49,7 @@ func writeResults() {
 	var out strings.Builder
 	out.WriteString("# Testnet results\n\n")
 	out.WriteString("Every line below came from a real run against Stellar testnet. This file is\n")
-	out.WriteString("written by `go test -tags e2e ./e2e/...` and only when all five scenarios ran,\n")
+	out.WriteString("written by `go test -tags e2e ./e2e/...` and only when every scenario ran,\n")
 	out.WriteString("so it cannot be a partial record. Do not edit it by hand.\n\n")
 
 	fmt.Fprintf(&out, "- Date (UTC): %s\n", time.Now().UTC().Format("2006-01-02 15:04"))
@@ -60,7 +61,7 @@ func writeResults() {
 	out.WriteString("|----|--------|--------|--------|---------------------------------------------------|\n")
 	for _, r := range results {
 		outcome := "accepted"
-		if r.ID == "E" || r.ID == "C-control" {
+		if r.ExpectRejection {
 			outcome = "rejected as expected"
 		}
 		if !r.Succeeded {

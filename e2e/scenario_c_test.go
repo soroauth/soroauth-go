@@ -179,14 +179,15 @@ func TestScenarioCRejectsASingleSignature(t *testing.T) {
 	}
 
 	record(scenarioResult{
-		ID:        "C-control",
-		Name:      "a single signature does not meet a 2-of-2 threshold",
-		Proves:    "Scenario C is not passing by accident: the same account and the same transfer, signed with only one of the two required keys, is refused by the host for insufficient signature weight.",
-		TxHash:    result.Hash,
-		Ledger:    result.Ledger,
-		Arm:       result.Arm,
-		Succeeded: result.Status != rpc.TransactionStatusSuccess,
-		RawError:  result.RawError,
+		ID:              "C-control",
+		Name:            "a single signature does not meet a 2-of-2 threshold",
+		Proves:          "Scenario C is not passing by accident: the same account and the same transfer, signed with only one of the two required keys, is refused by the host for insufficient signature weight.",
+		TxHash:          result.Hash,
+		Ledger:          result.Ledger,
+		Arm:             result.Arm,
+		Succeeded:       result.Status != rpc.TransactionStatusSuccess,
+		ExpectRejection: true,
+		RawError:        result.RawError,
 		Notes: []string{
 			"Account M: master key weight 1, second signer weight 1, medium threshold 2.",
 			"Signed with the master key alone, so the weight is 1 against a threshold of 2.",
