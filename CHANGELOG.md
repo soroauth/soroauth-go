@@ -7,6 +7,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+**`ParseAddress` — canonical strkey input (issue #122)**
+
+- `ParseAddress` refuses non-canonical SEP-23 base32 spellings of an address —
+  lower- or mixed-case, base32 padding, surrounding whitespace, extra
+  characters, and non-zero unused trailing bits — rather than recovering the
+  same version byte and payload from them. This was already the behaviour,
+  inherited from `go-stellar-sdk` `strkey.DecodeAny`/`decodeString`; it is now
+  pinned by `TestParseAddressRejectsNonCanonicalEncodings`, which asserts the
+  decoder's own reason for each form, by a case-altered property in the gopter
+  suite, and by `ExampleParseAddress`/`ExampleFormatAddress`, and is documented
+  on the function. A caller can therefore rely on an accepted address string
+  being the one canonical spelling of a key, not merely one of several strings
+  that decode to it.
+- Added `BenchmarkParseAddress` and `BenchmarkFormatAddress` with committed
+  alloc/byte budgets, and added a budget for the previously unbudgeted
+  `BenchmarkDecodeAuthorizationEntry`. The existing signing-path benchmarks are
+  unchanged and within budget: on Intel(R) Core(TM) i5-6300HQ, linux/amd64,
+  go1.25.4, `BenchmarkAuthorizeEntry` measured 71/74/101/160 allocs per arm and
+  `BenchmarkAuthorizeAll` 1360 allocs, all below the committed budgets.
+
+  **Migration:** none. No accepted input changes meaning and no input that was
+  accepted before is refused now; this change is tests, docs and benchmarks.
+  No emitted signature or entry bytes change, so golden vectors are unaffected.
+
 ### Added (docs correctness)
 
 - The README's three Go examples (Quickstart, Delegates, the inline

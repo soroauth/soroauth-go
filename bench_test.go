@@ -96,3 +96,34 @@ func BenchmarkDecodeAuthorizationEntry(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkParseAddress measures the address parsing the delegates path performs
+// once per node before it can order and sign that node (CAP-71-01). It covers
+// the canonical strkey checks pinned by TestParseAddressRejectsNonCanonicalEncodings,
+// which are on the signing path rather than only on untrusted input.
+func BenchmarkParseAddress(b *testing.B) {
+	_, kp := benchmarkEntryAndSigner(b)
+	address := kp.Address()
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if _, err := ParseAddress(address); err != nil {
+			b.Fatalf("ParseAddress returned an unexpected error: %v", err)
+		}
+	}
+}
+
+// BenchmarkFormatAddress measures the inverse, used when an address is reported
+// in an error or in Inspect's output.
+func BenchmarkFormatAddress(b *testing.B) {
+	entry, _ := benchmarkEntryAndSigner(b)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if _, err := FormatAddress(entry.Credentials.AddressV2.Address); err != nil {
+			b.Fatalf("FormatAddress returned an unexpected error: %v", err)
+		}
+	}
+}
