@@ -7,6 +7,10 @@
 *.test
 *.out
 
+# Locally installed developer tools (e.g. golangci-lint under .tools/). CI
+# installs its own pinned copy; nothing here is committed.
+/.tools/
+
 # Node (golden-vector generator)
 node_modules/
 

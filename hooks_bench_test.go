@@ -94,8 +94,8 @@ func BenchmarkThresholdSigner(b *testing.B) {
 	round, _ := signer.Begin(ctx)
 	share1 := append([]byte("p1"), []byte(kp1.Seed())[:32]...)
 	share2 := append([]byte("p2"), []byte(kp2.Seed())[:32]...)
-	signer.Contribute(ctx, round, share1)
-	signer.Contribute(ctx, round, share2)
+	_, _ = signer.Contribute(ctx, round, share1)
+	_, _ = signer.Contribute(ctx, round, share2)
 
 	b.ResetTimer()
 	b.Run("threshold-sign", func(b *testing.B) {

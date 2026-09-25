@@ -17,8 +17,6 @@ import (
 // They use fixed inputs and an in-memory deterministic key, so they never touch
 // the network and are safe to run anywhere.
 
-const benchmarkValidUntilLedger = 1234567
-
 // benchmarkEntryAndSigner builds a complete V2 address entry whose address is
 // the benchmark key's own, so AuthorizeEntry has a matching node without
 // ForAddress and the measurement includes the normal case.

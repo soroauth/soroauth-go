@@ -30,6 +30,7 @@ Two optional pieces need more:
 ```sh
 gofmt -l .        # must print nothing
 go vet ./...
+golangci-lint run ./...
 go test -race ./...
 ```
 
@@ -38,6 +39,29 @@ budget check (see [Benchmarks](#benchmarks)). The suite runs with `-race`
 because `internal/xdrcopy` shares encoder and decoder buffers across calls
 through `sync.Pool`; without the detector, `TestCopyConcurrentReuse` would
 still pass on code that races.
+
+## Linting
+
+The gate is `.golangci.yml` plus the `lint` job in `.github/workflows/ci.yml`.
+The config is deliberately small, and each linter in it is there because the
+project would actually fix what it reports; the file says which and why, and
+which linters are off on purpose. A linter whose findings are all suppressed
+should be deleted rather than left as decoration.
+
+The `lint` job pins `version: v2.14.0`, the version the config was verified
+against. To reproduce a CI failure locally, install the same version and run it
+from the repository root:
+
+```sh
+GOBIN="$PWD/.tools" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+./.tools/golangci-lint run ./...
+```
+
+`.tools/` is gitignored. `golangci-lint run` prints `0 issues.` and exits 0 when
+clean; a finding names the file, the line and the linter. Fix a finding rather
+than excluding it. The one documented exception is `fmt.Fprint*` to the CLI's
+own stdout/stderr streams, listed under `errcheck.exclude-functions`; adding to
+that list needs a reason in the config, not a `//nolint` at the call site.
 
 ### The nested adapter module
 

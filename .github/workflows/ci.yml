@@ -65,6 +65,30 @@ jobs:
       - name: test
         run: go test -race ./...
 
+  # golangci-lint runs the linters gofmt and vet do not: errcheck, staticcheck,
+  # unused, ineffassign, bodyclose, errorlint and misspell. The set and the one
+  # documented exclusion (fmt.Fprint* to the CLI's own streams) live in
+  # .golangci.yml with their reasons; this job is what makes them a gate rather
+  # than a suggestion.
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
+        with:
+          # Pinned to the version the config was verified against. Without an
+          # explicit version the action installs its own default, which can
+          # differ from the one CONTRIBUTING documents and change the gate
+          # without a commit.
+          version: v2.14.0
+          args: --timeout=5m
+
   # The wallet SDK adapter is a nested module, so the gofmt, vet and test steps
   # above do not reach it: `./...` stops at any directory holding its own
   # go.mod. It is checked here instead. Without this job the adapter would be

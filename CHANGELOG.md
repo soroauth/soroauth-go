@@ -79,6 +79,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   an absolute ledger; `--valid-for` is additive. No library API and no emitted
   signature or entry bytes change, so golden vectors are unaffected.
 
+**golangci-lint gate (issue #153)**
+
+- `.golangci.yml` adds golangci-lint v2 on top of the existing `gofmt` + `go vet`
+  bar, and a `lint` job runs it on every push and PR. The set is
+  golangci-lint's standard linters (errcheck, govet, ineffassign, staticcheck,
+  unused) plus `bodyclose`, `errorlint` and `misspell`. The config documents
+  why each is on and why `gocyclo`/`funlen`/`goimports` are off. One class is
+  excluded with a reason: errcheck's checks on `fmt.Fprint*` writes to the
+  CLI's own stdout/stderr, where a failed write cannot change the process's
+  exit code.
+- The findings it raised were fixed rather than suppressed: a dead `newError`,
+  an unused `benchmarkValidUntilLedger` and an unused threshold-session field
+  were removed; two unused `hookList` methods were deleted; the HTTP body close
+  in `doctor` and the ignored `Contribute` returns in tests are now explicit.
+  There are no `//nolint` directives.
+
+  **Migration:** none for library callers. The removed identifiers were
+  unexported and unused. No emitted signature or entry bytes change.
+
 **`soroauth doctor`**
 
 - New CLI subcommand checking the local environment for the failures that are

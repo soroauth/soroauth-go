@@ -473,7 +473,7 @@ func TestExitCodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			stdout, stderr, err := runCLIEnv(t, tt.env, tt.args...)
+			stdout, _, err := runCLIEnv(t, tt.env, tt.args...)
 			if err == nil {
 				t.Fatalf("expected error, got success: stdout=%q", stdout)
 			}
@@ -486,10 +486,6 @@ func TestExitCodes(t *testing.T) {
 			// In non-JSON mode, stdout should be empty on error
 			if stdout != "" && !strings.Contains(strings.Join(tt.args, " "), "--json") {
 				t.Errorf("a failing command wrote to stdout: %q", stdout)
-			}
-			// stderr should contain usage text for usage errors
-			if tt.wantCode == ExitUsageError && !strings.Contains(stderr, "usage:") && !strings.Contains(tt.name, "unknown command") && !strings.Contains(tt.name, "no command") {
-				// Some usage errors don't print usage (like flag parsing errors)
 			}
 		})
 	}
