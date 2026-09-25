@@ -79,3 +79,18 @@ func BenchmarkAuthorizeAllRequireAllSigned(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkNonceTrackerReserve measures NewInMemoryNonceTracker's Reserve on
+// its common path: a fresh (address, nonce) pair every call, so the map
+// keeps growing the way it would in a long-running process (issue #91).
+func BenchmarkNonceTrackerReserve(b *testing.B) {
+	tracker := NewInMemoryNonceTracker()
+	ctx := context.Background()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := tracker.Reserve(ctx, "GBEXAMPLE", int64(i)); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

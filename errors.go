@@ -160,6 +160,19 @@ var (
 	// fail-closed reasoning AuthorizeAll already applies to a missing
 	// signer.
 	ErrDelegatePlanUnmatched = errors.New("delegate plan address matches no entry in the batch")
+
+	// ErrNonceAlreadyReserved is returned by a NonceTracker's Reserve when
+	// the given nonce was already reserved for the given address.
+	//
+	// This is a local, best-effort check, not the protocol's own guard: the
+	// host is the sole authority on whether a nonce is valid, and it is
+	// verify_and_consume_nonce (rs-soroban-env soroban-env-host/src/auth.rs)
+	// that actually rejects a repeat, on-chain, after the transaction has
+	// been submitted and its fee charged. A NonceTracker exists to catch the
+	// collision earlier — before a signature is even built — for nonces this
+	// tracker's own store has seen; it has no visibility into a nonce
+	// consumed elsewhere.
+	ErrNonceAlreadyReserved = errors.New("nonce already reserved for this address")
 )
 
 // NoMatchingCredentialNodeError is returned when no credential node in the
@@ -303,4 +316,33 @@ func (e *DelegatePlanUnmatchedError) Error() string {
 // Unwrap returns ErrDelegatePlanUnmatched so errors.Is keeps working.
 func (e *DelegatePlanUnmatchedError) Unwrap() error {
 	return ErrDelegatePlanUnmatched
+}
+
+// NonceAlreadyReservedError is returned by a NonceTracker's Reserve when the
+// given nonce was already reserved for the given address, and exposes both
+// as fields so callers can recover them with errors.As instead of parsing
+// the error string.
+//
+// It wraps ErrNonceAlreadyReserved, so errors.Is keeps matching the
+// sentinel. The Error text is exactly the sentinel's text; the address is
+// formatted into the surrounding message by the call site and is available
+// here as Address, with Nonce alongside it.
+type NonceAlreadyReservedError struct {
+	// Address is the address the nonce was already reserved for.
+	Address string
+	// Nonce is the value that collided.
+	Nonce int64
+}
+
+// Error implements error. The text is identical to
+// ErrNonceAlreadyReserved.Error so existing message assertions and log
+// parsers see no change; Address and Nonce are carried separately for
+// errors.As.
+func (e *NonceAlreadyReservedError) Error() string {
+	return ErrNonceAlreadyReserved.Error()
+}
+
+// Unwrap returns ErrNonceAlreadyReserved so errors.Is keeps working.
+func (e *NonceAlreadyReservedError) Unwrap() error {
+	return ErrNonceAlreadyReserved
 }

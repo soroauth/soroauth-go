@@ -27,6 +27,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   never pass these options see no behavior change, since `AuthorizeAll`'s
   signature only gained a trailing variadic parameter. (#103)
 
+**Nonce tracking**
+
+- `NonceTracker`, with `NewInMemoryNonceTracker`, is a pluggable,
+  concurrency-safe helper for avoiding nonce collisions across concurrent
+  signing within one process. It is a best-effort local aid, not a
+  correctness guarantee — the host remains the sole authority on whether a
+  nonce is valid — and is entirely independent of nonce generation:
+  nothing in `AuthorizeInvocation` changed, and using a `NonceTracker` is
+  opt-in. (#91)
+
 ### Added (docs correctness)
 
 - The README's three Go examples (Quickstart, Delegates, the inline
