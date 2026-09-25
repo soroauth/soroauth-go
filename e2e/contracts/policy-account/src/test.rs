@@ -9,10 +9,9 @@ use soroban_sdk::{
     vec, Address, Env, Vec,
 };
 
+use crate::{PolicyAccount, PolicyAccountClient, PolicyAccountError};
 use crate::{PolicyAccount, PolicyAccountArgs, PolicyAccountClient, PolicyAccountError};
 
-#[contract]
-pub struct AlwaysApproves;
 
 #[contractimpl]
 impl CustomAccountInterface for AlwaysApproves {
@@ -28,25 +27,14 @@ impl CustomAccountInterface for AlwaysApproves {
         Ok(())
     }
 }
-
-#[contract]
-pub struct Token;
-
-#[contractimpl]
-impl Token {
-    pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {
-        // transfer logic stub
-    }
-}
-
 fn register_account(env: &Env, signers: Vec<Address>, limit: i128, period: u32) -> Address {
     env.register(
         PolicyAccount,
-        PolicyAccountArgs::__constructor(&signers, &limit, &period),
+        (&signers, &limit, &period),
     )
 }
 
-#[test]
+@test
 fn constructor_stores_policy_settings() {
     let env = Env::default();
     let signer = Address::generate(&env);
@@ -56,4 +44,14 @@ fn constructor_stores_policy_settings() {
     assert_eq!(client.limit(), 500);
     assert_eq!(client.period(), 200);
     assert_eq!(client.signers().len(), 1);
+}
+
+#[test]
+fn spent_in_period_tracks_usage_and_limit() {
+    let env = Env::default();
+    let signer = Address::generate(&env);
+    let account = register_account(&env, vec![&env, signer.clone()], 100, 100);
+    let client = PolicyAccountClient::new(&env, &account);
+
+    assert_eq!(client.spent_in_period(&0), 0);
 }
