@@ -91,6 +91,77 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `testdata/bench/budgets.json` via `scripts/checkbench`; `ns/op` is reported
   in PRs but never fails the build. See CONTRIBUTING.md § Benchmarks.
 
+**Envelopes end to end**
+
+- `EnvelopeEntries`, `InspectEnvelope`, `AuthorizeEnvelope`, `EnvelopePayloads`
+  and `EnvelopeEntry`: the entry-shaped functions applied to a whole
+  `TransactionEnvelope`, each entry reported with the operation index and entry
+  index it came from. A fee-bump envelope is read through to its inner
+  transaction, because a fee-bump transaction has no operations of its own
+  (CAP-15). An envelope with no `invokeHostFunction` operation is refused with
+  the new `ErrNoInvokeOperation` rather than reported as an empty result, and an
+  envelope type this build does not implement with the new
+  `ErrUnsupportedEnvelope`. The unwrapping is done in this library rather than
+  through `xdr.TransactionEnvelope.Operations()`, which panics on an
+  unrecognised envelope type and on a fee-bump envelope whose inner arm is
+  empty.
+- The CLI's `inspect`, `payload` and `sign` now accept either an authorization
+  entry or a whole transaction envelope, and work out which they were handed. A
+  lone entry still prints a single JSON object, so existing scripts keep
+  working; an envelope prints one report per entry. `sign --for` is refused for
+  an envelope, where one target address would be ambiguous.
+
+  **Migration:** none required. No existing function changes behaviour and no
+  emitted signature or entry bytes change, so golden vectors are unaffected.
+
+**Delegation fixtures: session keys, and M-of-N**
+
+- Two new contract fixtures under `e2e/contracts/`, each with unit tests:
+  `session-keys`, whose delegates are valid only inside their own ledger window,
+  and `threshold-account`, which requires M of its N registered signers. Both
+  are test fixtures, not products: no policies, no upgradability, not for
+  mainnet.
+- E2E scenarios F to I drive them against a live host. F proves an in-window
+  session key is accepted; G asserts the contract's own `SessionExpired` error
+  code for an expired one; H proves an M-of-N account accepts exactly M signed
+  delegates, which is the partial-signing case `AuthorizeAll` deliberately
+  permits; I asserts the contract's `InsufficientSignatures` code for M-1.
+- Both fixtures document the two clocks a session key lives under:
+  `signature_expiration_ledger` is checked by the **host**, in
+  `verify_and_consume_nonce`, and only after `__check_auth` has returned `Ok`
+  (rs-soroban-env-host 27.0.1, `src/auth.rs:2492-2515`, `:2586-2602`); the
+  contract's own window is checked by the **contract**, inside `__check_auth`.
+  `delegatesFlow` sets the entry's expiration well past the window, so scenario
+  G's refusal is the contract's, on the contract's clock, and the test says so.
+
+**`adapters/walletsdk`, a separate module**
+
+- A wallet-SDK-shaped adapter presenting soroauth the way a wallet holds it: an
+  envelope and a keypair. It is a Go module of its own, so importing soroauth
+  never drags a wallet SDK in, and CI builds and tests it in a job of its own
+  because `./...` at the repository root stops at a nested module.
+- `NewSigner` (and `FromOKXKeypair` for the worked integration) adapt a wallet
+  SDK keypair into a `soroauth.Signer`; `Requirements` answers "what does this
+  envelope want from me?" per entry, with `Wanted` and `Signed`; `Sign` signs
+  every entry the key owns; `VerifyEntry` and `VerifyEnvelope` check a signature
+  that is already present, comparing the **stored public key** rather than
+  trusting the address a node is filed under.
+- The two-pass simulation requirement is not hidden. `Sign` returns a `Signed`
+  whose `Entries` are what the enforce pass needs, and whose `Envelope` refuses
+  with `ErrEnforcePassMissing` until `MarkEnforced` records that the pass ran,
+  so a wallet cannot obtain a submittable envelope without saying in code that
+  the second simulation happened.
+- The worked integration is `github.com/okx/go-wallet-sdk`
+  (`coins/stellar/keypair.Full`), bound by name in `okx.go`. The adapter writes
+  the same `{public_key, signature}` encoding `NewEd25519Signer` writes;
+  `TestSignerMatchesNewEd25519Signer` asserts the two are byte-identical for one
+  key and payload, which is what keeps the duplicate encoding honest, and
+  `TestOKXKeypairEndToEnd` runs a key from that SDK through the whole adapter and
+  checks the result against `crypto/ed25519`.
+
+  **Migration:** none required. The root module gains no new dependency; the
+  adapter is optional and versioned with its own module path.
+
 ### Changed
 
 **Pooled buffers in the entry deep copy**

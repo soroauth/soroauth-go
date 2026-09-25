@@ -65,6 +65,30 @@ Two properties hold throughout and are the reason most of the code exists:
    deep-copies first via `internal/xdrcopy`, because the go-stellar-sdk XDR
    types are trees of pointers and slices.
 
+## Envelopes
+
+Callers hold transaction envelopes, not loose entries, so every entry-shaped
+function has an envelope-shaped counterpart that finds the entries for them:
+`EnvelopeEntries` and `InspectEnvelope` (read), `AuthorizeEnvelope` (sign),
+`EnvelopePayloads` (what a signer would be approving). Each `EnvelopeEntry`
+carries the operation index and entry index it came from, which is what a
+caller needs to line a signed entry back up with.
+
+An envelope with no `invokeHostFunction` operation is refused with
+`ErrNoInvokeOperation`, never reported as an empty result: "nothing to
+authorize" and "nothing I looked for" must not read the same. A fee-bump
+envelope is read through to its inner transaction, because a fee-bump
+transaction has no operations of its own and it is the inner transaction's
+entries the host checks (CAP-15).
+
+Signing entries changes what the transaction costs to run, so the envelope
+assembled from the record-mode simulation carries too small a resource fee
+and is rejected on-chain after fees are paid. Once the entries are signed the
+caller must simulate again in **enforce** mode and submit what that pass
+produced. soroauth does not run that pass — it belongs to the caller's
+RPC client — and nothing here pretends otherwise; `adapters/walletsdk`
+makes a wallet say so in code before it can obtain a submittable envelope.
+
 ## Package map
 
 | File | Responsibility |
@@ -77,11 +101,13 @@ Two properties hold throughout and are the reason most of the code exists:
 | `upgrade.go` | `UpgradeToV2` |
 | `inspect.go` | `Inspect` → `EntryInfo`, structural reporting only |
 | `batch.go` | `AuthorizeAll`, all-or-nothing |
+| `envelope.go` | `EnvelopeEntries`, `InspectEnvelope`, `AuthorizeEnvelope`, `EnvelopePayloads` — the entry-shaped functions applied to a whole `TransactionEnvelope` |
 | `expiration.go` | `ExpirationAfter` |
 | `address.go` | `ParseAddress` / `FormatAddress` (G… and C… only) |
-| `errors.go` | The nine exported sentinels, plus the three typed address errors (`NoMatchingCredentialNodeError`, `DuplicateDelegateError`, `MissingSignerError`) that wrap them for `errors.As` |
+| `errors.go` | The eleven exported sentinels, plus the three typed address errors (`NoMatchingCredentialNodeError`, `DuplicateDelegateError`, `MissingSignerError`) that wrap them for `errors.As` |
 | `internal/xdrcopy` | Deep copy by XDR round-trip |
-| `cmd/soroauth` | CLI: `payload`, `sign`, `delegates`, `inspect` |
+| `cmd/soroauth` | CLI: `payload`, `sign`, `delegates`, `inspect`, `doctor`, `cross-compile`. `inspect`, `payload` and `sign` take a whole envelope as well as a single entry, and work out which they were handed |
+| `adapters/walletsdk` | A **separate Go module**: the wallet-SDK-shaped adapter. The root module does not import it, so no wallet SDK is a dependency of soroauth |
 
 ## The delegate model
 
@@ -123,8 +149,11 @@ reproduce `WithDelegates` from the recorded *unsorted* input, so ordering is
 proven rather than re-read. CI regenerates and fails on drift.
 
 **Live testnet** — `e2e/` (build tag `e2e`) submits real transactions covering
-all three arms, classic multisig, and two deliberate rejections that assert the
-host's *specific* error. Results in [e2e/RESULTS.md](e2e/RESULTS.md).
+all three arms, classic multisig, three contract fixtures (`modular-account`,
+`session-keys`, `threshold-account`), and deliberate rejections that assert the
+*specific* error: the host's for a refused signature, and the contract's own
+code for an expired session key or an M-1 threshold. Results in
+[e2e/RESULTS.md](e2e/RESULTS.md).
 
 The rejection scenarios matter as much as the acceptances: they are what stop
 the accepting scenarios from passing by accident. Two of them originally passed
@@ -136,7 +165,9 @@ failure.
 soroauth is not a transaction builder, an RPC client, a key manager, or a
 human-readable "what am I signing" explainer. It consumes go-stellar-sdk's
 `txnbuild` and `clients/rpcclient` rather than wrapping them, and `Inspect`
-reports structure only.
+reports structure only. `adapters/walletsdk` is the one place a wallet SDK is
+named, and it is a module of its own so that importing soroauth never drags
+one along.
 
 ## Extending it
 

@@ -21,6 +21,9 @@ Two optional pieces need more:
 - **Running the e2e tests** needs Rust 1.93.0 (pinned in
   `e2e/contracts/rust-toolchain.toml`, rustup will fetch it) and
   `stellar-cli` 28.0.0.
+- **Working on the wallet SDK adapter** (`adapters/walletsdk`) needs nothing
+  extra, but it is a module of its own with its own test loop; see
+  [The nested adapter module](#the-nested-adapter-module).
 
 ## Before you open a pull request
 
@@ -35,6 +38,32 @@ budget check (see [Benchmarks](#benchmarks)). The suite runs with `-race`
 because `internal/xdrcopy` shares encoder and decoder buffers across calls
 through `sync.Pool`; without the detector, `TestCopyConcurrentReuse` would
 still pass on code that races.
+
+### The nested adapter module
+
+`adapters/walletsdk` is a Go module of its own, so `./...` from the repository
+root does not reach it: the go tool stops at the first directory holding a
+`go.mod`. It has its own CI job, and its own loop:
+
+```sh
+cd adapters/walletsdk
+gofmt -l .
+go vet ./...
+go test -race ./...
+```
+
+It is a separate module on purpose: it is the only place a wallet SDK is
+named, and keeping it out of the root module is what stops `go get` of
+soroauth from pulling one in. Nothing in the root module may depend on it,
+and `TestRootModuleStaysFreeOfWalletSDKs` in the adapter's own tests fails if
+a wallet SDK appears in the root `go.mod` or `go.sum`.
+
+Because the two are separate modules, `adapters/walletsdk/go.mod` carries a
+`replace` back to the repository root, so the adapter is tested against the
+soroauth in this checkout rather than a published version. The root module is
+not tagged yet; once it is, the adapter is the module that needs its own
+`adapters/walletsdk/vX.Y.Z` tags before anyone outside this repository can
+`go get` it.
 
 ## Benchmarks
 
