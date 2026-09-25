@@ -14,6 +14,13 @@ const inspectUsage = `soroauth inspect — print an entry's structure as JSON.
 usage:
   soroauth inspect --entry <base64>
 
+--entry accepts either an authorization entry or a whole transaction envelope,
+and the tool works out which it was given. An envelope is reported as an array,
+one object per authorization entry, each with the operation_index and
+entry_index it came from; a fee-bump envelope is read through to the inner
+transaction, so the indices are indices into the inner transaction's
+operations. A single entry is reported as one object, as it always has been.
+
 Reports the credential arm, whether the payload is address-bound, the address,
 nonce and expiration ledger, which nodes carry signatures, the delegate tree,
 and the shape of the invocation tree.
@@ -29,7 +36,7 @@ Nothing is signed and no key is involved.
 exit codes:
   0  success
   1  general error
-  2  usage error (missing --entry or malformed entry)
+  2  usage error (missing --entry or malformed input)
 `
 
 func runInspect(args []string, stdout, stderr io.Writer) error {
@@ -41,23 +48,37 @@ func runInspect(args []string, stdout, stderr io.Writer) error {
 		flags.PrintDefaults()
 	}
 
-	entryFlag := flags.String("entry", "", "the authorization entry, as base64 XDR")
+	entryFlag := flags.String("entry", "", "the authorization entry or transaction envelope, as base64 XDR")
 
 	if err := flags.Parse(args); err != nil {
 		return newErrorf(ExitUsageError, "%w", err)
 	}
 
-	entry, err := decodeEntry(*entryFlag)
+	input, err := decodeEntryOrEnvelope(*entryFlag)
 	if err != nil {
 		return newErrorf(ExitUsageError, "%w", err)
 	}
 
-	info, err := soroauth.Inspect(entry)
-	if err != nil {
-		return newErrorf(ExitGeneralError, "%w", err)
+	// An envelope is reported entry by entry, each with the position it came
+	// from, because that is what a caller has to line a signed entry back up
+	// with. A lone entry stays a single object, so existing scripts keep
+	// working.
+	var report any
+	if input.IsEnvelope {
+		infos, err := soroauth.InspectEnvelope(input.Envelope)
+		if err != nil {
+			return newErrorf(ExitGeneralError, "%w", err)
+		}
+		report = infos
+	} else {
+		info, err := soroauth.Inspect(input.Entry)
+		if err != nil {
+			return newErrorf(ExitGeneralError, "%w", err)
+		}
+		report = info
 	}
 
-	encoded, err := json.MarshalIndent(info, "", "  ")
+	encoded, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		return newErrorf(ExitGeneralError, "encoding the report: %w", err)
 	}

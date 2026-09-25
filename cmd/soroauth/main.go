@@ -169,6 +169,55 @@ func decodeEntry(value string) (xdr.SorobanAuthorizationEntry, error) {
 	return entry, nil
 }
 
+// decodedInput is a base64 blob that was either an authorization entry or a
+// transaction envelope, together with which of the two it turned out to be.
+type decodedInput struct {
+	Entry      xdr.SorobanAuthorizationEntry
+	Envelope   xdr.TransactionEnvelope
+	IsEnvelope bool
+}
+
+// decodeEntryOrEnvelope parses the --entry flag, which accepts either an
+// authorization entry or a whole transaction envelope.
+//
+// Both are base64 XDR unions whose first byte is a small discriminant, so a
+// blob has to be tried against both shapes and judged on what it decodes to:
+// EnvelopeType values 0, 2 and 5 overlap the credential discriminants 0 to 3.
+// An envelope only wins when it decodes AND carries an invokeHostFunction
+// operation, which an authorization entry does not look like by any reading;
+// when that test fails the blob is read as an entry. If neither reading works,
+// the entry error is reported, since --entry has always meant an entry and a
+// caller who passed an envelope with nothing to authorize should hear why.
+func decodeEntryOrEnvelope(value string) (decodedInput, error) {
+	if value == "" {
+		return decodedInput{}, newErrorf(ExitUsageError, "--entry is required")
+	}
+
+	var envelope xdr.TransactionEnvelope
+	envelopeErr := xdr.SafeUnmarshalBase64(value, &envelope)
+
+	var entry xdr.SorobanAuthorizationEntry
+	entryErr := xdr.SafeUnmarshalBase64(value, &entry)
+
+	// An envelope only wins when it decodes and carries an invokeHostFunction
+	// operation. A blob that decodes as an envelope but has nothing to
+	// authorize, and does not decode as an entry either, is reported as the
+	// envelope problem it is; anything else that fails both readings gets the
+	// entry error, since --entry has always meant an entry.
+	if envelopeErr == nil {
+		if _, entriesErr := soroauth.EnvelopeEntries(envelope); entriesErr == nil {
+			return decodedInput{Envelope: envelope, IsEnvelope: true}, nil
+		} else if entryErr != nil {
+			return decodedInput{}, newErrorf(ExitUsageError, "decoding --entry as an envelope: %w", entriesErr)
+		}
+	}
+
+	if entryErr != nil {
+		return decodedInput{}, newErrorf(ExitUsageError, "decoding --entry: %w", entryErr)
+	}
+	return decodedInput{Entry: entry}, nil
+}
+
 // encodeEntry renders an entry as base64 for printing.
 func encodeEntry(entry xdr.SorobanAuthorizationEntry) (string, error) {
 	encoded, err := xdr.MarshalBase64(entry)
