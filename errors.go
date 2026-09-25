@@ -100,6 +100,25 @@ var (
 	// at :185 with "too many account signers"). Exceeding it is rejected here
 	// rather than on-chain.
 	ErrTooManySignatures = errors.New("too many signatures for a classic account")
+
+	// ErrNoInvokeOperation is returned when a transaction envelope carries no
+	// invokeHostFunction operation, and therefore no authorization entries at
+	// all.
+	//
+	// An empty result would be indistinguishable from an envelope whose invoke
+	// operation simply has nothing to authorize, so this is an error rather
+	// than a nil slice: a caller that asked for an envelope's entries and got
+	// none silently would go on to submit a transaction it never authorized.
+	ErrNoInvokeOperation = errors.New("envelope carries no invokeHostFunction operation")
+
+	// ErrUnsupportedEnvelope is returned for a transaction envelope whose type
+	// this library does not know how to read.
+	//
+	// The three defined arms are ENVELOPE_TYPE_TX_V0 (0), ENVELOPE_TYPE_TX (2)
+	// and ENVELOPE_TYPE_TX_FEE_BUMP (5). A value outside that set means the
+	// envelope was built against a protocol this build does not implement, so
+	// reading it would be a guess about a wire format that has not been read.
+	ErrUnsupportedEnvelope = errors.New("unsupported transaction envelope type")
 )
 
 // NoMatchingCredentialNodeError is returned when no credential node in the
