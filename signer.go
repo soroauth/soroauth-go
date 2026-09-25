@@ -1,9 +1,9 @@
 package soroauth
 
 import (
-	"errors"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
