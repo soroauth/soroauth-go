@@ -14,26 +14,55 @@ func BenchmarkAuthorizeEntryWithHooks(b *testing.B) {
 	kp, _ := keypair.FromRawSeed(sha256.Sum256([]byte("soroauth-bench-hook")))
 	signer := NewEd25519Signer(kp)
 
+	// The credential's ScAddress has to be a real one: a zero ScAddress has a
+	// nil AccountId and panics in the generated encoder the deep copy calls.
+	// It also has to be the signer's own address for ForAddress to match a node.
+	accountID, err := xdr.AddressToAccountId(kp.Address())
+	if err != nil {
+		b.Fatalf("decoding the benchmark address: %v", err)
+	}
+	address := xdr.ScAddress{
+		Type:      xdr.ScAddressTypeScAddressTypeAccount,
+		AccountId: &accountID,
+	}
+
+	var contractID xdr.ContractId
+	for i := range contractID {
+		contractID[i] = byte(i)
+	}
 	entry := xdr.SorobanAuthorizationEntry{
 		Credentials: xdr.SorobanCredentials{
 			Type: xdr.SorobanCredentialsTypeSorobanCredentialsAddress,
 			Address: &xdr.SorobanAddressCredentials{
-				Address:                   xdr.ScAddress{},
+				Address:                   address,
 				Nonce:                     1,
 				SignatureExpirationLedger: xdr.Uint32(testValidUntilLedger),
 				Signature:                 xdr.ScVal{Type: xdr.ScValTypeScvVoid},
 			},
 		},
+		// The root invocation must be a real one: the generated encoder
+		// dereferences Function's union arm, which is nil on a zero value.
+		RootInvocation: xdr.SorobanAuthorizedInvocation{
+			Function: xdr.SorobanAuthorizedFunction{
+				Type: xdr.SorobanAuthorizedFunctionTypeSorobanAuthorizedFunctionTypeContractFn,
+				ContractFn: &xdr.InvokeContractArgs{
+					ContractAddress: xdr.ScAddress{
+						Type:       xdr.ScAddressTypeScAddressTypeContract,
+						ContractId: &contractID,
+					},
+					FunctionName: xdr.ScSymbol("transfer"),
+				},
+			},
+		},
 	}
 
-	address := signer.Address()
 	ctx := context.Background()
 
 	// Benchmark without hooks.
 	b.Run("no-hook", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_, _ = AuthorizeEntry(ctx, entry, signer, testValidUntilLedger, network.TestNetworkPassphrase,
-				ForAddress(address))
+				ForAddress(kp.Address()))
 		}
 	})
 
@@ -41,7 +70,7 @@ func BenchmarkAuthorizeEntryWithHooks(b *testing.B) {
 	b.Run("noop-hook", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_, _ = AuthorizeEntry(ctx, entry, signer, testValidUntilLedger, network.TestNetworkPassphrase,
-				ForAddress(address), WithHook(NoOpHook{}))
+				ForAddress(kp.Address()), WithHook(NoOpHook{}))
 		}
 	})
 
@@ -51,7 +80,7 @@ func BenchmarkAuthorizeEntryWithHooks(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			hook.events = hook.events[:0]
 			_, _ = AuthorizeEntry(ctx, entry, signer, testValidUntilLedger, network.TestNetworkPassphrase,
-				ForAddress(address), WithHook(hook))
+				ForAddress(kp.Address()), WithHook(hook))
 		}
 	})
 }
