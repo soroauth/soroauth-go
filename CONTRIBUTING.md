@@ -200,6 +200,27 @@ tabs) into the matching fenced block in README.md. Never edit the fenced
 block alone: it is not the source of truth, and the drift test will fail on
 the next run.
 
+## Protocol version matrix
+
+`ArmProtocolVersion` (`protocolmatrix.go`) and the README's "Protocol
+version support" table both claim the same thing — which Stellar protocol
+version each credential arm requires — sourced from each arm's CAP
+preamble (CAP-46-11 for the source-account and legacy arms, CAP-71-01 and
+CAP-71-02 for V2 and the delegates arm). `TestArmProtocolVersionMatchesTheReadme`
+in `protocolmatrix_test.go` parses the README table and fails if its
+numbers disagree with `ArmProtocolVersion`, and `TestArmProtocolVersionMatchesTheCAPs`
+pins `ArmProtocolVersion` itself to the values read directly from the CAPs.
+
+To reproduce a failure locally:
+
+```sh
+go test -run TestArmProtocolVersion -v .
+```
+
+Changing a protocol version claim means updating both `protocolmatrix.go`
+and the README table together, in the same commit, and citing the CAP text
+that justifies the change — never editing one side to make the test pass.
+
 ## GitHub Actions are pinned to commit SHAs
 
 Every `uses:` in `.github/workflows/*.yml` names a full commit SHA with the

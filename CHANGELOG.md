@@ -37,6 +37,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   nothing in `AuthorizeInvocation` changed, and using a `NonceTracker` is
   opt-in. (#91)
 
+**Protocol version matrix**
+
+- `ArmProtocolVersion` records the Stellar protocol version each
+  credential arm's CAP was introduced in (CAP-46-11 → Protocol 20 for the
+  source-account and legacy arms; CAP-71-01 / CAP-71-02 → Protocol 27 for
+  V2 and the delegates arm), sourced from each CAP's own preamble. The
+  README's new "Protocol version support" table documents the same
+  numbers, and `TestArmProtocolVersionMatchesTheReadme` fails the normal
+  test suite if the two drift. (#92)
+
 ### Added (docs correctness)
 
 - The README's three Go examples (Quickstart, Delegates, the inline

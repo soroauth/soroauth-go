@@ -259,6 +259,25 @@ simulation can return either arm, and the RPC's `UseUpgradedAuth` flag is
 best-effort — it affects only the recording auth modes and is ignored by
 protocol versions whose host cannot emit AddressV2.
 
+## Protocol version support
+
+Each arm's CAP states the protocol version it was introduced in; a network
+running an older protocol cannot emit or accept that arm at all.
+
+| Arm | Introduced in | Source |
+|---|---|---|
+| `SOROBAN_CREDENTIALS_SOURCE_ACCOUNT` | Protocol 20 | CAP-46-11 |
+| `SOROBAN_CREDENTIALS_ADDRESS` | Protocol 20 | CAP-46-11 |
+| `SOROBAN_CREDENTIALS_ADDRESS_V2` | Protocol 27 | CAP-71-01 |
+| `SOROBAN_CREDENTIALS_ADDRESS_WITH_DELEGATES` | Protocol 27 | CAP-71-02 |
+
+`ArmProtocolVersion` carries this same table in code
+(`TestArmProtocolVersionMatchesTheReadme` fails if the two drift), for a
+caller that wants to check it programmatically before pointing soroauth at
+an older network. soroauth itself makes no RPC call and does not check a
+live network's protocol version — the table exists so the requirement is
+visible before a confusing on-chain failure, not to enforce it.
+
 ## Delegates
 
 Under CAP-71-01 an account can authorize through delegated signers instead of
