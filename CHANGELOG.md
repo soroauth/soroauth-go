@@ -98,6 +98,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   **Migration:** none for library callers. The removed identifiers were
   unexported and unused. No emitted signature or entry bytes change.
 
+**Documentation link check (issue #152)**
+
+- `.github/workflows/links.yml` checks every Markdown file's links with lychee.
+  Internal links — between files here, including anchors — gate a push to `main`
+  and any PR that touches Markdown. External links run on a weekly schedule and
+  on `workflow_dispatch` only, and are reported rather than gating, so an
+  external page moving or rate-limiting an automated checker never blocks an
+  unrelated PR. `lychee.toml` holds the retry and accepted-status settings. The
+  check is linked from README § Contributing and ARCHITECTURE.md, and the
+  reproduce-locally commands are in CONTRIBUTING.md § Documentation links.
+
+  **Migration:** none. CI and docs only; no library or emitted bytes change.
+
 **`soroauth doctor`**
 
 - New CLI subcommand checking the local environment for the failures that are

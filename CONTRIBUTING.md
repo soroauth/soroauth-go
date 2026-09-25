@@ -348,6 +348,33 @@ fixture in `address_test.go` by adding a new table entry to
 exact address string that triggered the failure. This ensures the specific
 case remains covered even if the property test parameters change.
 
+## Documentation links
+
+Every Markdown file's links are checked by `.github/workflows/links.yml`:
+
+- **Internal** links — between files in this repository, including anchors —
+  gate a PR. A relative link to a renamed or moved file fails the `internal`
+  job, which names the source file and the target that did not resolve.
+- **External** links are checked on the weekly schedule and on
+  `workflow_dispatch`, not on PRs, and are reported rather than gating: an
+  external page moving or rate-limiting an automated checker is not a
+  regression here, and must not block an unrelated PR.
+
+To reproduce either locally, install `lychee` and run it from the repository
+root:
+
+```sh
+# Internal only — the command the gating job runs.
+lychee --offline --include-fragments --no-progress --verbose './**/*.md'
+
+# Everything, external links included — what the scheduled job runs.
+lychee --no-progress --verbose './**/*.md'
+```
+
+`lychee.toml` sets the retries and the accepted statuses. Excluding a link
+needs a reason written in that file, not a bare URL pasted into the workflow:
+that reason is the whole value of the check.
+
 ## What a change needs
 
 - **Tests that can fail.** A test that passes for the wrong reason is worse than
