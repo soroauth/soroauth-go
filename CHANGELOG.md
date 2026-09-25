@@ -59,6 +59,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+**`--valid-for`: expiration as a lifetime (issue #124)**
+
+- `payload`, `sign` and `delegates` accept `--valid-for <ledgers>` as an
+  alternative to the absolute `--valid-until`. `--valid-for` is resolved
+  against the current ledger, read from an RPC endpoint given by `--rpc-url`
+  or, when that is unset, `SOROAUTH_RPC_URL`. There is no default endpoint:
+  resolving an expiration is choosing the chain it is valid on, so an absent
+  endpoint is refused with a message naming both ways to set it. The two flags
+  are mutually exclusive, `--valid-for 0` is refused as already expired, and
+  every refusal stays results-only on stdout in `--json` mode.
+
+  ```sh
+  soroauth sign --entry <base64> --valid-for 1000 --network testnet \
+    --rpc-url https://soroban-testnet.stellar.org --secret-env SEED
+  ```
+
+  **Migration:** none. `--valid-until` is unchanged and remains the way to give
+  an absolute ledger; `--valid-for` is additive. No library API and no emitted
+  signature or entry bytes change, so golden vectors are unaffected.
+
 **`soroauth doctor`**
 
 - New CLI subcommand checking the local environment for the failures that are

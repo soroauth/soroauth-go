@@ -118,11 +118,11 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) er
 
 	switch args[0] {
 	case "payload":
-		return runPayload(args[1:], stdout, stderr)
+		return runPayload(args[1:], stdout, stderr, getenv)
 	case "sign":
 		return runSign(args[1:], stdout, stderr, getenv)
 	case "delegates":
-		return runDelegates(args[1:], stdout, stderr)
+		return runDelegates(args[1:], stdout, stderr, getenv)
 	case "inspect":
 		return runInspect(args[1:], stdout, stderr)
 	case "tui":

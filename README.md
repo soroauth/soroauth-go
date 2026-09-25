@@ -63,6 +63,39 @@ SEED=SABC... ./soroauth sign \
   jq -r .wrapped_entry
 ```
 
+### Relative expiration — `--valid-for`
+
+`payload`, `sign` and `delegates` take exactly one of `--valid-until` (an
+absolute ledger) or `--valid-for` (a lifetime in ledgers). `--valid-for`
+resolves against the current ledger, read from an RPC endpoint, so a caller can
+ask for "about an hour" without first querying the ledger and adding by hand.
+
+The endpoint comes from `--rpc-url` or, when that is unset, `SOROAUTH_RPC_URL`.
+There is deliberately no default: resolving an expiration is choosing the chain
+that expiration is valid on, so the command refuses rather than guessing, and
+the error names both ways to set it. The two flags are mutually exclusive.
+
+```sh
+# Roughly 1000 ledgers from now (about an hour on testnet), signed.
+./soroauth sign \
+  --entry <base64> --valid-for 1000 \
+  --network testnet --rpc-url https://soroban-testnet.stellar.org \
+  --secret-env SEED --json | jq -r .signed_entry
+
+# The endpoint can come from the environment instead.
+export SOROAUTH_RPC_URL=https://soroban-testnet.stellar.org
+./soroauth payload --entry <base64> --valid-for 1000 --network testnet
+
+# Absolute and relative are mutually exclusive.
+./soroauth payload --entry <base64> --valid-until 1234567 --valid-for 1000 --network testnet
+# soroauth: --valid-until and --valid-for are mutually exclusive: give one or the other
+```
+
+`--valid-for` refuses `0` (already expired by the rule under
+[Expiration](#expiration)) and an endpoint it cannot reach. In `--json` mode
+each refusal is a single JSON object on stdout and nothing on stderr, so a
+script piping stdout to `jq` never has to strip usage text.
+
 ### Doctor — check the local environment for common first-run problems
 
 Most first-run problems are environmental — an unreachable RPC endpoint, a

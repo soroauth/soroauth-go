@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -13,8 +14,15 @@ import (
 const delegatesUsage = `soroauth delegates — wrap an entry in a delegated-signer credential.
 
 usage:
-  soroauth delegates --entry <base64> --valid-until <ledger> \
-                     --delegate <address> [--delegate <address> ...] [--json]
+  soroauth delegates --entry <base64> (--valid-until <ledger> | --valid-for <ledgers>) \
+                     --delegate <address> [--delegate <address> ...] \
+                     [--rpc-url <url>] [--json]
+
+Give exactly one of --valid-until (an absolute ledger) or --valid-for (a
+lifetime in ledgers, added to the current ledger). --valid-for needs an RPC
+endpoint, taken from --rpc-url or, if that is unset, $SOROAUTH_RPC_URL; it is
+refused when neither names one, because guessing a network here would stamp an
+expiration bound to the wrong chain.
 
 Converts an ADDRESS or ADDRESS_V2 entry into ADDRESS_WITH_DELEGATES (CAP-71-01),
 with the delegates sorted into the order the protocol requires. Pass --delegate
@@ -55,7 +63,7 @@ func (a *addressList) Set(value string) error {
 	return nil
 }
 
-func runDelegates(args []string, stdout, stderr io.Writer) error {
+func runDelegates(args []string, stdout, stderr io.Writer, getenv func(string) string) error {
 	flags := flag.NewFlagSet("delegates", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
@@ -66,6 +74,8 @@ func runDelegates(args []string, stdout, stderr io.Writer) error {
 
 	entryFlag := flags.String("entry", "", "the authorization entry, as base64 XDR")
 	validUntil := flags.Uint("valid-until", 0, "the last ledger at which the signatures are valid")
+	validFor := flags.Uint64("valid-for", 0, "the signature lifetime in ledgers, resolved against the current ledger (needs --rpc-url)")
+	rpcURL := flags.String("rpc-url", "", "RPC endpoint used to resolve --valid-for (default $SOROAUTH_RPC_URL)")
 	var delegates addressList
 	flags.Var(&delegates, "delegate", "a delegate address; repeat for several")
 	jsonFlag := flags.Bool("json", false, "output as JSON")
@@ -78,8 +88,9 @@ func runDelegates(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return writeJSONError(stdout, *jsonFlag, err)
 	}
-	if *validUntil == 0 {
-		return writeJSONError(stdout, *jsonFlag, newErrorf(ExitUsageError, "--valid-until is required and must be greater than zero"))
+	expiration, err := resolveValidUntil(context.Background(), uint64(*validUntil), *validFor, resolveRPCURL(*rpcURL, getenv), fetchLatestLedger)
+	if err != nil {
+		return writeJSONError(stdout, *jsonFlag, err)
 	}
 	if len(delegates) == 0 {
 		return writeJSONError(stdout, *jsonFlag, newErrorf(ExitUsageError, "at least one --delegate is required"))
@@ -90,7 +101,7 @@ func runDelegates(args []string, stdout, stderr io.Writer) error {
 		tree = append(tree, soroauth.Delegate{Address: address})
 	}
 
-	wrapped, err := soroauth.WithDelegates(entry, uint32(*validUntil), tree, nil)
+	wrapped, err := soroauth.WithDelegates(entry, expiration, tree, nil)
 	if err != nil {
 		// Classify the error for exit code
 		var exitCode int
