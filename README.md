@@ -296,6 +296,106 @@ see [Verifying README snippets](CONTRIBUTING.md#verifying-readme-snippets-compil
 Source-account entries pass straight through untouched, so you can hand over
 everything simulation returned without sorting by arm first.
 
+## The two-pass simulation requirement
+
+The Quickstart comment `// then re-simulate in enforce mode, assemble, sign,
+submit` is doing a lot of work. CAP-71-01 needs **two** simulation passes, and
+skipping the second is the single most common way to produce a transaction that
+builds, signs — and fails on-chain after fees are paid.
+
+**Pass 1 — record mode.** The transaction carries no signatures yet, so the
+host *recording* what auth would be needed: it hands back the unsigned
+authorization entries and prices resources without having executed any account
+contract's `__check_auth`. Signing happens here.
+
+**Pass 2 — enforce mode.** Signing the entries changes what the transaction
+costs: a signature ScVal is real memory the host has to hold and check. The
+transaction is re-simulated in `AuthModeEnforce` carrying the **signed**
+entries, and it is this pass's resource footprint and fee that the submitted
+transaction must carry.
+
+**What goes wrong without pass 2.** The envelope assembled from pass 1 carries
+the recording pass's resource fee, which is too small once the signatures are
+on. The submission is then rejected on-chain for exceeding its resource budget
+— a fee-bounded failure that happens *after* fees and after your signers have
+approved the entry, and one that reads like a signature problem when it is
+really a pricing problem.
+
+**The enforcing pass is also a free pre-flight check.** It executes
+`__check_auth` with your real signatures, so a wrong signature shape, a
+mis-targeted address, or an unsigned node the contract insists on is caught
+locally instead of on-chain.
+
+One deliberate exception: a submission that is *meant* to be rejected skips the
+enforcing pass, which would fail locally for the very reason under test. See
+[e2e/README.md](e2e/README.md) for how the rejection scenarios handle that.
+
+After the enforcing pass, assemble explicitly — the Go SDK has no
+`assembleTransaction` equivalent to the JS SDK's, so the simulated
+`SorobanTransactionData` is attached to the operation by hand:
+
+```go
+op.Auth = signed
+
+// The enforcing pass simulates a real transaction carrying the signed
+// entries, so the host can price the signatures that are actually there.
+enforceTx, err := txnbuild.NewTransaction(txnbuild.TransactionParams{
+    SourceAccount:        source,
+    IncrementSequenceNum: true,
+    Operations:           []txnbuild.Operation{op},
+    BaseFee:              txnbuild.MinBaseFee,
+    Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewInfiniteTimeout()},
+})
+if err != nil {
+    return nil, err
+}
+encoded, err := enforceTx.Base64()
+if err != nil {
+    return nil, err
+}
+sim, err := client.SimulateTransaction(ctx, rpc.SimulateTransactionRequest{
+    Transaction: encoded,
+    AuthMode:    rpc.AuthModeEnforce,
+})
+if err != nil {
+    return nil, err
+}
+if sim.Error != "" {
+    return nil, fmt.Errorf("enforcing simulation failed: %s", sim.Error)
+}
+
+// The Go SDK has no assembleTransaction: attach the simulated
+// SorobanTransactionData — resources and fee sized with the signed
+// entries — to the operation by hand.
+var sorobanData xdr.SorobanTransactionData
+if err := xdr.SafeUnmarshalBase64(sim.TransactionDataXDR, &sorobanData); err != nil {
+    return nil, err
+}
+op.Ext = xdr.TransactionExt{V: 1, SorobanData: &sorobanData}
+
+assembled, err := txnbuild.NewTransaction(txnbuild.TransactionParams{
+    SourceAccount:        source,
+    IncrementSequenceNum: true,
+    Operations:           []txnbuild.Operation{op},
+    BaseFee:              txnbuild.MinBaseFee,
+    Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewInfiniteTimeout()},
+})
+if err != nil {
+    return nil, err
+}
+```
+
+This example is compiled by CI as `internal/readmesnippets/twopass.go` — same
+verification story as the Quickstart above.
+
+A `Soroban RPC integration helpers` package (see
+`docs/ISSUE_BACKLOG.md`) is planned to lift this flow — both passes, assembly,
+the resource fee — into one correct, reusable call. Once it exists, this
+section will link it as the preferred alternative to hand-rolling assembly.
+
+Until then, `adapters/walletsdk` enforces this same discipline in code: it
+refuses to hand back a submittable envelope unless the enforcing pass ran.
+
 ## Credential types
 
 | Arm | Value | Preimage variant | Address in the signed bytes? |
@@ -491,6 +591,12 @@ vectors; the package's own tests run under jsdom and against the real module.
 
 The wrapper calls through to the same Go code as the native library, so there
 is no second implementation of the signing logic to drift.
+
+For the full passkey flow — browser ceremony, assertion verification, and what
+is (and is not yet) proven — see [docs/passkeys.md](docs/passkeys.md).
+Replacing hand-rolled signing code with soroauth — pattern mappings, the four
+differences from the JS SDK, and how to verify the migration produced identical
+bytes — is covered in [docs/migrating.md](docs/migrating.md).
 
 ## Proven on testnet
 

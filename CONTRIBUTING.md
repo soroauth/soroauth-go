@@ -217,12 +217,15 @@ the measurement in the body.
 
 ## Verifying README snippets compile
 
-The README's two Go examples (Quickstart, Delegates) are not free-standing
-markdown text: each is extracted verbatim from a real, compiling source file
-in `internal/readmesnippets/`, between a `// snippet:start <name>` and
-`// snippet:end <name>` comment pair. `TestReadmeSnippetsMatchTheirSource` in
-`readme_test.go` at the repository root asserts the fenced code block in
-README.md is byte-identical (modulo tabs-vs-spaces) to that marked region.
+The README's Go examples (Quickstart, Delegates, and the inline `AllowResign`
+snippet) are not free-standing markdown text: each is extracted verbatim from a
+real, compiling source file in `internal/readmesnippets/`, between a
+`// snippet:start <name>` and `// snippet:end <name>` comment pair.
+`TestReadmeSnippetsMatchTheirSource` in `readme_test.go` at the repository root
+asserts the fenced code block in README.md is byte-identical (modulo
+tabs-vs-spaces) to that marked region. The guides under `docs/` —
+`passkeys.md`, `migrating.md` — are checked the same way by
+`TestGuideSnippetsMatchTheirSource`.
 
 This means two different things can fail, and the test names which:
 

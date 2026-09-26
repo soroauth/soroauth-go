@@ -172,6 +172,12 @@ the accepting scenarios from passing by accident. Two of them originally passed
 while proving nothing, which is why every new failure test must assert *which*
 failure.
 
+The passkey path — browser ceremony, assertion verification, the challenge-binding
+check, and which wallet contract a signature ScVal targets — has its own guide:
+[docs/passkeys.md](docs/passkeys.md). Teams replacing hand-rolled signing code
+have [docs/migrating.md](docs/migrating.md): pattern mappings, the four JS-SDK
+differences, and the byte-identical verification step.
+
 ## Non-goals
 
 soroauth is not a transaction builder, an RPC client, a key manager, or a

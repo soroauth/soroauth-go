@@ -22,6 +22,7 @@ var readmeSnippets = []struct {
 	sourceFile string
 }{
 	{name: "quickstart", sourceFile: "quickstart.go"},
+	{name: "twopass-enforce", sourceFile: "twopass.go"},
 	{name: "delegates", sourceFile: "delegates.go"},
 	{name: "allowresign", sourceFile: "allowresign.go"},
 }

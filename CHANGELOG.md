@@ -47,6 +47,46 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   numbers, and `TestArmProtocolVersionMatchesTheReadme` fails the normal
   test suite if the two drift. (#92)
 
+**Passkey signing guide**
+
+- `docs/passkeys.md`: an end-to-end guide to the passkey flow — the browser
+  ceremony, assertion transport, challenge binding, ES256 verification, and
+  submission — with the signature shape stated for one example wallet contract
+  and the guide's Go examples extracted from compiling source in
+  `internal/readmesnippets/passkey.go` (`TestPasskeysGuideSnippetsMatchTheirSource`
+  fails on drift). It states plainly what has on-chain and golden-vector
+  evidence behind it and what has none yet: the passkey signature shape is
+  proven only by the guide's own example until the assertion parser (#25), the
+  full `PasskeySigner` (#26), the wallet-library golden vectors (#27) and the
+  passkey e2e scenario (#28) land. (#31)
+
+**The two-pass simulation requirement**
+
+- The README gained a "The two-pass simulation requirement" section: what the
+  record pass does, what the enforce pass does, and what goes wrong without the
+  second one — a resource-fee failure on-chain after fees, which reads like a
+  signature problem but is a pricing problem. It notes that the Go SDK has no
+  `assembleTransaction` equivalent, shows the explicit assembly (attaching the
+  simulated `SorobanTransactionData` to the operation, per
+  `e2e/harness_test.go`), flags the enforcing pass's value as a pre-flight
+  check, names the rejection-scenario exception, and commits to linking a
+  future `Soroban RPC integration helpers` package once it exists (#110). The
+  example is compiled by CI as `internal/readmesnippets/twopass.go` and kept
+  byte-identical by `TestReadmeSnippetsMatchTheirSource`.
+
+**Migration guide for hand-rolled signing code**
+
+- `docs/migrating.md`: a guide for teams replacing their own signing code with
+  soroauth — a mapping table from common hand-rolled patterns onto soroauth
+  calls, the four documented differences from the JS SDK restated at the point
+  a migration hits them, a byte-identical verification step (capture the old
+  code's output as a baseline, sign the same inputs, compare `MarshalBinary`),
+  the four cases where bytes legitimately differ, and a migration checklist.
+  Its Go examples are compiled by CI as `internal/readmesnippets/migrate.go`
+  and kept byte-identical by `TestGuideSnippetsMatchTheirSource`, which now
+  covers the guides under `docs/` the way the README's snippets are covered.
+  (#111)
+
 ### Added (docs correctness)
 
 - The README's three Go examples (Quickstart, Delegates, the inline
