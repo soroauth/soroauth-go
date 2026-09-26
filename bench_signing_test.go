@@ -11,7 +11,7 @@ import (
 	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/xdr"
 
-	"soroauth/internal/xdrcopy"
+	"github.com/soroauth/soroauth-go/internal/xdrcopy"
 )
 
 // Signing-path benchmarks (issue #107).

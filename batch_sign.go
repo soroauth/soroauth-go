@@ -7,7 +7,7 @@ import (
 
 	"github.com/stellar/go-stellar-sdk/xdr"
 
-	"soroauth/internal/xdrcopy"
+	"github.com/soroauth/soroauth-go/internal/xdrcopy"
 )
 
 // AuthorizeBatchOption adjusts how AuthorizeBatch behaves.
