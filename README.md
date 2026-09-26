@@ -38,6 +38,7 @@ make build        # build the CLI to bin/soroauth
 make vectors      # regenerate testdata/vectors from the pinned JS SDK
 make vectors-check # regenerate, then fail if the committed vectors changed
 make e2e          # build the test contract and run the live testnet suite
+make wasm-budget  # measure and enforce WASM artifact size budget
 ```
 
 Every target fails loudly: `make fmt` exits non-zero if any file is not
