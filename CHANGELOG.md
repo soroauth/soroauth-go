@@ -163,6 +163,58 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+**`--valid-for`: expiration as a lifetime (issue #124)**
+
+- `payload`, `sign` and `delegates` accept `--valid-for <ledgers>` as an
+  alternative to the absolute `--valid-until`. `--valid-for` is resolved
+  against the current ledger, read from an RPC endpoint given by `--rpc-url`
+  or, when that is unset, `SOROAUTH_RPC_URL`. There is no default endpoint:
+  resolving an expiration is choosing the chain it is valid on, so an absent
+  endpoint is refused with a message naming both ways to set it. The two flags
+  are mutually exclusive, `--valid-for 0` is refused as already expired, and
+  every refusal stays results-only on stdout in `--json` mode.
+
+  ```sh
+  soroauth sign --entry <base64> --valid-for 1000 --network testnet \
+    --rpc-url https://soroban-testnet.stellar.org --secret-env SEED
+  ```
+
+  **Migration:** none. `--valid-until` is unchanged and remains the way to give
+  an absolute ledger; `--valid-for` is additive. No library API and no emitted
+  signature or entry bytes change, so golden vectors are unaffected.
+
+**golangci-lint gate (issue #153)**
+
+- `.golangci.yml` adds golangci-lint v2 on top of the existing `gofmt` + `go vet`
+  bar, and a `lint` job runs it on every push and PR. The set is
+  golangci-lint's standard linters (errcheck, govet, ineffassign, staticcheck,
+  unused) plus `bodyclose`, `errorlint` and `misspell`. The config documents
+  why each is on and why `gocyclo`/`funlen`/`goimports` are off. One class is
+  excluded with a reason: errcheck's checks on `fmt.Fprint*` writes to the
+  CLI's own stdout/stderr, where a failed write cannot change the process's
+  exit code.
+- The findings it raised were fixed rather than suppressed: a dead `newError`,
+  an unused `benchmarkValidUntilLedger` and an unused threshold-session field
+  were removed; two unused `hookList` methods were deleted; the HTTP body close
+  in `doctor` and the ignored `Contribute` returns in tests are now explicit.
+  There are no `//nolint` directives.
+
+  **Migration:** none for library callers. The removed identifiers were
+  unexported and unused. No emitted signature or entry bytes change.
+
+**Documentation link check (issue #152)**
+
+- `.github/workflows/links.yml` checks every Markdown file's links with lychee.
+  Internal links — between files here, including anchors — gate a push to `main`
+  and any PR that touches Markdown. External links run on a weekly schedule and
+  on `workflow_dispatch` only, and are reported rather than gating, so an
+  external page moving or rate-limiting an automated checker never blocks an
+  unrelated PR. `lychee.toml` holds the retry and accepted-status settings. The
+  check is linked from README § Contributing and ARCHITECTURE.md, and the
+  reproduce-locally commands are in CONTRIBUTING.md § Documentation links.
+
+  **Migration:** none. CI and docs only; no library or emitted bytes change.
+
 **`soroauth doctor`**
 
 - New CLI subcommand checking the local environment for the failures that are

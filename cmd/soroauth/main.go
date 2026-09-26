@@ -59,12 +59,7 @@ func ExitCode(err error) int {
 	return ExitGeneralError
 }
 
-// newError wraps an error with the given exit code.
-func newError(exitCode int, format string, args ...any) error {
-	return &cliError{err: fmt.Errorf(format, args...), exitCode: exitCode}
-}
-
-// newErrorf wraps an error with the given exit code (alias for newError).
+// newErrorf wraps an error with the given exit code.
 func newErrorf(exitCode int, format string, args ...any) error {
 	return &cliError{err: fmt.Errorf(format, args...), exitCode: exitCode}
 }
@@ -121,11 +116,11 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) er
 
 	switch args[0] {
 	case "payload":
-		return runPayload(args[1:], stdout, stderr)
+		return runPayload(args[1:], stdout, stderr, getenv)
 	case "sign":
 		return runSign(args[1:], stdout, stderr, getenv)
 	case "delegates":
-		return runDelegates(args[1:], stdout, stderr)
+		return runDelegates(args[1:], stdout, stderr, getenv)
 	case "inspect":
 		return runInspect(args[1:], stdout, stderr)
 	case "verify":
@@ -286,7 +281,11 @@ func runTUI(args []string, stdout, stderr io.Writer, getenv func(string) string)
 			}
 		case "--valid-until":
 			if i+1 < len(args) {
-				fmt.Sscanf(args[i+1], "%d", &validUntilLedger)
+				// A malformed value leaves validUntilLedger at zero, which the
+				// required-flag check below refuses. The TUI parses its own
+				// flags rather than using the flag package, so there is no
+				// parse error to surface here.
+				_, _ = fmt.Sscanf(args[i+1], "%d", &validUntilLedger)
 				i++
 			}
 		case "--network":
