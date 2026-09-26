@@ -106,6 +106,37 @@ jobs:
       - name: test
         working-directory: adapters/walletsdk
         run: go test -race ./...
+  # The GCP KMS adapter is a nested module too, for the same reason: it names a
+  # cloud SDK the root module must not pull in. Its tests use a fake KMS client,
+  # so the job needs no credentials and never touches live GCP.
+  gcpkms:
+    name: gcp kms adapter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache-dependency-path: adapters/gcpkms/go.sum
+      - name: gofmt
+        working-directory: adapters/gcpkms
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "these files are not gofmt clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: vet
+        working-directory: adapters/gcpkms
+        run: go vet ./...
+      # -race because the signer verifies its own output; the test suite is what
+      # says the signed bytes are a real ed25519 signature, not a shape the code
+      # agrees with itself about.
+      - name: test
+        working-directory: adapters/gcpkms
+        run: go test -race ./...
   cross-compile:
     name: cross-compile release targets
     runs-on: ubuntu-latest

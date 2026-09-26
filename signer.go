@@ -3,6 +3,7 @@ package soroauth
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"sort"
@@ -93,6 +94,32 @@ func accountSignature(rawPublicKey, signature []byte) xdr.ScVal {
 	}
 	p := &m
 	return xdr.ScVal{Type: xdr.ScValTypeScvMap, Map: &p}
+}
+
+// Ed25519SignatureScVal builds the signature value written into a classic
+// account's credential node: a vector holding one {public_key, signature} map,
+// with a 32-byte raw public key and a 64-byte ed25519 signature.
+//
+// It is exported because an adapter that signs through an external service — a
+// cloud KMS, a remote signer — has to produce exactly this shape without being
+// a keypair, and building it in two places is how the two drift. The map keys
+// are symbols in key order, "public_key" before "signature", because the host
+// decodes it as AccountEd25519Signature (rs-soroban-env
+// soroban-env-host/src/builtin_contracts/account_contract.rs:64), which is the
+// same shape NewEd25519Signer writes.
+//
+// The two lengths are checked rather than trusted: a value that is not this
+// size would be rejected on-chain after fees were paid, so it is refused here.
+func Ed25519SignatureScVal(rawPublicKey, signature []byte) (xdr.ScVal, error) {
+	if len(rawPublicKey) != ed25519.PublicKeySize {
+		return xdr.ScVal{}, fmt.Errorf("soroauth: ed25519 signature scval: public key is %d bytes, want %d",
+			len(rawPublicKey), ed25519.PublicKeySize)
+	}
+	if len(signature) != ed25519.SignatureSize {
+		return xdr.ScVal{}, fmt.Errorf("soroauth: ed25519 signature scval: signature is %d bytes, want %d",
+			len(signature), ed25519.SignatureSize)
+	}
+	return scVec(accountSignature(rawPublicKey, signature)), nil
 }
 
 // rawEd25519Key returns the 32 raw public key bytes behind a G… address.
