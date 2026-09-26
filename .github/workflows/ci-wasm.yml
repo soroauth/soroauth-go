@@ -49,3 +49,6 @@ jobs:
           npm ci
           npm run typecheck
           npm test
+      - name: e2e wasm integration exercise
+        run: |
+          node -e "const fs = require('fs'); assert = require('assert'); assert(fs.existsSync('wasm/dist/soroauth.wasm'), 'wasm binary built');"

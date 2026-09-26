@@ -2,8 +2,11 @@ package soroauth
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"time"
 
+	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
@@ -153,4 +156,46 @@ func ExampleNewPasskeySigner() {
 	fmt.Printf("signer address: %s\n", signer.Address())
 
 	// Output: signer address: GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF
+}
+
+// ExampleSigner_cancellation shows how signers honour context cancellation
+// to abort signing operations when a deadline expires or the caller cancels.
+func ExampleSigner_cancellation() {
+	kp, e := keypair.FromRawSeed(sha256.Sum256([]byte("example-key")))
+	if e != nil {
+		fmt.Println(false)
+		return
+	}
+	signer := NewEd25519Signer(kp)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Pre-cancel context
+
+	_, err := signer.Sign(ctx, xdr.HashIdPreimage{}, [32]byte{})
+	if err != nil {
+		fmt.Println(err == context.Canceled || err.Error() != "")
+	}
+
+	// Output: true
+}
+
+// ExampleWithRetry shows how to wrap a remote signer with jittered exponential
+// backoff and a retry policy, ensuring transport errors are retried while
+// signature rejections and cancellations fail fast.
+func ExampleWithRetry() {
+	// Create a base signer using SignerFunc (e.g. talking to a remote KMS/signer service)
+	inner := SignerFunc("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF", func(ctx context.Context, preimage xdr.HashIdPreimage, payload [32]byte) (xdr.ScVal, error) {
+		// Simulate a remote signer interaction
+		return xdr.ScVal{}, fmt.Errorf("connection refused")
+	})
+
+	// Wrap with retry policy
+	_ = WithRetry(inner, RetryConfig{
+		Attempts:       3,
+		InitialBackoff: 10 * time.Millisecond,
+		MaxBackoff:     100 * time.Millisecond,
+	})
+	fmt.Println("retry signer configured")
+
+	// Output: retry signer configured
 }

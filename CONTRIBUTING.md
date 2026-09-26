@@ -74,23 +74,29 @@ golangci-lint run ./...
 go test -race ./...
 ```
 
-CI runs exactly these, plus the golden-vector drift check and the signing-path
-budget check (see [Benchmarks](#benchmarks)). The suite runs with `-race`
-because `internal/xdrcopy` shares encoder and decoder buffers across calls
-through `sync.Pool`; without the detector, `TestCopyConcurrentReuse` would
-still pass on code that races.
+CI runs all of these except `golangci-lint`, plus the golden-vector drift check
+and the contract build; the signing-path budget check runs on push to main (see
+[Benchmarks](#benchmarks)). `golangci-lint` is a local gate only, because pull
+requests are capped at three checks — see [Linting](#linting).
+
+The suite runs with `-race` because `internal/xdrcopy` shares encoder and
+decoder buffers across calls through `sync.Pool`; without the detector,
+`TestCopyConcurrentReuse` would still pass on code that races.
 
 ## Linting
 
-The gate is `.golangci.yml` plus the `lint` job in `.github/workflows/ci.yml`.
+The gate is `.golangci.yml`, run locally. There is no `lint` job in
+`.github/workflows/ci.yml`: pull requests are capped at three checks, and the
+two that gate a merge are `vet and test` and `golden vectors are reproducible`.
+Run the linter before you push; a reviewer may also run it.
+
 The config is deliberately small, and each linter in it is there because the
 project would actually fix what it reports; the file says which and why, and
 which linters are off on purpose. A linter whose findings are all suppressed
 should be deleted rather than left as decoration.
 
-The `lint` job pins `version: v2.14.0`, the version the config was verified
-against. To reproduce a CI failure locally, install the same version and run it
-from the repository root:
+The config was verified against `v2.14.0`. Install that version and run it from
+the repository root:
 
 ```sh
 GOBIN="$PWD/.tools" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0

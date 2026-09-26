@@ -133,8 +133,7 @@ func (h *harness) deployFixture(
 // with the given delegate signer set.
 func (h *harness) deployModularAccount(t *testing.T, deployer *keypair.Full, signers []string) deployment {
 	t.Helper()
-	contractID := h.deployAndFundFixture(t, deployer, wasmPath("modular_account"), scAddressVecVal(t, signers))
-	return deployment{ContractAddress: contractID}
+	return h.deployFixture(t, deployer, "modular_account", []xdr.ScVal{scAddressVecVal(t, signers)})
 }
 
 // sessionKey is one entry of the SessionKey vector the session-keys fixture
@@ -154,8 +153,7 @@ func (h *harness) deploySessionKeys(t *testing.T, deployer *keypair.Full, keys [
 	for _, key := range keys {
 		values = append(values, sessionKeyVal(t, key))
 	}
-	contractID := h.deployAndFundFixture(t, deployer, wasmPath("session_keys"), scVecVal(values))
-	return deployment{ContractAddress: contractID}
+	return h.deployFixture(t, deployer, "session_keys", []xdr.ScVal{scVecVal(values)})
 }
 
 // deployThresholdAccount uploads the threshold-account fixture and
@@ -167,8 +165,7 @@ func (h *harness) deployThresholdAccount(
 	threshold uint32,
 ) deployment {
 	t.Helper()
-	contractID := h.deployAndFundFixture(t, deployer, wasmPath("threshold_account"), scAddressVecVal(t, signers), scU32Val(threshold))
-	return deployment{ContractAddress: contractID}
+	return h.deployFixture(t, deployer, "threshold_account", []xdr.ScVal{scAddressVecVal(t, signers), scU32Val(threshold)})
 }
 
 // scSymbolVal wraps a symbol as an ScVal, the type an ScMap's keys must use.

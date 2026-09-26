@@ -3,27 +3,28 @@ name: links
 # The docs cross-link heavily and point at CAPs, rs-soroban-env and SDK pages
 # that move, so they are checked rather than trusted.
 #
-# Two jobs, because the two kinds of link fail differently and should gate
-# differently:
+# This workflow does not run on pull requests. Pull requests are capped at the
+# three checks ci.yml reports, and a workflow that runs on pull_request adds a
+# row for every job it declares — an `if:`-gated job included, since a skipped
+# job still reports. So this runs on push to main, on a weekly schedule, and on
+# demand, the same shape as ci-go.yml and the other advisory workflows. A broken
+# internal link reaches main and is caught on the push, one commit later rather
+# than one review earlier.
 #
-#   internal  links between files in this repository. Blocking on push to main
-#             and on any PR that touches Markdown: a relative link to a renamed
-#             or moved file is a defect this repository can fix, and should be
-#             caught by the PR that caused it.
+# Two jobs, because the two kinds of link fail differently:
+#
+#   internal  links between files in this repository. Blocking, on every
+#             trigger: a relative link to a renamed or moved file is a defect
+#             this repository can fix.
 #   external  links out to the web. Scheduled and manual only, and never a
 #             gate: an external page moving, being reorganized, or
 #             rate-limiting an automated checker is not a regression in this
-#             project and must not block an unrelated PR. The run still reports
-#             every broken link and the file it is in.
+#             project. The run still reports every broken link and the file it
+#             is in.
 
 on:
   push:
     branches: [main]
-    paths:
-      - '**.md'
-      - 'lychee.toml'
-      - '.github/workflows/links.yml'
-  pull_request:
     paths:
       - '**.md'
       - 'lychee.toml'

@@ -32,6 +32,13 @@ jobs:
           fi
       - name: vet
         run: go vet ./...
+      # The e2e files sit behind a build tag, so `go vet ./...` never
+      # compiles them. Two breakages reached main through that gap: a
+      # deploy helper calling a txnbuild function that does not exist, and
+      # a test using the soroauth package without importing it. Vetting the
+      # tag costs no extra check and closes it.
+      - name: vet (e2e build tag)
+        run: go vet -tags e2e ./...
       # -race because internal/xdrcopy shares encoder/decoder buffers across
       # calls through sync.Pool: TestCopyConcurrentReuse only proves the
       # no-aliasing guarantee holds under concurrency if something is actually
@@ -76,3 +83,37 @@ jobs:
             echo "and commit the result, or investigate why the reference output moved."
             exit 1
           fi
+
+  # Third and final pull-request check. The fixture contracts are Rust and the
+  # Go jobs do not compile them, which is how a contract that had never built
+  # reached main and broke the scheduled e2e run for five runs in a row.
+  #
+  # Build and unit-test in one job on purpose: pull requests are capped at three
+  # checks, so this covers both rather than becoming two.
+  contracts:
+    name: contracts build and test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: e2e/contracts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # rust-toolchain.toml pins the channel and the wasm32v1-none target, so
+      # rustup installs exactly what the contracts are built with.
+      - name: show the pinned toolchain
+        run: |
+          rustc --version
+          cargo --version
+      - name: cache cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            e2e/contracts/target
+          key: contracts-${{ runner.os }}-${{ hashFiles('e2e/contracts/Cargo.lock') }}
+          restore-keys: contracts-${{ runner.os }}-
+      - name: cargo test
+        run: cargo test --workspace --locked
+      - name: build every contract to wasm
+        run: cargo build --release --target wasm32v1-none --workspace --locked
