@@ -1,5 +1,5 @@
-cloud.google.com/go/kms v1.35.0 h1:nJ/ktaqspx1nPM9vIcO0SHbhqCAm8nvAxL1siuVgKm0=
-cloud.google.com/go/kms v1.35.0/go.mod h1:0++71pIHvJL+GmMa8K4jOWFq7gNOX3jm2PRMSJwTKJw=
+cloud.google.com/go/kms v1.34.0 h1:mxWcXEiyjxwFH5gclulLx+B8Y2OEpKJRZ5FOF78c2XE=
+cloud.google.com/go/kms v1.34.0/go.mod h1:FbxZWUiihmyjxlaBha84OK5+fmJHPrS6F5/mBFdJk6A=
 cloud.google.com/go/longrunning v1.2.0 h1:WjYH3YHBGCxGJP9M4dWGHBfXr/cFIjMkNgWcJj7/iMM=
 cloud.google.com/go/longrunning v1.2.0/go.mod h1:5KMQALFGOCtFoi2xSOA1u3H7WKlhmckgiyFw7+LGQp0=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=

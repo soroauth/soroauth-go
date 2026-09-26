@@ -1,9 +1,9 @@
 module github.com/soroauth/soroauth-go/adapters/gcpkms
 
-go 1.26.0
+go 1.25.0
 
 require (
-	cloud.google.com/go/kms v1.35.0
+	cloud.google.com/go/kms v1.34.0
 	github.com/googleapis/gax-go/v2 v2.23.0
 	github.com/soroauth/soroauth-go v0.0.0
 	github.com/stellar/go-stellar-sdk v0.7.3
