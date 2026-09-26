@@ -45,6 +45,8 @@ jobs:
       # watching for concurrent misuse.
       - name: test
         run: go test -race ./...
+      - name: fuzz xdrcopy
+        run: go test -fuzz=FuzzCopyRoundTrip -fuzztime=10s ./internal/xdrcopy
 
   golden-drift:
     name: golden vectors are reproducible

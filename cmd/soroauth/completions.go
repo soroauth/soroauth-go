@@ -79,6 +79,7 @@ var commandSpecs = []commandSpec{
 			{Name: "valid-until", Description: "the last ledger at which the signature is valid", TakesValue: true},
 			{Name: "network", Description: "testnet, public, or a literal network passphrase", TakesValue: true},
 			{Name: "secret-env", Description: "name of the environment variable holding the seed", TakesValue: true},
+			{Name: "assertion", Description: "path to a WebAuthn assertion JSON file, or - for stdin", TakesValue: true},
 			{Name: "for", Description: "credential node to sign, when it is not the signer's own address", TakesValue: true},
 			{Name: "json", Description: "output as JSON", TakesValue: false},
 		},

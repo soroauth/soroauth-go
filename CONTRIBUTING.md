@@ -74,7 +74,12 @@ go test -race ./...
 ```
 
 CI runs exactly these, plus the golden-vector drift check and the signing-path
-budget check (see [Benchmarks](#benchmarks)). The suite runs with `-race`
+budget check (see [Benchmarks](#benchmarks)). To run the xdrcopy round-trip fuzzer locally:
+```sh
+go test -fuzz=FuzzCopyRoundTrip -fuzztime=30s ./internal/xdrcopy
+```
+
+The suite runs with `-race`
 because `internal/xdrcopy` shares encoder and decoder buffers across calls
 through `sync.Pool`; without the detector, `TestCopyConcurrentReuse` would
 still pass on code that races.
