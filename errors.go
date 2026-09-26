@@ -173,6 +173,71 @@ var (
 	// tracker's own store has seen; it has no visibility into a nonce
 	// consumed elsewhere.
 	ErrNonceAlreadyReserved = errors.New("nonce already reserved for this address")
+
+	// ErrSignerAddressMismatch is returned when a managed signer's public key
+	// does not belong to the account address the signer was configured or
+	// constructed with.
+	//
+	// A managed signer (Vault, a Ledger device) hands back a public key that
+	// this library did not choose. If that key does not derive the expected
+	// G… address, every signature it produces would be written onto a
+	// credential node it cannot authorize, or would fail on-chain after fees
+	// were paid. Refusing at construction is the fail-closed outcome.
+	ErrSignerAddressMismatch = errors.New("signer public key does not match the configured address")
+
+	// ErrVaultUnauthorized is returned when Vault rejects the token used for a
+	// transit operation (HTTP 403).
+	//
+	// Transit key material never leaves Vault, so the caller's token is the
+	// only credential this library holds. It does not renew tokens: renewal
+	// belongs in a Vault Agent or an explicit token helper, and an expired
+	// token must surface as this error rather than as a retry loop.
+	ErrVaultUnauthorized = errors.New("vault rejected the token")
+
+	// ErrVaultKeyNotFound is returned when the configured transit key does not
+	// exist (HTTP 404).
+	ErrVaultKeyNotFound = errors.New("vault transit key not found")
+
+	// ErrVaultKeyType is returned when the configured transit key is not an
+	// ed25519 signing key.
+	//
+	// Stellar account signatures are ed25519; an aes256-gcm96, ECDSA or RSA
+	// transit key cannot produce the shape the host's account contract checks,
+	// so the mismatch is refused before any signature is requested.
+	ErrVaultKeyType = errors.New("vault transit key is not an ed25519 key")
+
+	// ErrLedgerUnavailable is returned when the Ledger transport cannot reach a
+	// device at all: no device, a failed exchange, or a malformed response.
+	//
+	// It is deliberately distinct from ErrLedgerLocked and ErrLedgerWrongApp,
+	// because the three call for different user actions (plug the device in,
+	// unlock it, open the Stellar app), and a single "device error" would make
+	// the caller guess.
+	ErrLedgerUnavailable = errors.New("ledger device is unavailable")
+
+	// ErrLedgerLocked is returned when the connected Ledger device is locked
+	// (status word 0x5515).
+	ErrLedgerLocked = errors.New("ledger device is locked")
+
+	// ErrLedgerWrongApp is returned when the APDU the Stellar app would handle
+	// is rejected as an unsupported class or instruction (status words 0x6E00
+	// and 0x6D00), which in practice means the Stellar app is not the app
+	// currently open on the device.
+	ErrLedgerWrongApp = errors.New("ledger device is not running the Stellar app")
+
+	// ErrLedgerBlindSigningDisabled is returned when the device refuses a
+	// signing request because "Blind signing" is not enabled in the Stellar
+	// app's settings (status word 0x6C66).
+	//
+	// The Soroban-authorization signing path renders a decoded review and still
+	// gates it behind that setting (LedgerHQ/app-stellar
+	// src/app_ui/sign_soroban_auth.rs), so the user must enable it even though
+	// nothing is being blind-signed.
+	ErrLedgerBlindSigningDisabled = errors.New("blind signing is disabled in the Ledger Stellar app settings")
+
+	// ErrLedgerDenied is returned when the user rejects the review on the device
+	// (status word 0x6985).
+	ErrLedgerDenied = errors.New("the request was rejected on the ledger device")
 )
 
 // NoMatchingCredentialNodeError is returned when no credential node in the
