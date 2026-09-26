@@ -90,6 +90,7 @@ var commandSpecs = []commandSpec{
 			{Name: "entry", Description: "the authorization entry, as base64 XDR", TakesValue: true},
 			{Name: "valid-until", Description: "the last ledger at which the signatures are valid", TakesValue: true},
 			{Name: "delegate", Description: "a delegate address; repeat for several", TakesValue: true},
+			{Name: "nested-json", Description: "JSON string defining nested delegate tree", TakesValue: true},
 			{Name: "json", Description: "output as JSON", TakesValue: false},
 		},
 	},
