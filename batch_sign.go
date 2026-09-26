@@ -3,6 +3,7 @@ package soroauth
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/stellar/go-stellar-sdk/xdr"
@@ -106,7 +107,10 @@ func AuthorizeBatch(
 
 	failed := 0
 	for i := range entries {
-		if results[i] == (xdr.SorobanAuthorizationEntry{}) {
+		// SorobanAuthorizationEntry contains slices, so it is not comparable
+		// with ==; reflect.DeepEqual is how the rest of this package checks an
+		// entry against its zero value.
+		if reflect.DeepEqual(results[i], xdr.SorobanAuthorizationEntry{}) {
 			failed++
 		}
 	}

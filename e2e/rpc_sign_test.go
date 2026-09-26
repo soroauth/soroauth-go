@@ -24,7 +24,8 @@ const transferAmount = 10_000_000
 // accepted), that nothing was silently skipped, and that the submission
 // lands where the helper claimed to have sent it.
 func TestSignAndSubmitProvesTheRecordAndEnforcePasses(t *testing.T) {
-	h := newHarness(t)	payer := h.newAccount(t, "payer")
+	h := newHarness(t)
+	payer := h.newAccount(t, "payer")
 	signer := h.newAccount(t, "signer")
 	to := h.newAccount(t, "recipient")
 
@@ -56,7 +57,8 @@ func TestSignAndSubmitProvesTheRecordAndEnforcePasses(t *testing.T) {
 // would refuse the transaction after charging fees. That is the silent
 // skip the issue exists to stop, and this test asserts it did not happen.
 func TestSignAndSubmitHandlesResourceFee(t *testing.T) {
-	h := newHarness(t)	payer := h.newAccount(t, "payer")
+	h := newHarness(t)
+	payer := h.newAccount(t, "payer")
 	signer := h.newAccount(t, "signer")
 	to := h.newAccount(t, "recipient")
 
