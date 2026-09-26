@@ -99,6 +99,7 @@ makes a wallet say so in code before it can obtain a submittable envelope.
 | `delegates.go` | `Delegate`, `WithDelegates`, `ValidateDelegateOrder` — the CAP-71-01 tree |
 | `invocation.go` | `AuthorizeInvocation` and nonce generation |
 | `upgrade.go` | `UpgradeToV2` |
+| `verify.go` | `VerifyEntry` → `VerificationReport`: rebuilds the payload from an entry as it stands and decides each classic-account signature, reporting a per-node verdict (`verified`, `unsigned`, `invalid`, `cannot_check`) |
 | `inspect.go` | `Inspect` → `EntryInfo`, structural reporting only |
 | `batch.go` | `AuthorizeAll`, all-or-nothing |
 | `envelope.go` | `EnvelopeEntries`, `InspectEnvelope`, `AuthorizeEnvelope`, `EnvelopePayloads` — the entry-shaped functions applied to a whole `TransactionEnvelope` |
@@ -107,6 +108,7 @@ makes a wallet say so in code before it can obtain a submittable envelope.
 | `errors.go` | The eleven exported sentinels, plus the three typed address errors (`NoMatchingCredentialNodeError`, `DuplicateDelegateError`, `MissingSignerError`) that wrap them for `errors.As` |
 | `internal/xdrcopy` | Deep copy by XDR round-trip |
 | `cmd/soroauth` | CLI: `payload`, `sign`, `delegates`, `inspect`, `doctor`, `cross-compile`. `inspect`, `payload` and `sign` take a whole envelope as well as a single entry, and work out which they were handed |
+| `remote/` | The HTTP signing protocol: `Request`/`Response`, a reference `Server`, and a client `Signer` that satisfies `soroauth.Signer`. Transmits the preimage, not just the digest; the server recomputes the digest and refuses a mismatch. The root module does not import it |
 | `adapters/walletsdk` | A **separate Go module**: the wallet-SDK-shaped adapter. The root module does not import it, so no wallet SDK is a dependency of soroauth |
 
 ## Untrusted input

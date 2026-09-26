@@ -83,6 +83,7 @@ terminal program, not something a script drives, so it has no `--json` mode.
 | `sign` | `signed_entry` | `error` |
 | `delegates` | `wrapped_entry` | `error` |
 | `inspect` | (the `EntryInfo` struct — this was already `inspect`'s only output; `--json` is accepted for consistency and does not change it) | `error` |
+| `verify` | the report: `credential_type`, `address`, `valid_until_ledger`, `verified`, and `nodes` with a `verdict` per credential node | `error` |
 | `tree` | (the `EntryInfo` struct, same shape as `inspect`; without `--json` it prints an ASCII or DOT rendering instead) | `error` |
 | `doctor` | `checks`, `ok` | (checks carry their own `pass`/`detail`; see below) |
 | `cross-compile` | `target`, `size`, `sha256` (one per line) | `error` |
@@ -141,6 +142,41 @@ One address appearing at more than one nesting level is legal under CAP-71-01
 occurrences into a single node: each is printed in its own position, with its
 own signed/unsigned state, so a repeated address never reads as one node that
 somehow got signed twice.
+
+### Verify — check an entry's signatures without submitting it
+
+Every other check is about structure. `verify` is about the signatures: it
+rebuilds the payload from the entry as it stands — including the
+expiration the entry stores — and checks each signature against it, so an entry
+that was tampered with after signing, or signed over a different expiration
+than it carries, is caught before it is submitted rather than after fees are
+paid.
+
+```sh
+./soroauth verify --entry <base64> --network testnet
+
+# Accept the Void top-level node a delegates-only account legitimately has
+./soroauth verify --entry <base64> --network testnet --allow-unsigned
+
+# JSON, for scripting
+./soroauth verify --entry <base64> --network testnet --json |
+  jq -r '.nodes[] | "\(.address) \(.verdict)"'
+```
+
+Each credential node is one of four verdicts: `verified`, `unsigned`,
+`invalid` (a well-formed signature that does not verify), or `cannot_check`.
+The exit code is 4 unless every node verified (with `--allow-unsigned`
+tolerating unsigned nodes), so a green result means exactly what it says.
+
+**What it cannot do.** Only a classic account signature — the built-in vector
+holding one `{public_key, signature}` map — can be decided offline. A custom
+account's signature is whatever its `__check_auth` accepts, and only the
+contract can say whether a given value is valid, so any other shape is
+reported as `cannot_check` and never as `verified`. Whether the key that signed
+is actually a signer of the account, and whether enough signers signed to meet
+its threshold, are account-state questions this command cannot see and does not
+claim to answer. A green result is evidence that the signatures on the entry
+commit to it; it is not a promise the transaction will succeed.
 
 ### Doctor — check the local environment for common first-run problems
 
@@ -573,6 +609,29 @@ soroauth is also stricter in one place: wrapping or upgrading an entry that
 already carries a signature returns `ErrAlreadySigned`, where JS silently
 discards the old signature. The payload changes under both operations, so that
 signature would no longer verify.
+
+## Remote signing over HTTP
+
+The `remote` package defines a small protocol for signing a payload over HTTP,
+and ships a reference server plus a client that satisfies `soroauth.Signer`.
+The point of the protocol is that the **preimage** is transmitted, not just the
+digest, so the remote end can inspect the whole structure it is approving
+rather than blind-signing a hash. The server recomputes SHA-256 of the
+preimage and refuses a request whose payload does not match, and the client
+attaches its context to the request so cancelling it aborts an in-flight call.
+
+```go
+server := remote.NewServer(soroauth.NewEd25519Signer(signerKey))
+server.Approver = remote.LogApprover(os.Stderr) // record what is approved
+http.Handle(remote.Path, server)
+
+signer := remote.NewSigner("http://127.0.0.1:8080", signerKey.Address())
+return soroauth.AuthorizeEntry(ctx, unsigned, signer, validUntil, network.TestNetworkPassphrase)
+```
+
+It is a reference, not a service: it has no authentication, holds no key store,
+and does no rate limiting, so a real deployment must put those in front of it.
+Nothing in the root module depends on `remote`.
 
 ## Browser and WebAssembly
 
