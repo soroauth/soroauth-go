@@ -12,7 +12,6 @@ use soroban_sdk::{
 use crate::{PolicyAccount, PolicyAccountClient, PolicyAccountError};
 use crate::{PolicyAccount, PolicyAccountArgs, PolicyAccountClient, PolicyAccountError};
 
-
 #[contractimpl]
 impl CustomAccountInterface for AlwaysApproves {
     type Signature = ();
@@ -34,7 +33,7 @@ fn register_account(env: &Env, signers: Vec<Address>, limit: i128, period: u32) 
     )
 }
 
-@test
+#[test]
 fn constructor_stores_policy_settings() {
     let env = Env::default();
     let signer = Address::generate(&env);
