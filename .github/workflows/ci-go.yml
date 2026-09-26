@@ -5,9 +5,12 @@
 name: ci / go
 
 on:
+  # Advisory checks do not run on pull requests. Only the two jobs the
+  # branch ruleset requires do, so a contributor sees two checks and not a
+  # wall of them. These run when the change reaches main, and can be run
+  # by hand from the Actions tab at any time.
   push:
     branches: [main]
-  pull_request:
     paths:
       # '*.go' is listed alongside '**/*.go' deliberately: the root-level
       # library files are the ones everything else depends on, and relying on
@@ -17,6 +20,7 @@ on:
       - '**/*.go'
       - 'go.mod'
       - 'go.sum'
+  workflow_dispatch:
 
 permissions:
   contents: read

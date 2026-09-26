@@ -4,15 +4,19 @@
 name: ci / adapters
 
 on:
+  # Advisory checks do not run on pull requests. Only the two jobs the
+  # branch ruleset requires do, so a contributor sees two checks and not a
+  # wall of them. These run when the change reaches main, and can be run
+  # by hand from the Actions tab at any time.
   push:
     branches: [main]
-  pull_request:
     paths:
       - 'adapters/**'
       - '*.go'
       - 'go.mod'
       - 'go.sum'
       - 'internal/**'
+  workflow_dispatch:
 
 permissions:
   contents: read
