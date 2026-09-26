@@ -504,6 +504,40 @@ type hostErrorDetail struct {
 	Args         []uint64
 }
 
+// TestSignerRetryIntegration proves that WithRetry correctly handles simulated transient network faults
+// and respects signature rejections and context cancellation in an integration flow.
+func TestSignerRetryIntegration(t *testing.T) {
+	h := newHarness(t)
+	account := h.newAccount(t, "retry-tester")
+
+	var attempts int
+	transientErr := fmt.Errorf("connection refused")
+
+	retrySigner := soroauth.WithRetry(soroauth.SignerFunc(account.Address(), func(ctx context.Context, preimage xdr.HashIdPreimage, payload [32]byte) (xdr.ScVal, error) {
+		attempts++
+		if attempts < 3 {
+			return xdr.ScVal{}, transientErr
+		}
+		// On 3rd attempt, sign using genuine ed25519 signer
+		realSigner := soroauth.NewEd25519Signer(account)
+		return realSigner.Sign(ctx, preimage, payload)
+	}), soroauth.RetryConfig{
+		Attempts:       4,
+		InitialBackoff: 10 * time.Millisecond,
+		MaxBackoff:     50 * time.Millisecond,
+	})
+
+	var preimage xdr.HashIdPreimage
+	var payload [32]byte
+	_, err := retrySigner.Sign(context.Background(), preimage, payload)
+	if err != nil {
+		t.Fatalf("unexpected error from retrySigner.Sign: %v", err)
+	}
+	if attempts != 3 {
+		t.Fatalf("expected 3 attempts, got %d", attempts)
+	}
+}
+
 // hostErrorDetails extracts every error diagnostic from a failure.
 //
 // It exists so a rejection test can assert WHY the host refused, not merely

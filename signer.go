@@ -6,7 +6,10 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
+	"math/rand"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/strkey"
@@ -41,6 +44,13 @@ type Signer interface {
 	// structure it is approving rather than blind-signing a digest; the
 	// payload is passed so a signer that only accepts a digest does not have
 	// to re-derive it.
+	//
+	// Context Cancellation Guarantee:
+	// Implementers MUST honour ctx.Done() cancellation and return ctx.Err()
+	// promptly if the context is cancelled before or during signing. Remote,
+	// hardware, or custom signers that wrap non-interruptible network or
+	// device operations must explicitly document any inability to abort an
+	// ongoing hardware transaction or network request.
 	Sign(ctx context.Context, preimage xdr.HashIdPreimage, payload [32]byte) (xdr.ScVal, error)
 }
 
@@ -279,6 +289,9 @@ func (s *accountMultiSigner) Sign(ctx context.Context, _ xdr.HashIdPreimage, pay
 
 	signatures := make([]xdr.ScVal, 0, len(s.keys))
 	for _, key := range s.keys {
+		if err := ctx.Err(); err != nil {
+			return xdr.ScVal{}, fmt.Errorf("soroauth: sign account multisig: %w", err)
+		}
 		signature, err := key.kp.Sign(payload[:])
 		if err != nil {
 			return xdr.ScVal{}, fmt.Errorf("soroauth: sign account multisig: %s: %w", key.kp.Address(), err)
@@ -356,6 +369,139 @@ func NewPasskeySigner(address string, authenticatorData []byte, fn func(ctx cont
 type signerFunc struct {
 	address string
 	fn      func(ctx context.Context, preimage xdr.HashIdPreimage, payload [32]byte) (xdr.ScVal, error)
+}
+
+// RetryConfig holds configuration for retrying network/remote signer calls.
+type RetryConfig struct {
+	// Attempts is the maximum number of attempts (e.g. 3 means 1 initial try + 2 retries).
+	// If 0, defaults to 1 (no retries).
+	Attempts int
+	// InitialBackoff is the starting backoff duration between attempts.
+	InitialBackoff time.Duration
+	// MaxBackoff is the upper bound for backoff duration.
+	MaxBackoff time.Duration
+}
+
+// IsSignatureRejection reports whether an error represents a signature rejection or refusal
+// that should never be retried (e.g. signature mismatch, invalid credentials, refusal).
+func IsSignatureRejection(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrSignatureMismatch) || errors.Is(err, ErrMissingSigner) || errors.Is(err, ErrTooManySignatures) {
+		return true
+	}
+	// Also check string signatures or custom rejection markers
+	s := err.Error()
+	return strings.Contains(s, "signature mismatch") || strings.Contains(s, "refused") || strings.Contains(s, "unsupported")
+}
+
+// WithRetry wraps a Signer with a jittered exponential backoff retry policy for transport errors.
+// Retries only occur on network/transport errors; signature rejections are never retried.
+// Context cancellation or timeout immediately terminates retries.
+func WithRetry(signer Signer, cfg RetryConfig) Signer {
+	if cfg.Attempts <= 0 {
+		cfg.Attempts = 1
+	}
+	return &retriedSigner{
+		inner: signer,
+		cfg:   cfg,
+	}
+}
+
+type retriedSigner struct {
+	inner Signer
+	cfg   RetryConfig
+}
+
+func (s *retriedSigner) Address() string {
+	return s.inner.Address()
+}
+
+func (s *retriedSigner) Sign(ctx context.Context, preimage xdr.HashIdPreimage, payload [32]byte) (xdr.ScVal, error) {
+	attempts := s.cfg.Attempts
+	if attempts <= 0 {
+		attempts = 1
+	}
+
+	backoffDur := s.cfg.InitialBackoff
+	if backoffDur <= 0 {
+		backoffDur = 50 * time.Millisecond
+	}
+	maxBackoff := s.cfg.MaxBackoff
+	if maxBackoff <= 0 {
+		maxBackoff = 1 * time.Second
+	}
+
+	var lastErr error
+	for i := 1; i <= attempts; i++ {
+		if err := ctx.Err(); err != nil {
+			return xdr.ScVal{}, fmt.Errorf("soroauth: retry sign: %w", err)
+		}
+
+		val, err := s.inner.Sign(ctx, preimage, payload)
+		if err == nil {
+			return val, nil
+		}
+
+		lastErr = err
+
+		// Never retry signature rejections
+		if IsSignatureRejection(err) {
+			return xdr.ScVal{}, err
+		}
+
+		// If this was the last attempt, break and return error
+		if i >= attempts {
+			break
+		}
+
+		if err := ctx.Err(); err != nil {
+			return xdr.ScVal{}, fmt.Errorf("soroauth: retry sign cancelled: %w", err)
+		}
+
+		if err := ctx.Err(); err != nil {
+			return xdr.ScVal{}, fmt.Errorf("soroauth: retry sign cancelled: %w", err)
+		}
+
+		rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+		var jitter time.Duration
+		if backoffDur/4 > 0 {
+			jitter = time.Duration(rng.Int63n(int64(backoffDur / 4)))
+		}
+		sleepDur := backoffDur + jitter
+		if sleepDur > maxBackoff {
+			sleepDur = maxBackoff
+		}
+
+		timer := time.NewTimer(sleepDur)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return xdr.ScVal{}, fmt.Errorf("soroauth: retry sign cancelled: %w", ctx.Err())
+		case <-timer.C:
+		}
+
+		if err := ctx.Err(); err != nil {
+			return xdr.ScVal{}, fmt.Errorf("soroauth: retry sign cancelled: %w", err)
+		}
+
+		if err := ctx.Err(); err != nil {
+			return xdr.ScVal{}, fmt.Errorf("soroauth: retry sign cancelled: %w", err)
+		}
+
+		backoffDur *= 2
+		if backoffDur > maxBackoff {
+			backoffDur = maxBackoff
+		}
+	}
+
+	return xdr.ScVal{}, lastErr
 }
 
 // SignerFunc adapts a function to the Signer interface, for custom account
