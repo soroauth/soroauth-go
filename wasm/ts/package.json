@@ -1,0 +1,43 @@
+{
+  "name": "@soroauth/wasm",
+  "version": "0.1.0",
+  "description": "Typed TypeScript wrapper around the soroauth WebAssembly signing core. Computes Soroban authorization preimages and payloads in the browser so the client can derive the bytes it signs.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/soroauth/soroauth-go.git",
+    "directory": "wasm/ts"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./soroauth.wasm": "./dist/soroauth.wasm",
+    "./wasm_exec.js": "./dist/wasm_exec.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": [
+    "./dist/index.js"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepack": "node scripts/stage-wasm.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "typescript": "^5.7.2"
+  }
+}
