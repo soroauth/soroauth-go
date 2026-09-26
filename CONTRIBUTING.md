@@ -322,6 +322,24 @@ node gen.mjs
 
 Then commit the regenerated files together with the generator change.
 
+## Fuzzing and Seed Corpora
+
+Every fuzz target has an associated seed corpus located in `testdata/fuzz/`, which is automatically generated from the golden vectors via `cmd/gencorpus`.
+
+To regenerate the fuzz corpus locally:
+
+```sh
+go run ./cmd/gencorpus
+```
+
+To run a fuzz target with the seed corpus:
+
+```sh
+go test -fuzz=FuzzAuthorizeEntry -fuzztime=30s .
+```
+
+CI checks that the committed corpus matches the generated output and fails on drift.
+
 If a vector disagrees with the Go code, the Go code is wrong until proven
 otherwise. If you believe the vector itself is wrong, stop and open an issue
 saying why, with the protocol reference — do not change it to make a test pass.
