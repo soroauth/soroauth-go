@@ -9,8 +9,74 @@ permissions:
   contents: read
 
 jobs:
+  # Which advisory jobs need to run for this change.
+  #
+  # The two jobs the branch ruleset requires — "vet and test" and "golden
+  # vectors are reproducible" — deliberately do NOT depend on this and are never
+  # filtered. A required check that is skipped never reports a conclusion, and
+  # the pull request would then be unmergeable forever. Everything else is
+  # advisory and is safe to skip.
+  changes:
+    name: decide which jobs to run
+    runs-on: ubuntu-latest
+    outputs:
+      go_any: ${{ steps.filter.outputs.go_any }}
+      go_root: ${{ steps.filter.outputs.go_root }}
+      walletsdk: ${{ steps.filter.outputs.walletsdk }}
+      gcpkms: ${{ steps.filter.outputs.gcpkms }}
+      vectors: ${{ steps.filter.outputs.vectors }}
+      parity_python: ${{ steps.filter.outputs.parity_python }}
+      parity_rust: ${{ steps.filter.outputs.parity_rust }}
+      wasm: ${{ steps.filter.outputs.wasm }}
+      bench: ${{ steps.filter.outputs.bench }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - id: filter
+        name: classify changed files
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          # On a push to main every advisory job runs. main is the branch that
+          # has to stay green, so it is never filtered.
+          if [ "$EVENT" != "pull_request" ]; then
+            for k in go_any go_root walletsdk gcpkms vectors parity_python parity_rust wasm bench; do
+              echo "$k=true" >> "$GITHUB_OUTPUT"
+            done
+            echo "not a pull request: running every advisory job"
+            exit 0
+          fi
+
+          changed="$(git diff --name-only "$BASE_SHA"...HEAD)"
+          echo "changed files:"
+          echo "$changed" | sed 's/^/  /'
+
+          matches() { echo "$changed" | grep -qE "$1"; }
+          emit() {
+            if matches "$2"; then echo "$1=true" >> "$GITHUB_OUTPUT"; echo "  -> $1"
+            else echo "$1=false" >> "$GITHUB_OUTPUT"; fi
+          }
+
+          echo "jobs selected:"
+          # Any Go anywhere, or the module definition.
+          emit go_any        '(\.go$|^go\.(mod|sum)$)'
+          # The library itself: Go at the repo root, which everything depends on.
+          emit go_root       '(^[^/]+\.go$|^go\.(mod|sum)$|^internal/)'
+          emit walletsdk     '^adapters/walletsdk/'
+          emit gcpkms        '^adapters/gcpkms/'
+          emit vectors       '^testdata/(vectors|gen)/'
+          emit parity_python '^testdata/parity-python/'
+          emit parity_rust   '^testdata/parity-rust/'
+          emit wasm          '^wasm/'
+          emit bench         '^testdata/bench/'
   coverage:
     name: coverage above floor
+    needs: changes
+    if: needs.changes.outputs.go_any == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -80,6 +146,8 @@ jobs:
   # unbuilt and untested in CI, which is the gap a nested module invites.
   adapter:
     name: wallet sdk adapter
+    needs: changes
+    if: needs.changes.outputs.go_root == 'true' || needs.changes.outputs.walletsdk == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -111,6 +179,8 @@ jobs:
   # so the job needs no credentials and never touches live GCP.
   gcpkms:
     name: gcp kms adapter
+    needs: changes
+    if: needs.changes.outputs.go_root == 'true' || needs.changes.outputs.gcpkms == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -139,6 +209,8 @@ jobs:
         run: go test -race ./...
   cross-compile:
     name: cross-compile release targets
+    needs: changes
+    if: needs.changes.outputs.go_any == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -208,6 +280,8 @@ jobs:
 
   python-parity:
     name: python sdk parity
+    needs: changes
+    if: needs.changes.outputs.go_root == 'true' || needs.changes.outputs.vectors == 'true' || needs.changes.outputs.parity_python == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -224,6 +298,8 @@ jobs:
 
   rust-parity:
     name: rust xdr parity
+    needs: changes
+    if: needs.changes.outputs.go_root == 'true' || needs.changes.outputs.vectors == 'true' || needs.changes.outputs.parity_rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -240,6 +316,8 @@ jobs:
 
   wasm:
     name: wasm signing core and typescript wrapper
+    needs: changes
+    if: needs.changes.outputs.go_root == 'true' || needs.changes.outputs.wasm == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -268,6 +346,8 @@ jobs:
 
   bench:
     name: signing-path budgets
+    needs: changes
+    if: needs.changes.outputs.go_root == 'true' || needs.changes.outputs.bench == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
