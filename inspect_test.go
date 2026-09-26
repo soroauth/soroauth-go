@@ -486,6 +486,7 @@ func mustParse(t *testing.T, address string) xdr.ScAddress {
 	}
 	return parsed
 }
+
 func TestDescribeSignatureShapes(t *testing.T) {
 	// Void signature
 	shapeVoid := DescribeSignature(xdr.ScVal{Type: xdr.ScValTypeScvVoid})
@@ -505,4 +506,36 @@ func TestDescribeSignatureShapes(t *testing.T) {
 	b := xdr.ScBytes([]byte{1, 2, 3})
 	shapeBytes := DescribeSignature(xdr.ScVal{Type: xdr.ScValTypeScvBytes, Bytes: &b})
 	assert.Equal(t, SignatureShapeUnknown, shapeBytes.Type)
+}
+
+func FuzzInspect(f *testing.F) {
+	// Seed with vectors from testdata/vectors
+	for _, vec := range loadVectors(&testing.T{}) {
+		var entry xdr.SorobanAuthorizationEntry
+		if err := xdr.SafeUnmarshalBase64(vec.UnsignedEntryXDR, &entry); err == nil {
+			raw, err := entry.MarshalBinary()
+			if err == nil {
+				f.Add(raw)
+			}
+		}
+	}
+
+	// Seed with empty union arm cases (construct valid minimal structs or serialized forms avoiding marshal panics)
+	// We add a minimal valid entry as corpus seed for empty union arms since uninitialized XDR pointers panic on MarshalBinary.
+	baseSeed := entryForArm(&testing.T{}, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 42)
+	if raw, err := baseSeed.MarshalBinary(); err == nil {
+		f.Add(raw)
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		var entry xdr.SorobanAuthorizationEntry
+		if err := entry.UnmarshalBinary(data); err != nil {
+			return
+		}
+		info, err := Inspect(entry)
+		if err != nil {
+			if !reflect.DeepEqual(info, EntryInfo{}) {
+				t.Errorf("Inspect returned a non-empty EntryInfo alongside an error: %+v, err: %v", info, err)
+			}
+		}
+	})
 }

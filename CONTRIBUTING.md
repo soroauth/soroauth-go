@@ -435,6 +435,22 @@ executed in CI. If it passes locally but the full property test fails, the
 failure is in the extended search space — increase `MinSuccessfulTests` in the
 deterministic test to narrow it down.
 
+### Fuzzing
+
+The library includes fuzz tests for `Inspect` (`FuzzInspect` in `inspect_test.go`) to ensure arbitrary byte sequences never panic and always return either a valid `EntryInfo` or an error, never a half-populated struct alongside an error.
+
+#### Running fuzz tests locally
+
+```sh
+go test -run=^$ -fuzz=FuzzInspect -fuzztime=30s .
+```
+
+If a fuzz test fails, Go writes the failing input corpus item to a subdirectory under `testdata/fuzz/`. To reproduce or debug a captured failure:
+
+```sh
+go test -run=FuzzInspect/testdata/fuzz/FuzzInspect/<seed-name> .
+```
+
 ### Capturing regressions
 
 If a property test discovers a bug, capture the failing input as a regression
