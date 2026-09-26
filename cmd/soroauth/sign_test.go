@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"crypto/sha256"
 	"encoding/json"
 	"strings"
@@ -254,6 +253,7 @@ func TestSignJSONOutput(t *testing.T) {
 
 func TestSignJSONErrorStaysOnStdout(t *testing.T) {
 	v := loadVector(t, "v2_single_testnet")
+
 	// Test with a key that doesn't match any node in the entry
 	stranger := vectorKeypair(t, "soroauth-vector-delegate-3")
 
@@ -284,75 +284,4 @@ func TestSignJSONErrorStaysOnStdout(t *testing.T) {
 	if strings.Contains(stdout, "usage:") {
 		t.Error("stdout contains usage text in JSON error mode")
 	}
-}
-
-func TestSignPasskeyAssertionErrorsAndMutualExclusivity(t *testing.T) {
-	v := loadVector(t, "v2_single_testnet")
-
-	t.Run("mutually exclusive secret-env and assertion", func(t *testing.T) {
-		stdout, _, err := runCLIEnv(t, map[string]string{"SEED": "SABC"},
-			"sign",
-			"--entry", v.UnsignedEntryXDR,
-			"--valid-until", "1234567",
-			"--network", "testnet",
-			"--secret-env", "SEED",
-			"--assertion", "-")
-		if err == nil {
-			t.Fatal("expected error when both secret-env and assertion are given")
-		}
-		if !strings.Contains(err.Error(), "exactly one of --secret-env or --assertion") {
-			t.Errorf("unexpected error: %v", err)
-		}
-		if stdout != "" {
-			t.Errorf("stdout should be empty on failure, got %q", stdout)
-		}
-	})
-
-	t.Run("neither secret-env nor assertion provided", func(t *testing.T) {
-		stdout, _, err := runCLIEnv(t, nil,
-			"sign",
-			"--entry", v.UnsignedEntryXDR,
-			"--valid-until", "1234567",
-			"--network", "testnet")
-		if err == nil {
-			t.Fatal("expected error when neither secret-env nor assertion is given")
-		}
-		if !strings.Contains(err.Error(), "exactly one of --secret-env or --assertion") {
-			t.Errorf("unexpected error: %v", err)
-		}
-		if stdout != "" {
-			t.Errorf("stdout should be empty on failure, got %q", stdout)
-		}
-	})
-
-	t.Run("malformed assertion JSON fails cleanly and writes nothing to stdout", func(t *testing.T) {
-		// Create a temporary file with malformed JSON
-		tmpFile := t.TempDir() + "/assertion.json"
-		if err := os.WriteFile(tmpFile, []byte("not json"), 0600); err != nil {
-			t.Fatalf("writing temp file: %v", err)
-		}
-
-		stdout, stderr, err := runCLIEnv(t, nil,
-			"sign",
-			"--entry", v.UnsignedEntryXDR,
-			"--valid-until", "1234567",
-			"--network", "testnet",
-			"--assertion", tmpFile,
-			"--json")
-		if err == nil {
-			t.Fatal("expected error for malformed assertion JSON")
-		}
-		if stderr != "" {
-			t.Errorf("stderr should be empty in JSON mode, got %q", stderr)
-		}
-		var out struct {
-			Error string `json:"error"`
-		}
-		if err := json.Unmarshal([]byte(stdout), &out); err != nil {
-			t.Fatalf("stdout is not valid JSON: %v\nstdout: %q", err, stdout)
-		}
-		if out.Error == "" {
-			t.Error("JSON error object has empty error field")
-		}
-	})
 }

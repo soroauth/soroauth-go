@@ -451,66 +451,66 @@ func TestPasskeySignerFlags(t *testing.T) {
 		wantErr     bool
 		errContains string
 	}{
-	{
+		{
 
-		name:     "no flags required, empty auth data ok",
-		authData: nil,
-		opts:     nil,
-		wantErr:  false,
-	},
-	{
-		name:     "require UP, flag set (0x01)",
-		authData: validAuthData(0x01),
-		opts:     []PasskeySignerOption{RequireUserPresence(true)},
-		wantErr:  false,
-	},
-	{
-		name:        "require UP, flag missing (0x00)",
-		authData:    validAuthData(0x00),
-		opts:        []PasskeySignerOption{RequireUserPresence(true)},
-		wantErr:     true,
-		errContains: "user presence (UP) required",
-	},
-	{
-		name:     "require UV, flag set (0x04)",
-		authData: validAuthData(0x04),
-		opts:     []PasskeySignerOption{RequireUserVerification(true)},
-		wantErr:  false,
-	},
-	{
-		name:        "require UV, flag missing (0x01)",
-		authData:    validAuthData(0x01),
-		opts:        []PasskeySignerOption{RequireUserVerification(true)},
-		wantErr:     true,
-		errContains: "user verification (UV) required",
-	},
-	{
-		name:     "require both UP and UV, both set (0x05)",
-		authData: validAuthData(0x05),
-		opts:     []PasskeySignerOption{RequireUserPresence(true), RequireUserVerification(true)},
-		wantErr:  false,
-	},
-	{
-		name:        "require both UP and UV, only UP set (0x01)",
-		authData:    validAuthData(0x01),
-		opts:        []PasskeySignerOption{RequireUserPresence(true), RequireUserVerification(true)},
-		wantErr:     true,
-		errContains: "user verification (UV) required",
-	},
-	{
-		name:        "fail closed on short auth data",
-		authData:    []byte{0x01, 0x02},
-		opts:        []PasskeySignerOption{RequireUserPresence(true)},
-		wantErr:     true,
-		errContains: "authenticatorData too short",
-	},
-	{
-		name:        "fail closed on nil auth data when required",
-		authData:    nil,
-		opts:        []PasskeySignerOption{RequireUserPresence(true)},
-		wantErr:     true,
-		errContains: "authenticatorData too short",
-	},
+			name:     "no flags required, empty auth data ok",
+			authData: nil,
+			opts:     nil,
+			wantErr:  false,
+		},
+		{
+			name:     "require UP, flag set (0x01)",
+			authData: validAuthData(0x01),
+			opts:     []PasskeySignerOption{RequireUserPresence(true)},
+			wantErr:  false,
+		},
+		{
+			name:        "require UP, flag missing (0x00)",
+			authData:    validAuthData(0x00),
+			opts:        []PasskeySignerOption{RequireUserPresence(true)},
+			wantErr:     true,
+			errContains: "user presence (UP) required",
+		},
+		{
+			name:     "require UV, flag set (0x04)",
+			authData: validAuthData(0x04),
+			opts:     []PasskeySignerOption{RequireUserVerification(true)},
+			wantErr:  false,
+		},
+		{
+			name:        "require UV, flag missing (0x01)",
+			authData:    validAuthData(0x01),
+			opts:        []PasskeySignerOption{RequireUserVerification(true)},
+			wantErr:     true,
+			errContains: "user verification (UV) required",
+		},
+		{
+			name:     "require both UP and UV, both set (0x05)",
+			authData: validAuthData(0x05),
+			opts:     []PasskeySignerOption{RequireUserPresence(true), RequireUserVerification(true)},
+			wantErr:  false,
+		},
+		{
+			name:        "require both UP and UV, only UP set (0x01)",
+			authData:    validAuthData(0x01),
+			opts:        []PasskeySignerOption{RequireUserPresence(true), RequireUserVerification(true)},
+			wantErr:     true,
+			errContains: "user verification (UV) required",
+		},
+		{
+			name:        "fail closed on short auth data",
+			authData:    []byte{0x01, 0x02},
+			opts:        []PasskeySignerOption{RequireUserPresence(true)},
+			wantErr:     true,
+			errContains: "authenticatorData too short",
+		},
+		{
+			name:        "fail closed on nil auth data when required",
+			authData:    nil,
+			opts:        []PasskeySignerOption{RequireUserPresence(true)},
+			wantErr:     true,
+			errContains: "authenticatorData too short",
+		},
 	}
 
 	for _, tt := range tests {
