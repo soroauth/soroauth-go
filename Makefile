@@ -14,7 +14,7 @@ NODE ?= node
 BIN_DIR := bin
 BIN     := $(BIN_DIR)/soroauth
 
-.PHONY: all help fmt vet test build vectors vectors-check e2e clean parity wasm wasm-check ts-test
+.PHONY: all help fmt vet test build vectors vectors-check e2e clean parity parity-rust wasm wasm-check ts-test
 
 # The default target runs exactly what a pull request has to pass before the
 # golden-vector drift check, which needs Node and the network.
@@ -31,6 +31,7 @@ help:
 	@echo "  make vectors-check regenerate and fail if the committed vectors changed"
 	@echo "  make e2e           build the test contract and run the live testnet suite"
 	@echo "  make parity        run the Python stellar-sdk parity harness"
+	@echo "  make parity-rust   run the Rust stellar-xdr parity harness"
 	@echo "  make wasm          build the js/wasm signing core into wasm/dist/"
 	@echo "  make wasm-check    build the wasm core and prove it matches the golden vectors"
 	@echo "  make ts-test       typecheck and test the TypeScript wrapper package"
@@ -93,6 +94,17 @@ parity:
 		pip install -q -r testdata/parity-python/requirements.txt && \
 		python3 testdata/parity-python/parity.py && \
 		python3 testdata/parity-python/test_parity.py
+
+# The Rust parity harness recomputes every vector's preimage and payload with
+# the stellar-xdr crate, the same XDR implementation the Soroban host uses. The
+# crate is pinned exactly in Cargo.toml and Cargo.lock, and --locked makes the
+# committed lock authoritative instead of letting cargo re-resolve.
+parity-rust:
+	@command -v cargo >/dev/null 2>&1 || { \
+		echo "cargo (Rust 1.93.0) is required for the Rust parity harness"; \
+		exit 1; \
+	}
+	cd testdata/parity-rust && cargo test --locked && cargo run --locked --bin parity
 
 wasm:
 	./wasm/build.sh

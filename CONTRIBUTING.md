@@ -48,6 +48,7 @@ rather than across several documents. Run `make help` for the list.
 | `make vectors-check` | regenerates the vectors and fails if the committed files changed |
 | `make e2e` | builds the test contract with `stellar-cli` and runs `go test -tags e2e -v ./e2e/...` |
 | `make parity` | installs the pinned Python SDK into `.venv-parity` and runs the parity harness and its tests |
+| `make parity-rust` | runs the Rust stellar-xdr parity harness and its tests (needs Rust 1.93.0) |
 | `make wasm` | builds the js/wasm signing core to `wasm/dist/` |
 | `make wasm-check` | builds the wasm core and replays every golden vector through it |
 | `make ts-test` | typechecks and tests the `@soroauth/wasm` TypeScript package |
@@ -115,6 +116,13 @@ by recomputing the vectors with other implementations:
   `stellar-sdk` on PyPI. `make parity` imports every vector, rebuilds the
   preimage and payload, and compares. Cases with no preimage (source-account
   entries) are skipped loudly and counted; a run that checks nothing fails.
+- **Rust** (`testdata/parity-rust/`), against the separately maintained
+  [`stellar-xdr`](https://crates.io/crates/stellar-xdr) crate, which is what
+  the Soroban host itself decodes with. `make parity-rust` recomputes every
+  vector's preimage and payload and compares; the crate is pinned exactly in
+  `Cargo.toml` and `Cargo.lock` and the harness refuses to run against another
+  version. Cases with no preimage (source-account entries) are skipped loudly
+  and counted, and a run that checks nothing fails.
 - **WebAssembly** (`wasm/parity.mjs`), against the wasm build of this same
   library. `make wasm-check` proves the browser build emits the same bytes as
   the native one.

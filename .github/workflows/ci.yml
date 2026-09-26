@@ -222,6 +222,22 @@ jobs:
           python3 testdata/parity-python/parity.py
           python3 testdata/parity-python/test_parity.py
 
+  rust-parity:
+    name: rust xdr parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # The runner's preinstalled rustup is used on purpose: rust-toolchain.toml
+      # pins the exact toolchain (1.93.0), so no toolchain action needs a SHA
+      # pin of its own.
+      - name: run the parity harness and its tests
+        working-directory: testdata/parity-rust
+        # --locked makes the committed Cargo.lock authoritative: the job fails
+        # rather than silently re-resolving to a different stellar-xdr.
+        run: |
+          cargo test --locked
+          cargo run --locked --bin parity
+
   wasm:
     name: wasm signing core and typescript wrapper
     runs-on: ubuntu-latest
