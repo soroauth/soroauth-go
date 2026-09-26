@@ -9,6 +9,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- `VerifyAll` batch verification API with configurable concurrency (`WithConcurrency`), reporting per-entry verdicts without aborting the entire batch on individual entry failures. (#62)
+
+### Added
+
 **Offline verification**
 
 - `VerifyEntry` rebuilds the signing payload from an entry exactly as it
@@ -172,6 +176,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   structured output, and never prints a secret's value — only whether it is
   set. Exit code reflects overall status (0 all passed, 1 something failed).
 
+**Batch verification API (`VerifyAll`)**
+
+- New `VerifyAll` function verifying a slice of Soroban authorization entries in one call, reporting per-entry verdicts. A failure in one entry does not abort the rest. Concurrency is bounded and configurable via `WithConcurrency`. Includes Go doc examples and benchmarks ensuring no regression on the signing/verification path.
+
+  **Migration:** none required.
+
 **Scoped `AllowResign`**
 
 - `AllowResign` now accepts optional addresses:
@@ -204,8 +214,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   if errors.Is(err, soroauth.ErrMissingSigner) && errors.As(err, &addrErr) {
       log.Printf("no signer for %s", addrErr.Address)
   }
-  ```
-
+  
   **Migration:** none required. Error messages are byte-identical to v0.1.0,
   and every existing `errors.Is(err, Err…)` check continues to work. Callers
   that previously extracted an address by substring-matching the message may
