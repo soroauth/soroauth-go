@@ -44,6 +44,8 @@ jobs:
       # no-aliasing guarantee holds under concurrency if something is actually
       # watching for concurrent misuse.
       - name: test
+        run: go test -race -v -run TestAuthorizeEntryExpirationProperty ./...
+      - name: test all
         run: go test -race ./...
 
   golden-drift:

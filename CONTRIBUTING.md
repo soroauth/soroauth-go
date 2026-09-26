@@ -418,7 +418,7 @@ go test -run 'TestParseAddressWithRandomXDR|TestFormatAddressRejectsInvalidXDR' 
 ### Reproducing a property test failure
 
 If a property test fails, the output will show the seed and the generated value
-that caused the failure. To reproduce:
+that causes the failure. To reproduce:
 
 ```sh
 # 1. Note the seed from the failure output (e.g., "failed with initial seed: 12345")
@@ -427,6 +427,12 @@ go test -run TestParseAddressFormatAddressProperty -v -count=1 ./... 2>&1 | head
 
 # Or run the deterministic test which uses a fixed seed:
 go test -run TestParseAddressFormatAddressDeterministic -v ./...
+```
+
+Similarly, to run and reproduce expiration and signature consistency property tests for `AuthorizeEntry` across all address arms and delegate tree depths:
+
+```sh
+go test -run TestAuthorizeEntryExpirationProperty -v ./...
 ```
 
 The deterministic test (`TestParseAddressFormatAddressDeterministic`) runs a
