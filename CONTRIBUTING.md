@@ -329,6 +329,18 @@ saying why, with the protocol reference — do not change it to make a test pass
 The generator refuses to run against any `@stellar/stellar-sdk` other than the
 pinned 17.1.0, since a vector from another build is not evidence about this one.
 
+## Shared fixture deployment harness & running e2e tests
+
+The e2e test suite provides a shared fixture deployment harness (`deployAndFundFixture` on the test `harness`) so individual contract fixtures do not reimplement deployment and funding logic.
+
+To deploy and fund any contract fixture in your own scenarios or local debugging:
+
+```go
+deployer := h.newAccount(t, "deployer")
+wasmBytes := wasmPath("modular_account")
+contractID := h.deployAndFundFixture(t, deployer, wasmBytes, constructorArgs...)
+```
+
 ## Running the e2e tests
 
 ```sh
