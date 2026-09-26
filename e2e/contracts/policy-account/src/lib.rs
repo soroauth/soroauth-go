@@ -8,7 +8,7 @@ use soroban_sdk::{
     auth::{Context, CustomAccountInterface},
     contract, contracterror, contractimpl, contracttype,
     crypto::Hash,
-    Address, Env, Symbol, Vec,
+    Address, Env, Symbol, TryFromVal, Vec,
 };
 
 const INSTANCE_TTL_THRESHOLD: u32 = 518_400;
@@ -31,12 +31,57 @@ pub enum DataKey {
     Spent(u64),
 }
 
+/// Which spending period a ledger falls in.
+///
+/// Split out of `__check_auth` so it can be unit tested: reaching
+/// `__check_auth` needs a real delegates-arm authorization entry, because
+/// `get_delegated_signers` panics outside an auth-check frame.
+pub(crate) fn period_index(ledger: u32, period_ledgers: u32) -> u64 {
+    if period_ledgers == 0 {
+        // The constructor refuses a zero period, so this is unreachable
+        // through the contract. Treating the whole chain as one period is
+        // still the fail-closed answer: every spend counts against one
+        // budget rather than dividing by zero.
+        return 0;
+    }
+    (ledger as u64) / (period_ledgers as u64)
+}
+
+/// Decides whether `requested` more may be spent, returning the new total.
+///
+/// Split out for the same reason as `period_index`. The end-to-end scenario
+/// that drives this decision against a live host is in e2e/.
+pub(crate) fn require_within_limit(
+    spent: i128,
+    requested: i128,
+    limit: i128,
+) -> Result<i128, PolicyAccountError> {
+    // checked_add rather than spent + requested: i128 addition of two
+    // attacker-supplied amounts can overflow, and an overflow that wrapped
+    // negative would read as comfortably under the limit.
+    let total = match spent.checked_add(requested) {
+        Some(total) => total,
+        None => return Err(PolicyAccountError::SpendingLimitExceeded),
+    };
+    if total > limit {
+        return Err(PolicyAccountError::SpendingLimitExceeded);
+    }
+    Ok(total)
+}
+
 #[contract]
 pub struct PolicyAccount;
 
 #[contractimpl]
 impl PolicyAccount {
+    /// Registers the signer set, the per-period limit and the period length.
+    ///
+    /// Panics on a period of zero, rather than deploying an account whose
+    /// period arithmetic would divide by zero, and on a negative limit, which
+    /// would refuse every spend including a zero one.
     pub fn __constructor(env: Env, signers: Vec<Address>, limit: i128, period_ledgers: u32) {
+        assert!(period_ledgers >= 1, "period must be at least 1 ledger");
+        assert!(limit >= 0, "limit must not be negative");
         env.storage().instance().set(&DataKey::Signers, &signers);
         env.storage().instance().set(&DataKey::Limit, &limit);
         env.storage().instance().set(&DataKey::Period, &period_ledgers);
@@ -91,20 +136,27 @@ impl CustomAccountInterface for PolicyAccount {
             }
         }
 
-        // Inspect invocation arguments for transfer amount if applicable
+        // What this entry is asking to move. The amount is read out of the
+        // invocation arguments rather than from a signature, which is the
+        // point of the fixture: the account decides on what is being
+        // authorized, not only on who signed.
         let limit = Self::limit(env.clone());
         let period_ledgers = Self::period(env.clone());
-        let current_ledger = env.ledger().sequence();
-        let period_index = (current_ledger as u64) / (period_ledgers as u64);
+        let period_index = period_index(env.ledger().sequence(), period_ledgers);
 
+        let transfer = Symbol::new(&env, "transfer");
         let mut requested_amount: i128 = 0;
         for ctx in auth_contexts.iter() {
             if let Context::Contract(c) = ctx {
-                let fn_name = c.function;
-                if fn_name == Symbol::new(&env, "transfer") {
-                    let args = c.args;
-                    if args.len() >= 3 {
-                        if let Ok(amount) = args.get(2).unwrap().try_into() {
+                // ContractContext names the function fn_name, not function
+                // (soroban-sdk 27.0.6, src/auth.rs). The available fields are
+                // contract, fn_name and args.
+                if c.fn_name == transfer {
+                    // transfer(from, to, amount): the amount is the third
+                    // argument. A call shaped otherwise is not a transfer this
+                    // fixture knows how to price, so it is not counted.
+                    if c.args.len() >= 3 {
+                        if let Ok(amount) = i128::try_from_val(&env, &c.args.get_unchecked(2)) {
                             requested_amount += amount;
                         }
                     }
@@ -112,13 +164,12 @@ impl CustomAccountInterface for PolicyAccount {
             }
         }
 
-        let mut spent = Self::spent_in_period(env.clone(), period_index);
+        let spent = Self::spent_in_period(env.clone(), period_index);
         if requested_amount > 0 {
-            if spent + requested_amount > limit {
-                return Err(PolicyAccountError::SpendingLimitExceeded);
-            }
-            spent += requested_amount;
-            env.storage().instance().set(&DataKey::Spent(period_index), &spent);
+            let allowed = require_within_limit(spent, requested_amount, limit)?;
+            env.storage()
+                .instance()
+                .set(&DataKey::Spent(period_index), &allowed);
         }
 
         for delegate in delegates.iter() {
