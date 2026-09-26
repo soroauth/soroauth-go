@@ -11,6 +11,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - `VerifyAll` batch verification API with configurable concurrency (`WithConcurrency`), reporting per-entry verdicts without aborting the entire batch on individual entry failures. (#62)
 
+- `payload`, `sign` and `delegates` accept `--entry -`, reading the entry from
+  standard input, so the subcommands compose in a pipeline:
+
+  ```sh
+  soroauth delegates --entry entry.b64 --valid-until 1234567 --delegate GABC... | \
+    soroauth sign --entry - --valid-until 1234567 --network testnet --secret-env SEED --for GABC...
+  ```
+
+  The value read is trimmed of surrounding whitespace, because every
+  subcommand prints its base64 with a trailing newline and the XDR decoder
+  refuses a blob carrying one. (#84)
+
+- Every golden vector carries a `schema_version`, written by the generator, and
+  `golden_test.go` refuses a vector whose version it does not know rather than
+  reading fields that may have moved. (#50)
+
 ### Added
 
 **Offline verification**
