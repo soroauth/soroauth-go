@@ -11,7 +11,7 @@ import (
 	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/xdr"
 
-	"github.com/soroauth/soroauth-go/internal/xdrcopy"
+	"soroauth/internal/xdrcopy"
 )
 
 // Signing-path benchmarks (issue #107).
@@ -360,6 +360,28 @@ func BenchmarkAuthorizeAll(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if _, err := AuthorizeAll(ctx, entries, signers, testValidUntilLedger, network.TestNetworkPassphrase); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkAuthorizeBatch measures the bounded-concurrency batch signing
+// path over the same 12-entry, 4-signer realistic mix that
+// BenchmarkAuthorizeAll does. It is gated by testdata/bench/budgets.json via
+// scripts/checkbench (CI job "bench"), with ~40% headroom like the rest of
+// the signing path. ns/op is machine-dependent and is never gated.
+//
+// Reproduce locally:
+//
+//	go test -run '^$' -bench . -benchmem -count=1 . | tee /tmp/bench.out
+//	go run ./scripts/checkbench /tmp/bench.out testdata/bench/budgets.json
+func BenchmarkAuthorizeBatch(b *testing.B) {
+	entries, signers := benchRealisticBatch(b)
+	ctx := context.Background()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := AuthorizeBatch(ctx, entries, signers, testValidUntilLedger, network.TestNetworkPassphrase); err != nil {
 			b.Fatal(err)
 		}
 	}

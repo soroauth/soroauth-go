@@ -1,5 +1,5 @@
 {
-  "note": "Alloc and byte budgets for the signing path (issues #107 and #108). The signing-path budgets carry ~40% headroom over the measured maximum; baselines were measured 2026-09-24 on INTEL XEON PLATINUM 8573C (2 vCPU), linux/amd64, under both go1.25.4 (the toolchain CI installs, from the toolchain line in go.mod) and go1.27.1, taking the higher of the two where they differ (the delegates paths differ by up to 7 allocs between the toolchains). The BenchmarkXDRCopy budgets are deliberately tighter: they sit below the pre-pooling cost of a copy (26 allocs / 1632 B and 24 allocs / 1472 B, identical on both toolchains) so that reverting the pooled round-trip in internal/xdrcopy fails this gate instead of only a local run; headroom there is +3 allocs and +186/+194 bytes, and both toolchains measured those two benchmarks identically. ns/op is never gated. Raising a budget requires a commit body that says which change increased the cost and why it is acceptable. Never lower a budget without a fresh measurement on a machine named in the commit body.",
+  "note": "Alloc and byte budgets for the signing path (issues #107, #108, #96). The signing-path budgets carry ~40% headroom over the measured maximum; baselines were measured 2026-09-24 on INTEL XEON PLATINUM 8573C (2 vCPU), linux/amd64, under both go1.25.4 (the toolchain CI installs, from the toolchain line in go.mod) and go1.27.1, taking the higher of the two where they differ (the delegates paths differ by up to 7 allocs between the toolchains). The BenchmarkXDRCopy budgets are deliberately tighter: they sit below the pre-pooling cost of a copy (26 allocs / 1632 B and 24 allocs / 1472 B, identical on both toolchains) so that reverting the pooled round-trip in internal/xdrcopy fails this gate instead of only a local run; headroom there is +3 allocs and +186/+194 bytes, and both toolchains measured those two benchmarks identically. ns/op is never gated. Raising a budget requires a commit body that says which change increased the cost and why it is acceptable. Never lower a budget without a fresh measurement on a machine named in the commit body.",
   "budgets": {
     "BenchmarkPreimage": {
       "allocs": 28,
@@ -36,6 +36,10 @@
     "BenchmarkAuthorizeAll": {
       "allocs": 1900,
       "bytes": 109000
+    },
+    "BenchmarkAuthorizeBatch": {
+      "allocs": 3200,
+      "bytes": 190000
     },
     "BenchmarkAuthorizeInvocation": {
       "allocs": 112,
