@@ -413,6 +413,27 @@ between releases.
   go test -tags e2e -v ./e2e/...
   ```
 
+## Parity reports
+
+The e2e suite writes a machine-readable `parity-report.json` alongside
+`RESULTS.md`, listing every scenario with its vector id, implementation,
+verdict and observed credential arm, so a parity regression can be read by a
+tool rather than by eye.
+
+`TestParityReportRegression` checks that report's shape: a non-zero scenario
+count, and a vector id and verdict on every entry. It needs no network — when
+no live report is present it reads the committed fixture at
+`e2e/testdata/parity_regression.json` — so it runs in CI as a step of the `vet
+and test` job, and a regression fails the build rather than only a local run:
+
+```sh
+go test -tags e2e -run TestParityReportRegression ./e2e
+```
+
+To debug a failure, inspect the generated `parity-report.json` in the
+repository root after a full e2e run; it carries the per-scenario verdicts the
+test is asserting over.
+
 ## Coverage reporting (CI)
 
 The `coverage` job in `.github/workflows/ci-go.yml` measures test coverage,
@@ -509,6 +530,50 @@ To run it locally:
 ```sh
 go test -run='^$' -fuzz=FuzzValidateDelegateOrder -fuzztime=30s .
 ```
+
+### The fuzz seed corpus
+
+`FuzzValidateDelegateOrder`'s seed corpus is generated from the golden vectors,
+which are the entries this library is proven against: every credential arm, a
+sub-invocation tree, a create-contract invocation, the int64 nonce edges, and
+three delegate shapes including one address at two nesting depths. Seeding from
+real entries means the fuzzer's mutations start inside the space of things that
+decode, rather than spending its budget discovering what a valid entry looks
+like.
+
+Regenerate it from the repository root:
+
+```sh
+go run ./cmd/gencorpus
+```
+
+The seeds land in `testdata/fuzz/FuzzValidateDelegateOrder/`. That path is not a
+choice: Go reads a target's seed corpus from `testdata/fuzz/<TargetName>` and
+nowhere else, and each file must be in Go's corpus format (a
+`go test fuzz v1` header, then one Go literal per fuzz argument) or it fails the
+package's tests instead of being skipped. `gencorpus` writes the decoded entry
+bytes, since the target's argument is the `[]byte` it passes to
+`UnmarshalBinary`.
+
+Every seed is run by the ordinary suite, as a named subtest — no `-fuzz` flag
+needed, so a seed that starts failing fails `go test ./...`:
+
+```sh
+go test -run FuzzValidateDelegateOrder -v .
+```
+
+```
+=== RUN   FuzzValidateDelegateOrder/v2_sub_invocations_0
+--- PASS: FuzzValidateDelegateOrder (0.01s)
+```
+
+The generator is deterministic, so CI regenerates the corpus and fails on drift,
+the same way it does for the vectors themselves. Do not hand-edit a seed: change
+the vectors or the generator and regenerate.
+
+For the fuzz *run* — the part that searches for new inputs — see the `fuzz` job
+in `.github/workflows/ci-go.yml`, which runs on push to `main` and on demand
+rather than on pull requests.
 
 ### Capturing regressions
 
