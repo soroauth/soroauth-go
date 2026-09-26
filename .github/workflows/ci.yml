@@ -32,6 +32,13 @@ jobs:
           fi
       - name: vet
         run: go vet ./...
+      # The e2e files sit behind a build tag, so `go vet ./...` never
+      # compiles them. Two breakages reached main through that gap: a
+      # deploy helper calling a txnbuild function that does not exist, and
+      # a test using the soroauth package without importing it. Vetting the
+      # tag costs no extra check and closes it.
+      - name: vet (e2e build tag)
+        run: go vet -tags e2e ./...
       # -race because internal/xdrcopy shares encoder/decoder buffers across
       # calls through sync.Pool: TestCopyConcurrentReuse only proves the
       # no-aliasing guarantee holds under concurrency if something is actually
