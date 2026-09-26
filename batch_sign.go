@@ -3,7 +3,6 @@ package soroauth
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sync"
 
 	"github.com/stellar/go-stellar-sdk/xdr"
@@ -76,10 +75,17 @@ func AuthorizeBatch(
 		workers = 1
 	}
 
-	// results holds one slot per input entry, in the same order. A worker
-	// writes into its own slot, so a panic in one entry cannot clobber a
-	// neighbour's output, and a failed entry leaves its slot zero.
+	// results and errs hold one slot per input entry, in the same order. A
+	// worker writes only into its own slots, so a failure in one entry cannot
+	// clobber a neighbour's output, and no lock is needed.
+	//
+	// The error is kept, not just the fact that there was one. Inferring
+	// failure from a zero-valued result would throw the sentinel away, and
+	// the batch's callers match on those: ErrMissingSigner tells a caller
+	// which address it forgot to supply a signer for, which "1 of 2 entries
+	// failed" does not.
 	results := make([]xdr.SorobanAuthorizationEntry, len(entries))
+	errs := make([]error, len(entries))
 
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, workers)
@@ -92,7 +98,7 @@ func AuthorizeBatch(
 
 			signed, err := authorizeOne(ctx, entries[i], signers, validUntilLedger, networkPassphrase)
 			if err != nil {
-				results[i] = xdr.SorobanAuthorizationEntry{}
+				errs[i] = err
 				return
 			}
 			results[i] = signed
@@ -102,20 +108,26 @@ func AuthorizeBatch(
 	wg.Wait()
 
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("soroauth: authorize batch: %w", err)
 	}
 
+	// The first failure by input position, not by whichever goroutine lost
+	// its race: the same batch must report the same error every time it is
+	// run, or a caller cannot write a test against it. The count comes with
+	// it, so a caller fixing one entry knows whether more are waiting.
 	failed := 0
-	for i := range entries {
-		// SorobanAuthorizationEntry contains slices, so it is not comparable
-		// with ==; reflect.DeepEqual is how the rest of this package checks an
-		// entry against its zero value.
-		if reflect.DeepEqual(results[i], xdr.SorobanAuthorizationEntry{}) {
+	firstFailure := -1
+	for i := range errs {
+		if errs[i] != nil {
 			failed++
+			if firstFailure < 0 {
+				firstFailure = i
+			}
 		}
 	}
 	if failed > 0 {
-		return nil, fmt.Errorf("soroauth: authorize batch: %d of %d entries failed", failed, len(entries))
+		return nil, fmt.Errorf("soroauth: authorize batch: %d of %d entries failed, first at entry %d: %w",
+			failed, len(entries), firstFailure, errs[firstFailure])
 	}
 
 	out := make([]xdr.SorobanAuthorizationEntry, 0, len(entries))
@@ -154,7 +166,11 @@ func authorizeOne(
 		return xdr.SorobanAuthorizationEntry{}, fmt.Errorf("soroauth: authorize batch: %w", err)
 	}
 	if len(matched) == 0 {
-		return xdr.SorobanAuthorizationEntry{}, fmt.Errorf("soroauth: authorize batch: %w", &MissingSignerError{Address: address})
+		// MissingSignerError.Error() is deliberately just the sentinel's text;
+		// the address is the call site's to format in, as AuthorizeAll does,
+		// and is also on the error for errors.As.
+		return xdr.SorobanAuthorizationEntry{}, fmt.Errorf("soroauth: authorize batch: %s: %w",
+			address, &MissingSignerError{Address: address})
 	}
 
 	signed := entry

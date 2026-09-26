@@ -1,40 +1,30 @@
 package soroauth
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
 	"testing"
 
-	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/network"
-	"github.com/stellar/go-stellar-sdk/strkey"
 	"github.com/stellar/go-stellar-sdk/xdr"
-
 )
 
-// entryForSigner is the same helper batch_test.go already uses.
-func entryForSigner(t *testing.T, label string, armType xdr.SorobanCredentialsType, nonce int64) xdr.SorobanAuthorizationEntry {
-	t.Helper()
-	entry := entryForArm(t, armType, nonce)
-	address, err := ParseAddress(testKeypair(t, label).Address())
-	if err != nil {
-		t.Fatalf("parsing %q: %v", label, err)
-	}
-	credentials, err := addressCredentials(entry.Credentials)
-	if err != nil {
-		t.Fatalf("reading credentials: %v", err)
-	}
-	credentials.Address = address
-	return entry
-}
+// entryForSigner lives in batch_test.go, which is the same package; this file
+// used to carry a byte-identical copy of it and the package would not compile.
 
 func TestAuthorizeBatchPreservesOrdering(t *testing.T) {
 	// Three entries on three different arms, three signers out of order in
 	// the slice. The batch must return them in the same order it was given,
 	// one per slot, so a caller that relied on positional matching still
 	// works.
-	first := entryForSigner(t, "soroauth-order-1", xdr.SorobanCredentialsTypeSorobanCredentialsSourceAccount, 1)
+	// A source-account entry carries no address, so entryForSigner cannot
+	// build one: it reads the credentials' address field, which this arm does
+	// not have. Built straight from entryForArm instead, which is what makes
+	// this case worth having — the batch must carry a pass-through entry
+	// through to the same position it arrived in.
+	first := entryForArm(t, xdr.SorobanCredentialsTypeSorobanCredentialsSourceAccount, 1)
 	second := entryForSigner(t, "soroauth-order-2", xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 2)
 	third := entryForSigner(t, "soroauth-order-3", xdr.SorobanCredentialsTypeSorobanCredentialsAddress, 3)
 
@@ -47,10 +37,12 @@ func TestAuthorizeBatchPreservesOrdering(t *testing.T) {
 		orderBefore[i] = encoded
 	}
 
+	// The signers for entries two and three, deliberately in the reverse of
+	// the entry order: the result ordering must follow the entries, not the
+	// signer slice. The first entry is source-account and needs no signer.
 	signers := []Signer{
-		NewEd25519Signer(testKeypair(t, "soroauth-batch-3")),
-		NewEd25519Signer(testKeypair(t, "soroauth-batch-2")),
-		NewEd25519Signer(testKeypair(t, "soroauth-batch-1")),
+		NewEd25519Signer(testKeypair(t, "soroauth-order-3")),
+		NewEd25519Signer(testKeypair(t, "soroauth-order-2")),
 	}
 
 	got, err := AuthorizeBatch(context.Background(), []xdr.SorobanAuthorizationEntry{first, second, third}, signers,
@@ -62,17 +54,49 @@ func TestAuthorizeBatchPreservesOrdering(t *testing.T) {
 		t.Fatalf("got %d entries back, want 3", len(got))
 	}
 
+	// Ordering is checked on what identifies an entry, not on its bytes: the
+	// signed entry is supposed to differ from the unsigned one it came from,
+	// so comparing the two would fail on every signed slot regardless of
+	// order. The nonce is unique per entry here (1, 2, 3) and the arm is
+	// distinct, so the pair pins which input each result came from.
 	for i, entry := range []xdr.SorobanAuthorizationEntry{first, second, third} {
-		encoded, err := entry.MarshalBinary()
-		if err != nil {
-			t.Fatalf("marshalling entry %d: %v", i, err)
+		if got[i].Credentials.Type != entry.Credentials.Type {
+			t.Errorf("slot %d holds the %v arm, want %v — the results are out of order",
+				i, got[i].Credentials.Type, entry.Credentials.Type)
+			continue
 		}
-		gotEncoded, err := got[i].MarshalBinary()
-		if err != nil {
-			t.Fatalf("marshalling got entry %d: %v", i, err)
+		if entry.Credentials.Type == xdr.SorobanCredentialsTypeSorobanCredentialsSourceAccount {
+			// No nonce to compare, and nothing should have been written: a
+			// source-account entry passes through untouched.
+			encoded, err := entry.MarshalBinary()
+			if err != nil {
+				t.Fatalf("marshalling entry %d: %v", i, err)
+			}
+			gotEncoded, err := got[i].MarshalBinary()
+			if err != nil {
+				t.Fatalf("marshalling got entry %d: %v", i, err)
+			}
+			if !bytes.Equal(encoded, gotEncoded) {
+				t.Errorf("slot %d is a source-account entry and must pass through unchanged; before %x, got %x",
+					i, encoded, gotEncoded)
+			}
+			continue
 		}
-		if !bytes.Equal(encoded, gotEncoded) {
-			t.Errorf("entry %d changed order; before %x, got %x", i, encoded, gotEncoded)
+
+		want, err := addressCredentials(entry.Credentials)
+		if err != nil {
+			t.Fatalf("reading input credentials %d: %v", i, err)
+		}
+		have, err := addressCredentials(got[i].Credentials)
+		if err != nil {
+			t.Fatalf("reading result credentials %d: %v", i, err)
+		}
+		if have.Nonce != want.Nonce {
+			t.Errorf("slot %d holds nonce %d, want %d — the results are out of order",
+				i, have.Nonce, want.Nonce)
+		}
+		if !isSigned(have.Signature) {
+			t.Errorf("slot %d came back unsigned", i)
 		}
 	}
 }
@@ -224,6 +248,22 @@ func TestAuthorizeBatchReusesNoCallerInput(t *testing.T) {
 		}
 		if !bytes.Equal(before[i], after) {
 			t.Errorf("entry %d was mutated by the batch", i)
+		}
+	}
+
+	// The other half of the claim: the results are distinct values, not the
+	// caller's entries handed back. A result that was the input would still
+	// pass the check above, because nothing would have been written at all.
+	if len(got) != 2 {
+		t.Fatalf("AuthorizeBatch returned %d results, want 2", len(got))
+	}
+	for i, result := range got {
+		encoded, err := result.MarshalBinary()
+		if err != nil {
+			t.Fatalf("marshalling result %d: %v", i, err)
+		}
+		if bytes.Equal(before[i], encoded) {
+			t.Errorf("result %d is byte-identical to the unsigned input, so nothing was signed", i)
 		}
 	}
 }
