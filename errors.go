@@ -173,6 +173,122 @@ var (
 	// tracker's own store has seen; it has no visibility into a nonce
 	// consumed elsewhere.
 	ErrNonceAlreadyReserved = errors.New("nonce already reserved for this address")
+
+	// ErrWebAuthnMalformedJSON is returned by ParseWebAuthnAssertion when the
+	// assertion is not valid JSON, or when its clientDataJSON is not valid
+	// JSON.
+	//
+	// These are separate layers of the same input (WebAuthn Level 2 §5.1.4
+	// serializes the credential, §5.8.1 defines the client data), so a
+	// truncation or a stray byte in either is refused here rather than
+	// producing a partially filled assertion.
+	ErrWebAuthnMalformedJSON = errors.New("webauthn assertion is not valid JSON")
+
+	// ErrWebAuthnMissingField is returned by ParseWebAuthnAssertion when a
+	// field the assertion must carry is absent or empty: one of
+	// response.clientDataJSON, response.authenticatorData or
+	// response.signature, or the challenge inside clientDataJSON.
+	//
+	// A missing field is never defaulted. An assertion without a challenge
+	// cannot bind the browser ceremony to the payload, and an assertion
+	// without a signature would authorize nothing.
+	ErrWebAuthnMissingField = errors.New("webauthn assertion is missing a field")
+
+	// ErrWebAuthnMalformedField is returned by ParseWebAuthnAssertion when a
+	// field is present but unusable: the base64url transport encoding of
+	// clientDataJSON, authenticatorData, signature or the challenge is
+	// invalid, or the credential type is not "public-key".
+	//
+	// It is distinct from ErrWebAuthnMissingField so a caller can tell a
+	// truncated capture (a field that never arrived) from a corrupted one
+	// (a field that arrived but does not decode).
+	ErrWebAuthnMalformedField = errors.New("webauthn assertion field is not valid base64url")
+
+	// ErrWebAuthnTruncatedAuthenticatorData is returned by
+	// ParseWebAuthnAssertion when the authenticator data is shorter than its
+	// fixed prefix.
+	//
+	// WebAuthn Level 2 §6.1 fixes that prefix at 32 bytes of RP ID hash, one
+	// byte of flags and four bytes of sign counter: 37 bytes before any
+	// attested credential data or extensions. Anything shorter cannot carry
+	// the flags, so a caller that checked for user presence or verification
+	// would be reading past the end of what it was given.
+	ErrWebAuthnTruncatedAuthenticatorData = errors.New("webauthn authenticatorData is shorter than its 37-byte fixed prefix")
+
+	// ErrWebAuthnChallengeMismatch is returned when the challenge the
+	// authenticator signed does not equal the payload expected of it.
+	//
+	// This is the security-critical check. WebAuthn binds a ceremony to a
+	// relying party through the challenge (WebAuthn Level 2 §5.8.1, §7.1 step
+	// 11), and the challenge is what ties the assertion the browser produced
+	// to this exact Soroban authorization payload. Accepting an assertion
+	// whose challenge is different would be accepting a signature over
+	// somebody else's ceremony.
+	ErrWebAuthnChallengeMismatch = errors.New("webauthn challenge does not match the expected payload")
+	// ErrSignerAddressMismatch is returned when a managed signer's public key
+	// does not belong to the account address the signer was configured or
+	// constructed with.
+	//
+	// A managed signer (Vault, a Ledger device) hands back a public key that
+	// this library did not choose. If that key does not derive the expected
+	// G… address, every signature it produces would be written onto a
+	// credential node it cannot authorize, or would fail on-chain after fees
+	// were paid. Refusing at construction is the fail-closed outcome.
+	ErrSignerAddressMismatch = errors.New("signer public key does not match the configured address")
+
+	// ErrVaultUnauthorized is returned when Vault rejects the token used for a
+	// transit operation (HTTP 403).
+	//
+	// Transit key material never leaves Vault, so the caller's token is the
+	// only credential this library holds. It does not renew tokens: renewal
+	// belongs in a Vault Agent or an explicit token helper, and an expired
+	// token must surface as this error rather than as a retry loop.
+	ErrVaultUnauthorized = errors.New("vault rejected the token")
+
+	// ErrVaultKeyNotFound is returned when the configured transit key does not
+	// exist (HTTP 404).
+	ErrVaultKeyNotFound = errors.New("vault transit key not found")
+
+	// ErrVaultKeyType is returned when the configured transit key is not an
+	// ed25519 signing key.
+	//
+	// Stellar account signatures are ed25519; an aes256-gcm96, ECDSA or RSA
+	// transit key cannot produce the shape the host's account contract checks,
+	// so the mismatch is refused before any signature is requested.
+	ErrVaultKeyType = errors.New("vault transit key is not an ed25519 key")
+
+	// ErrLedgerUnavailable is returned when the Ledger transport cannot reach a
+	// device at all: no device, a failed exchange, or a malformed response.
+	//
+	// It is deliberately distinct from ErrLedgerLocked and ErrLedgerWrongApp,
+	// because the three call for different user actions (plug the device in,
+	// unlock it, open the Stellar app), and a single "device error" would make
+	// the caller guess.
+	ErrLedgerUnavailable = errors.New("ledger device is unavailable")
+
+	// ErrLedgerLocked is returned when the connected Ledger device is locked
+	// (status word 0x5515).
+	ErrLedgerLocked = errors.New("ledger device is locked")
+
+	// ErrLedgerWrongApp is returned when the APDU the Stellar app would handle
+	// is rejected as an unsupported class or instruction (status words 0x6E00
+	// and 0x6D00), which in practice means the Stellar app is not the app
+	// currently open on the device.
+	ErrLedgerWrongApp = errors.New("ledger device is not running the Stellar app")
+
+	// ErrLedgerBlindSigningDisabled is returned when the device refuses a
+	// signing request because "Blind signing" is not enabled in the Stellar
+	// app's settings (status word 0x6C66).
+	//
+	// The Soroban-authorization signing path renders a decoded review and still
+	// gates it behind that setting (LedgerHQ/app-stellar
+	// src/app_ui/sign_soroban_auth.rs), so the user must enable it even though
+	// nothing is being blind-signed.
+	ErrLedgerBlindSigningDisabled = errors.New("blind signing is disabled in the Ledger Stellar app settings")
+
+	// ErrLedgerDenied is returned when the user rejects the review on the device
+	// (status word 0x6985).
+	ErrLedgerDenied = errors.New("the request was rejected on the ledger device")
 )
 
 // NoMatchingCredentialNodeError is returned when no credential node in the

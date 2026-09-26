@@ -1,3 +1,10 @@
+// Build constraint: everything below depends on bubbletea, which does not
+// compile for js/wasm. The signing core must build for the browser (issue #52),
+// so the interactive TUI -- a terminal feature with no browser meaning -- is
+// excluded from that target rather than dragging a terminal UI library into it.
+// The CLI, which is never built for js/wasm, still has it.
+//go:build !js && !wasm
+
 package soroauth
 
 import (

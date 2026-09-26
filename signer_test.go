@@ -529,3 +529,57 @@ func TestPasskeySignerFlags(t *testing.T) {
 		})
 	}
 }
+
+// TestEd25519SignatureScVal proves the exported builder produces byte-identical
+// output to NewEd25519Signer for the same key and payload, so an external
+// signer adapter can use it without the shape drifting from the in-process one.
+func TestEd25519SignatureScVal(t *testing.T) {
+	kp := testKeypair(t, "soroauth-scval-builder")
+	raw, err := rawEd25519Key(kp.Address())
+	if err != nil {
+		t.Fatalf("rawEd25519Key: %v", err)
+	}
+	payload := testPayload("scval")
+	signature, err := kp.Sign(payload[:])
+	if err != nil {
+		t.Fatalf("signing: %v", err)
+	}
+
+	got, err := Ed25519SignatureScVal(raw, signature)
+	if err != nil {
+		t.Fatalf("Ed25519SignatureScVal: %v", err)
+	}
+
+	want, err := NewEd25519Signer(kp).Sign(context.Background(), xdr.HashIdPreimage{}, payload)
+	if err != nil {
+		t.Fatalf("NewEd25519Signer.Sign: %v", err)
+	}
+	gotBytes, err := got.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshalling the built ScVal: %v", err)
+	}
+	wantBytes, err := want.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshalling the signer's ScVal: %v", err)
+	}
+	if !bytes.Equal(gotBytes, wantBytes) {
+		t.Error("Ed25519SignatureScVal output differs from NewEd25519Signer output")
+	}
+
+	for _, tt := range []struct {
+		name string
+		pub  []byte
+		sig  []byte
+	}{
+		{"short public key", raw[:31], signature},
+		{"long public key", append(append([]byte{}, raw...), 0), signature},
+		{"short signature", raw, signature[:63]},
+		{"long signature", raw, append(append([]byte{}, signature...), 0)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := Ed25519SignatureScVal(tt.pub, tt.sig); err == nil {
+				t.Error("Ed25519SignatureScVal accepted a wrong-length value, want an error")
+			}
+		})
+	}
+}

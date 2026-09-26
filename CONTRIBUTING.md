@@ -24,6 +24,13 @@ Two optional pieces need more:
 - **Working on the wallet SDK adapter** (`adapters/walletsdk`) needs nothing
   extra, but it is a module of its own with its own test loop; see
   [The nested adapter module](#the-nested-adapter-module).
+- **Running the Python parity harness** needs Python 3.10+ and the pinned SDK
+  in `testdata/parity-python/requirements.txt`; `make parity` creates a venv
+  and installs it.
+- **Working on the WebAssembly core or the TypeScript wrapper** needs Node
+  (the same 22+ the rest of the tooling uses). `make wasm-check` builds the
+  module and proves it byte-identical to the golden vectors; `make ts-test`
+  typechecks and tests the wrapper package.
 
 ## Make targets
 
@@ -40,7 +47,12 @@ rather than across several documents. Run `make help` for the list.
 | `make vectors` | `cd testdata/gen && npm ci && node gen.mjs` |
 | `make vectors-check` | regenerates the vectors and fails if the committed files changed |
 | `make e2e` | builds the test contract with `stellar-cli` and runs `go test -tags e2e -v ./e2e/...` |
-| `make clean` | removes `bin/` |
+| `make parity` | installs the pinned Python SDK into `.venv-parity` and runs the parity harness and its tests |
+| `make parity-rust` | runs the Rust stellar-xdr parity harness and its tests (needs Rust 1.93.0) |
+| `make wasm` | builds the js/wasm signing core to `wasm/dist/` |
+| `make wasm-check` | builds the wasm core and replays every golden vector through it |
+| `make ts-test` | typechecks and tests the `@soroauth/wasm` TypeScript package |
+| `make clean` | removes `bin/`, the wasm build output and the parity venv |
 
 No target hides a failure. `make fmt` exits non-zero when a file needs
 formatting instead of printing a warning, `make vectors-check` exits non-zero
@@ -92,6 +104,49 @@ soroauth in this checkout rather than a published version. The root module is
 not tagged yet; once it is, the adapter is the module that needs its own
 `adapters/walletsdk/vX.Y.Z` tags before anyone outside this repository can
 `go get` it.
+
+## Parity harnesses
+
+The golden vectors prove soroauth agrees with `@stellar/stellar-sdk`. They
+cannot prove that agreement is *correct*, because a bug shared by both
+implementations would be frozen into the vectors. Two harnesses close that gap
+by recomputing the vectors with other implementations:
+
+- **Python** (`testdata/parity-python/`), against the separately maintained
+  `stellar-sdk` on PyPI. `make parity` imports every vector, rebuilds the
+  preimage and payload, and compares. Cases with no preimage (source-account
+  entries) are skipped loudly and counted; a run that checks nothing fails.
+- **Rust** (`testdata/parity-rust/`), against the separately maintained
+  [`stellar-xdr`](https://crates.io/crates/stellar-xdr) crate, which is what
+  the Soroban host itself decodes with. `make parity-rust` recomputes every
+  vector's preimage and payload and compares; the crate is pinned exactly in
+  `Cargo.toml` and `Cargo.lock` and the harness refuses to run against another
+  version. Cases with no preimage (source-account entries) are skipped loudly
+  and counted, and a run that checks nothing fails.
+- **WebAssembly** (`wasm/parity.mjs`), against the wasm build of this same
+  library. `make wasm-check` proves the browser build emits the same bytes as
+  the native one.
+
+Both are pinned: the Python SDK in `requirements.txt`, the JS SDK in
+`testdata/gen/package.json`. **Never edit a vector to make a harness pass.** A
+disagreement means one implementation is wrong; open an issue with the protocol
+reference (CAP-46-11, CAP-71-01, CAP-71-02) and investigate.
+
+## The WebAssembly core and the TypeScript wrapper
+
+`cmd/soroauthwasm` compiles the signing core to `js/wasm`. It is a thin binding
+over the same `soroauth` package the native build uses — it does not reimplement
+anything — and it is behind `//go:build js && wasm`, so `go build ./...` visits
+it only when you ask for that target. `wasm/build.sh` builds it together with
+the matching `wasm_exec.js`.
+
+`wasm/ts` is the `@soroauth/wasm` npm package: a typed wrapper over those
+bindings. It is a wrapper, not a second implementation, and its tests run under
+jsdom plus a real-wasm integration test.
+
+The interactive TUI (`tui.go`) is excluded from js/wasm builds, because
+bubbletea does not compile for that target. The CLI, which is never built for
+js/wasm, still has it.
 
 ## Benchmarks
 
@@ -170,12 +225,15 @@ the measurement in the body.
 
 ## Verifying README snippets compile
 
-The README's two Go examples (Quickstart, Delegates) are not free-standing
-markdown text: each is extracted verbatim from a real, compiling source file
-in `internal/readmesnippets/`, between a `// snippet:start <name>` and
-`// snippet:end <name>` comment pair. `TestReadmeSnippetsMatchTheirSource` in
-`readme_test.go` at the repository root asserts the fenced code block in
-README.md is byte-identical (modulo tabs-vs-spaces) to that marked region.
+The README's Go examples (Quickstart, Delegates, and the inline `AllowResign`
+snippet) are not free-standing markdown text: each is extracted verbatim from a
+real, compiling source file in `internal/readmesnippets/`, between a
+`// snippet:start <name>` and `// snippet:end <name>` comment pair.
+`TestReadmeSnippetsMatchTheirSource` in `readme_test.go` at the repository root
+asserts the fenced code block in README.md is byte-identical (modulo
+tabs-vs-spaces) to that marked region. The guides under `docs/` —
+`passkeys.md`, `migrating.md` — are checked the same way by
+`TestGuideSnippetsMatchTheirSource`.
 
 This means two different things can fail, and the test names which:
 
@@ -270,6 +328,18 @@ saying why, with the protocol reference — do not change it to make a test pass
 
 The generator refuses to run against any `@stellar/stellar-sdk` other than the
 pinned 17.1.0, since a vector from another build is not evidence about this one.
+
+## Shared fixture deployment harness & running e2e tests
+
+The e2e test suite provides a shared fixture deployment harness (`deployAndFundFixture` on the test `harness`) so individual contract fixtures do not reimplement deployment and funding logic.
+
+To deploy and fund any contract fixture in your own scenarios or local debugging:
+
+```go
+deployer := h.newAccount(t, "deployer")
+wasmBytes := wasmPath("modular_account")
+contractID := h.deployAndFundFixture(t, deployer, wasmBytes, constructorArgs...)
+```
 
 ## Running the e2e tests
 

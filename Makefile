@@ -14,7 +14,7 @@ NODE ?= node
 BIN_DIR := bin
 BIN     := $(BIN_DIR)/soroauth
 
-.PHONY: all help fmt vet test build vectors vectors-check e2e clean
+.PHONY: all help fmt vet test build vectors vectors-check e2e clean parity parity-rust wasm wasm-check ts-test
 
 # The default target runs exactly what a pull request has to pass before the
 # golden-vector drift check, which needs Node and the network.
@@ -30,7 +30,12 @@ help:
 	@echo "  make vectors       regenerate testdata/vectors from the pinned JS SDK"
 	@echo "  make vectors-check regenerate and fail if the committed vectors changed"
 	@echo "  make e2e           build the test contract and run the live testnet suite"
-	@echo "  make clean         remove $(BIN_DIR)/"
+	@echo "  make parity        run the Python stellar-sdk parity harness"
+	@echo "  make parity-rust   run the Rust stellar-xdr parity harness"
+	@echo "  make wasm          build the js/wasm signing core into wasm/dist/"
+	@echo "  make wasm-check    build the wasm core and prove it matches the golden vectors"
+	@echo "  make ts-test       typecheck and test the TypeScript wrapper package"
+	@echo "  make clean         remove $(BIN_DIR)/ and build output"
 
 # gofmt -l prints the files that need formatting; this target turns that output
 # into a failure, which is what CI's gofmt step does.
@@ -76,5 +81,41 @@ e2e:
 	cd e2e/contracts && stellar contract build
 	$(GO) test -tags e2e -v ./e2e/...
 
+# The Python parity harness recomputes every vector's preimage and payload with
+# a third implementation. It needs its own pinned SDK, so it runs in a venv the
+# target creates rather than depending on the caller's environment.
+parity:
+	@command -v python3 >/dev/null 2>&1 || { \
+		echo "python3 is required for the parity harness"; \
+		exit 1; \
+	}
+	python3 -m venv .venv-parity
+	. .venv-parity/bin/activate && \
+		pip install -q -r testdata/parity-python/requirements.txt && \
+		python3 testdata/parity-python/parity.py && \
+		python3 testdata/parity-python/test_parity.py
+
+# The Rust parity harness recomputes every vector's preimage and payload with
+# the stellar-xdr crate, the same XDR implementation the Soroban host uses. The
+# crate is pinned exactly in Cargo.toml and Cargo.lock, and --locked makes the
+# committed lock authoritative instead of letting cargo re-resolve.
+parity-rust:
+	@command -v cargo >/dev/null 2>&1 || { \
+		echo "cargo (Rust 1.93.0) is required for the Rust parity harness"; \
+		exit 1; \
+	}
+	cd testdata/parity-rust && cargo test --locked && cargo run --locked --bin parity
+
+wasm:
+	./wasm/build.sh
+
+# Builds the module and then replays every golden vector through it, asserting
+# byte-identical output.
+wasm-check: wasm
+	$(NODE) wasm/parity.mjs
+
+ts-test: wasm
+	cd wasm/ts && $(NPM) ci && $(NPM) run typecheck && $(NPM) test
+
 clean:
-	rm -rf $(BIN_DIR)
+	rm -rf $(BIN_DIR) wasm/dist wasm/ts/dist wasm/ts/node_modules .venv-parity

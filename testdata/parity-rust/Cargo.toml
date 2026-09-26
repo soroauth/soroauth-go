@@ -1,0 +1,31 @@
+# The Rust stellar-xdr parity harness. It is not published and is not part of
+# any workspace: it exists to recompute the golden vectors' preimages and
+# payloads with the same XDR implementation the Soroban host uses.
+[package]
+name = "soroauth-parity-rust"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84.0"
+publish = false
+
+[lib]
+name = "soroauth_parity_rust"
+path = "src/lib.rs"
+
+[[bin]]
+name = "parity"
+path = "src/main.rs"
+
+[dependencies]
+# Pinned exactly. A parity result is only evidence when it comes from a named
+# build; the harness reads this value back out of Cargo.lock at compile time and
+# refuses to run against anything else. Never widen this to a semver range.
+# 28.0.0 is the current release and carries the CAP-71 arms
+# (SOROBAN_CREDENTIALS_ADDRESS_V2 and ..._WITH_DELEGATES) the vectors exercise.
+stellar-xdr = { version = "=28.0.0", features = ["base64"] }
+
+# These are pinned by Cargo.lock, which is committed, rather than by an exact
+# requirement here; they are not part of what the harness is comparing.
+serde_json = "1.0"
+sha2 = "0.10"
+hex = "0.4"

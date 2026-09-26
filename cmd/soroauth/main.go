@@ -79,10 +79,12 @@ commands:
   sign           sign an entry with a seed read from an environment variable
   delegates      wrap an entry in a delegated-signer credential
   inspect        print an entry's structure as JSON
+  verify         check an entry's signatures without submitting it
   tree           render an entry's delegate tree as ASCII, DOT, or JSON
   tui            interactive TUI for inspecting and signing an entry
   doctor         check the local environment for common first-run problems
   cross-compile  build soroauth for multiple targets
+  completions    emit a shell completion script (bash, zsh, fish)
 
 run "soroauth <command> -h" for the flags of a command.
 
@@ -126,6 +128,8 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) er
 		return runDelegates(args[1:], stdout, stderr)
 	case "inspect":
 		return runInspect(args[1:], stdout, stderr)
+	case "verify":
+		return runVerify(args[1:], stdout, stderr)
 	case "tree":
 		return runTree(args[1:], stdout, stderr)
 	case "tui":
@@ -134,6 +138,8 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) er
 		return runDoctor(args[1:], stdout, stderr, getenv)
 	case "cross-compile":
 		return runCrossCompile(args[1:], stdout, stderr)
+	case "completions":
+		return runCompletions(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, usage)
 		return nil

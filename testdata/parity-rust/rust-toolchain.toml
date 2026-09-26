@@ -1,0 +1,5 @@
+# Pinned so a parity run is reproducible: the same toolchain that builds the
+# e2e contract workspace builds the harness. The crate's own rust-version floor
+# is 1.84.0 (stellar-xdr 28.0.0), and 1.93.0 satisfies it.
+[toolchain]
+channel = "1.93.0"
