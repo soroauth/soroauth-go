@@ -83,6 +83,7 @@ var commandSpecs = []commandSpec{
 			{Name: "rpc-url", Description: "RPC endpoint used to resolve --valid-for (default $SOROAUTH_RPC_URL)", TakesValue: true},
 			{Name: "network", Description: "testnet, public, or a literal network passphrase", TakesValue: true},
 			{Name: "secret-env", Description: "name of the environment variable holding the seed", TakesValue: true},
+			{Name: "assertion", Description: "path to a WebAuthn assertion JSON file, or - for stdin", TakesValue: true},
 			{Name: "for", Description: "credential node to sign, when it is not the signer's own address", TakesValue: true},
 			{Name: "json", Description: "output as JSON", TakesValue: false},
 		},

@@ -103,8 +103,8 @@ jobs:
   # in testdata/fuzz are what a pull request actually exercises, through the
   # ordinary `go test ./...` in "vet and test".
   #
-  # Both targets are steps of one job rather than two jobs, so the row count
-  # does not grow with every target added.
+  # Every target is a step of this one job rather than a job each, so the row
+  # count does not grow with each target added.
   fuzz:
     name: fuzz targets
     runs-on: ubuntu-latest
@@ -118,6 +118,11 @@ jobs:
         run: go test -run='^$' -fuzz=FuzzValidateDelegateOrder -fuzztime=30s .
       - name: fuzz Inspect
         run: go test -run='^$' -fuzz=FuzzInspect -fuzztime=30s .
+      # The xdrcopy round-trip target: a copy must be byte-identical to its
+      # source and share no memory with it. It lives in its own package, so it
+      # needs its own invocation.
+      - name: fuzz the xdrcopy round-trip
+        run: go test -run='^$' -fuzz=FuzzCopyRoundTrip -fuzztime=30s ./internal/xdrcopy
 
   bench:
     name: signing-path budgets

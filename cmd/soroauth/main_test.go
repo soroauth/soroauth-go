@@ -61,7 +61,7 @@ func runCLIEnv(t *testing.T, env map[string]string, args ...string) (stdout, std
 func TestRunWithoutACommand(t *testing.T) {
 	stdout, stderr, err := runCLI(t)
 	if err == nil {
-		t.Fatal("running with no command succeeded")
+		t.Fatalf("running with no command succeeded")
 	}
 	if stdout != "" {
 		t.Errorf("usage went to stdout: %q", stdout)

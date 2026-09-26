@@ -83,6 +83,14 @@ The suite runs with `-race` because `internal/xdrcopy` shares encoder and
 decoder buffers across calls through `sync.Pool`; without the detector,
 `TestCopyConcurrentReuse` would still pass on code that races.
 
+`internal/xdrcopy` also has a round-trip fuzz target, which the same `-race`
+reasoning covers: it asserts a copy is byte-identical to its source and shares
+no memory with it. Run it locally with
+
+```sh
+go test -fuzz=FuzzCopyRoundTrip -fuzztime=30s ./internal/xdrcopy
+```
+
 ## Linting
 
 The gate is `.golangci.yml`, run locally. There is no `lint` job in
@@ -436,16 +444,21 @@ test is asserting over.
 
 ## Coverage reporting (CI)
 
-The CI pipeline (`coverage` job in `.github/workflows/ci.yml`) measures test
-coverage on every push and PR, enforces a floor of **80%**, and publishes the
-report via Codecov.
+The `coverage` job in `.github/workflows/ci-go.yml` measures test coverage,
+enforces a floor of **60%**, and publishes the report via Codecov. It runs on
+push to `main` and on demand, not on pull requests: pull requests carry only the
+three checks the branch ruleset requires.
 
 - Run locally to check your coverage before pushing:
   ```sh
   go test -coverprofile=coverage.out -covermode=atomic ./...
   go tool cover -func=coverage.out | awk '/total/{print $3}'
   ```
-- The floor is set to 80%. If it drops, the `coverage` job fails.
+- The floor is 60%, and it is a floor set below a measured total rather than an
+  aspiration. The 80% it replaced never passed: every push to `main` while it
+  was in place reported around 62% and failed. Raise it as tests are added;
+  never lower it without a fresh measurement named in the commit body. The
+  number in the job (`floor=60`) is the authority; this document follows it.
 - The report is visible in the CI logs and on Codecov without digging through
   artifacts.
 
@@ -540,6 +553,50 @@ If a fuzz test fails, Go writes the failing input corpus item to a subdirectory 
 ```sh
 go test -run=FuzzInspect/testdata/fuzz/FuzzInspect/<seed-name> .
 ```
+
+### The fuzz seed corpus
+
+`FuzzValidateDelegateOrder`'s seed corpus is generated from the golden vectors,
+which are the entries this library is proven against: every credential arm, a
+sub-invocation tree, a create-contract invocation, the int64 nonce edges, and
+three delegate shapes including one address at two nesting depths. Seeding from
+real entries means the fuzzer's mutations start inside the space of things that
+decode, rather than spending its budget discovering what a valid entry looks
+like.
+
+Regenerate it from the repository root:
+
+```sh
+go run ./cmd/gencorpus
+```
+
+The seeds land in `testdata/fuzz/FuzzValidateDelegateOrder/`. That path is not a
+choice: Go reads a target's seed corpus from `testdata/fuzz/<TargetName>` and
+nowhere else, and each file must be in Go's corpus format (a
+`go test fuzz v1` header, then one Go literal per fuzz argument) or it fails the
+package's tests instead of being skipped. `gencorpus` writes the decoded entry
+bytes, since the target's argument is the `[]byte` it passes to
+`UnmarshalBinary`.
+
+Every seed is run by the ordinary suite, as a named subtest — no `-fuzz` flag
+needed, so a seed that starts failing fails `go test ./...`:
+
+```sh
+go test -run FuzzValidateDelegateOrder -v .
+```
+
+```
+=== RUN   FuzzValidateDelegateOrder/v2_sub_invocations_0
+--- PASS: FuzzValidateDelegateOrder (0.01s)
+```
+
+The generator is deterministic, so CI regenerates the corpus and fails on drift,
+the same way it does for the vectors themselves. Do not hand-edit a seed: change
+the vectors or the generator and regenerate.
+
+For the fuzz *run* — the part that searches for new inputs — see the `fuzz` job
+in `.github/workflows/ci-go.yml`, which runs on push to `main` and on demand
+rather than on pull requests.
 
 ### Capturing regressions
 
