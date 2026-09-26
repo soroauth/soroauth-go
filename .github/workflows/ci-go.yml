@@ -97,13 +97,16 @@ jobs:
           done
           exit "$failed"
   # A fuzz run is not a pull-request check: pull requests are capped at the
-  # three checks ci.yml reports, and 30 seconds of fuzzing per push would slow
-  # every review for a target whose job is to find inputs over time, not to
-  # gate one diff. It runs on push to main and on demand, and the seed corpus
-  # in testdata/fuzz is what a pull request actually exercises, through the
+  # three checks ci.yml reports, and 30 seconds per target per push would slow
+  # every review for targets whose job is to find inputs over time, not to
+  # gate one diff. It runs on push to main and on demand, and the seed corpora
+  # in testdata/fuzz are what a pull request actually exercises, through the
   # ordinary `go test ./...` in "vet and test".
+  #
+  # Both targets are steps of one job rather than two jobs, so the row count
+  # does not grow with every target added.
   fuzz:
-    name: fuzz ValidateDelegateOrder
+    name: fuzz targets
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -111,8 +114,10 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
-      - name: run fuzz target
+      - name: fuzz ValidateDelegateOrder
         run: go test -run='^$' -fuzz=FuzzValidateDelegateOrder -fuzztime=30s .
+      - name: fuzz Inspect
+        run: go test -run='^$' -fuzz=FuzzInspect -fuzztime=30s .
 
   bench:
     name: signing-path budgets

@@ -50,7 +50,7 @@ type vector struct {
 	SignedEntryXDR    string           `json:"signed_entry_xdr"`
 }
 
-func loadVectors(t *testing.T) []vector {
+func loadVectors(t testing.TB) []vector {
 	t.Helper()
 
 	paths, err := filepath.Glob(filepath.Join("testdata", "vectors", "*.json"))
