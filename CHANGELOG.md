@@ -9,6 +9,33 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+**Offline verification**
+
+- `VerifyEntry` rebuilds the signing payload from an entry exactly as it
+  stands — including the `SignatureExpirationLedger` stored on it — and decides
+  every classic-account signature against it, so an entry can be checked
+  without submitting it and without paying a fee to find out. It reports a
+  verdict per credential node (`verified`, `unsigned`, `invalid`,
+  `cannot_check`) across all three address arms and nested delegate trees. A
+  custom account's signature is reported as `cannot_check` and never as
+  `verified`: only the contract's `__check_auth` defines its validity. Whether a
+  key is a signer of the account, and whether enough signers signed, are
+  account-state questions the engine cannot see and does not claim to answer.
+  (#59)
+- The `soroauth verify` subcommand exposes that engine from the shell, with
+  `--json`, `--allow-unsigned` for the Void top-level node a delegates-only
+  account legitimately has, and a non-zero exit unless every node verified. It
+  accepts a whole envelope as well as a single entry. (#60)
+- `remote`, a new package, defines an HTTP signing protocol that transmits the
+  **preimage** alongside the payload so a remote signer can inspect what it is
+  approving rather than blind-signing a digest. It ships a reference `Server`
+  that recomputes SHA-256 of the preimage and refuses a mismatched payload, an
+  optional `Approver` callback that observes each approval, and a client
+  `Signer` that satisfies `soroauth.Signer` and attaches its context to the
+  request so cancellation aborts an in-flight call. It has no authentication
+  and holds no key store, and is documented as a reference, not a service. The
+  root module does not depend on it. (#34)
+
 **Shell completions (`soroauth completions`)**
 
 - New subcommand: `soroauth completions --shell bash|zsh|fish` prints a

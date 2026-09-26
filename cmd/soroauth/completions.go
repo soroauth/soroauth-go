@@ -141,6 +141,17 @@ var commandSpecs = []commandSpec{
 		},
 	},
 	{
+		Name:        "verify",
+		Description: "check an entry's signatures without submitting it",
+		Flags: []flagSpec{
+			{Name: "entry", Description: "the authorization entry or transaction envelope, as base64 XDR", TakesValue: true},
+			{Name: "network", Description: "testnet, public, or a literal network passphrase", TakesValue: true},
+			{Name: "valid-until", Description: "assert the expiration the entry carries (optional)", TakesValue: true},
+			{Name: "allow-unsigned", Description: "accept unsigned nodes (a Void top-level node of a delegates entry is legitimate under CAP-71-01)", TakesValue: false},
+			{Name: "json", Description: "output as JSON", TakesValue: false},
+		},
+	},
+	{
 		Name:        "completions",
 		Description: "emit a shell completion script",
 		Flags: []flagSpec{
