@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>soroauth — passkey demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      body {
+        max-width: 56rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+      }
+      h1 {
+        font-size: 1.25rem;
+      }
+      label {
+        display: block;
+        margin-top: 0.75rem;
+        font-weight: 600;
+      }
+      input,
+      textarea,
+      button {
+        width: 100%;
+        box-sizing: border-box;
+        font: inherit;
+        margin-top: 0.25rem;
+      }
+      textarea {
+        min-height: 6rem;
+      }
+      button {
+        margin-top: 1rem;
+        padding: 0.5rem;
+        cursor: pointer;
+      }
+      #log {
+        white-space: pre-wrap;
+        border: 1px solid currentColor;
+        padding: 0.75rem;
+        margin-top: 1rem;
+        min-height: 6rem;
+      }
+      .hint {
+        opacity: 0.75;
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>soroauth — sign a Soroban authorization entry with a passkey</h1>
+    <p class="hint">
+      The browser derives the payload from the simulated entry with the
+      <code>@soroauth/wasm</code> core, then asks the authenticator to sign it as
+      the WebAuthn challenge. Nothing is asked of a server until the signed entry
+      is written back. See <code>README.md</code> in this directory.
+    </p>
+
+    <label for="entry">Unsigned entry (base64 XDR, from a record-mode simulation)</label>
+    <textarea id="entry" spellcheck="false"></textarea>
+
+    <label for="wallet">Wallet address (C…)</label>
+    <input id="wallet" placeholder="C…" spellcheck="false" />
+
+    <label for="validUntil">Signature expiration ledger</label>
+    <input id="validUntil" type="number" value="0" />
+
+    <label for="network">Network passphrase</label>
+    <input id="network" value="Test SDF Network ; September 2015" spellcheck="false" />
+
+    <label for="rpc">Soroban RPC URL (for the submission step)</label>
+    <input id="rpc" value="https://soroban-testnet.stellar.org" spellcheck="false" />
+
+    <button id="run">Sign the entry with a passkey</button>
+    <div id="log" role="status" aria-live="polite"></div>
+
+    <!-- Built by ../../wasm/build.sh; defines globalThis.Go. -->
+    <script src="../../wasm/dist/wasm_exec.js"></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
