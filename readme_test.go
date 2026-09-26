@@ -22,8 +22,10 @@ var readmeSnippets = []struct {
 	sourceFile string
 }{
 	{name: "quickstart", sourceFile: "quickstart.go"},
+	{name: "twopass-enforce", sourceFile: "twopass.go"},
 	{name: "delegates", sourceFile: "delegates.go"},
 	{name: "allowresign", sourceFile: "allowresign.go"},
+	{name: "remotesigner", sourceFile: "remotesigner.go"},
 }
 
 var goFencePattern = regexp.MustCompile("(?s)```go\n(.*?)```")
