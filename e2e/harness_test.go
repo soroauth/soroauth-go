@@ -29,6 +29,8 @@ import (
 	"github.com/stellar/go-stellar-sdk/protocols/stellarcore"
 	"github.com/stellar/go-stellar-sdk/txnbuild"
 	"github.com/stellar/go-stellar-sdk/xdr"
+
+	"github.com/soroauth/soroauth-go"
 )
 
 const (
