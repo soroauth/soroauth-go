@@ -13,6 +13,10 @@ import (
 // arms map and implementing the ArmBehavior interface.
 type CredentialArm string
 
+// The four SorobanCredentials arms defined by the protocol: SOURCE_ACCOUNT,
+// ADDRESS (legacy), ADDRESS_V2, and ADDRESS_WITH_DELEGATES. These are the
+// same four values CredentialTypeName reports and Inspect's credential_type
+// field carries.
 const (
 	ArmSourceAccount        CredentialArm = "source_account"
 	ArmAddress              CredentialArm = "address"

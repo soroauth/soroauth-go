@@ -1,6 +1,7 @@
 package soroauth
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/stellar/go-stellar-sdk/xdr"
@@ -129,4 +130,27 @@ func ExampleDecodeAuthorizationEntry() {
 		info.CredentialType, info.Nonce, info.ValidUntilLedger, info.RootFunction)
 
 	// Output: address_v2 nonce=7 expires=100 function=transfer
+}
+
+// ExampleNewPasskeySigner shows how to configure a passkey signer with required
+// user presence (UP) and user verification (UV) flags to enforce hardware or biometric
+// authorization constraints before signing a Soroban authorization entry.
+func ExampleNewPasskeySigner() {
+	// A dummy 37-byte authenticator data block where flag 0x01 (UP) and 0x04 (UV) are set.
+	authData := make([]byte, 37)
+	authData[32] = 0x05
+
+	signer := NewPasskeySigner(
+		"GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+		authData,
+		func(ctx context.Context, preimage xdr.HashIdPreimage, payload [32]byte) (xdr.ScVal, error) {
+			return scBytes([]byte("mock-webauthn-signature")), nil
+		},
+		RequireUserPresence(true),
+		RequireUserVerification(true),
+	)
+
+	fmt.Printf("signer address: %s\n", signer.Address())
+
+	// Output: signer address: GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF
 }

@@ -54,6 +54,90 @@ func signersForEntry(entry xdr.SorobanAuthorizationEntry, signers []Signer) (mat
 	return matched, topLevelMatched, nil
 }
 
+// DelegatePlan describes how WithDelegatePlans should wrap one entry in the
+// delegates arm before AuthorizeAll signs it.
+//
+// Without a plan for its address, an entry is signed exactly as it arrived —
+// legacy, V2, or already the delegates arm. A plan only applies to an entry
+// whose top-level address matches the plan's key, and only when that entry
+// is the legacy or V2 arm; WithDelegates itself refuses to wrap an entry
+// that is already the delegates arm or has already been signed, and
+// AuthorizeAll surfaces that refusal as this batch's error rather than
+// signing around it.
+type DelegatePlan struct {
+	// Delegates is the tree WithDelegates wraps the entry in.
+	Delegates []Delegate
+
+	// TopSignature is the account's own signature, passed through to
+	// WithDelegates unchanged. Nil stores ScvVoid, which CAP-71-01 permits
+	// for an account that authenticates purely through its delegates.
+	TopSignature *xdr.ScVal
+}
+
+// authorizeAllConfig holds the optional behaviour of AuthorizeAll.
+type authorizeAllConfig struct {
+	requireAllSigned bool
+	delegatePlans    map[string]DelegatePlan
+}
+
+// AuthorizeAllOption adjusts how AuthorizeAll behaves.
+type AuthorizeAllOption func(*authorizeAllConfig)
+
+// RequireAllSigned makes AuthorizeAll fail if any credential node in the
+// resulting batch — the top-level node of a legacy or V2 entry, the
+// top-level node of a delegates entry, or any delegate at any depth — is
+// left without a signature. It checks every node literally, including the
+// top-level node of a delegates entry that CAP-71-01 otherwise permits to
+// stay Void.
+//
+// AuthorizeAll's default behaviour (documented above) accepts a batch once
+// each address entry has at least one matching signer, because it cannot
+// know an account's own signing policy: a 2-of-3 delegate tree with one
+// branch left unsigned is not necessarily wrong, and neither is an account
+// that authenticates purely through its delegates and never signs its own
+// top-level node. RequireAllSigned is the opt-in for a caller who does know
+// their policy requires every node signed — including the top-level node,
+// if their account also requires its own key — and would rather fail
+// locally than submit a transaction that fails during application because
+// an account's __check_auth called delegate_account_auth for a node with an
+// empty signature.
+//
+// Because the check is literal, a caller whose delegates-only account
+// deliberately leaves the top-level node Void must not use
+// RequireAllSigned for that entry — it will report the Void top-level node
+// as unsigned, correctly, since this option cannot tell "intentionally
+// Void" from "forgotten". This cannot detect a policy that intentionally
+// leaves some nodes unsigned; it only proves the stronger claim "everything
+// is signed", which is a property of the batch's structure, not of the
+// account's rules. A single legacy or V2 entry that is already fully
+// signed is unaffected: it has one node, and AuthorizeAll never returns
+// such an entry with that node unsigned, so RequireAllSigned is a no-op
+// there.
+func RequireAllSigned() AuthorizeAllOption {
+	return func(c *authorizeAllConfig) {
+		c.requireAllSigned = true
+	}
+}
+
+// WithDelegatePlans wraps each named address's entry in the delegates arm,
+// via WithDelegates, before AuthorizeAll signs the batch.
+//
+// Without this option, using the delegates arm through AuthorizeAll meant
+// unpacking the batch, calling WithDelegates on the one entry that needed
+// it, and repacking — this does that step for every plan entry, keyed by
+// the strkey address WithDelegates would have wrapped.
+//
+// An address in plans that matches no entry's top-level address is an
+// error (ErrDelegatePlanUnmatched), never a silent no-op: a plan that never
+// applied usually means the caller expected an entry that is not in this
+// batch, and signing the batch anyway would produce a transaction missing
+// the delegation the caller intended.
+func WithDelegatePlans(plans map[string]DelegatePlan) AuthorizeAllOption {
+	return func(c *authorizeAllConfig) {
+		c.delegatePlans = plans
+	}
+}
+
 // AuthorizeAll signs every entry in a batch, or none of them.
 //
 // Source-account entries pass through unchanged, so a caller can hand over
@@ -118,11 +202,18 @@ func AuthorizeAll(
 	signers []Signer,
 	validUntilLedger uint32,
 	networkPassphrase string,
+	opts ...AuthorizeAllOption,
 ) ([]xdr.SorobanAuthorizationEntry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("soroauth: authorize all: %w", err)
 	}
 
+	var config authorizeAllConfig
+	for _, opt := range opts {
+		opt(&config)
+	}
+
+	usedPlans := make(map[string]bool, len(config.delegatePlans))
 	out := make([]xdr.SorobanAuthorizationEntry, 0, len(entries))
 
 	for i, entry := range entries {
@@ -142,6 +233,15 @@ func AuthorizeAll(
 		address, err := FormatAddress(credentials.Address)
 		if err != nil {
 			return nil, fmt.Errorf("soroauth: authorize all: entry %d: %w", i, err)
+		}
+
+		if plan, ok := config.delegatePlans[address]; ok {
+			wrapped, err := WithDelegates(entry, validUntilLedger, plan.Delegates, plan.TopSignature)
+			if err != nil {
+				return nil, fmt.Errorf("soroauth: authorize all: entry %d (%s): delegate plan: %w", i, address, err)
+			}
+			entry = wrapped
+			usedPlans[address] = true
 		}
 
 		matched, _, err := signersForEntry(entry, signers)
@@ -164,6 +264,34 @@ func AuthorizeAll(
 		}
 
 		out = append(out, signed)
+	}
+
+	for address := range config.delegatePlans {
+		if !usedPlans[address] {
+			return nil, fmt.Errorf("soroauth: authorize all: %s: %w", address, &DelegatePlanUnmatchedError{Address: address})
+		}
+	}
+
+	if config.requireAllSigned {
+		for i := range out {
+			if out[i].Credentials.Type == xdr.SorobanCredentialsTypeSorobanCredentialsSourceAccount {
+				continue
+			}
+			nodes, err := credentialNodes(&out[i])
+			if err != nil {
+				return nil, fmt.Errorf("soroauth: authorize all: entry %d: %w", i, err)
+			}
+			for _, node := range nodes {
+				if !isSigned(*node.signature) {
+					address, formatErr := formatAddressBytes(node.encoded)
+					if formatErr != nil {
+						address = "<unformattable address>"
+					}
+					return nil, fmt.Errorf("soroauth: authorize all: entry %d: %s: %w", i, address,
+						&UnsignedCredentialNodeError{Address: address})
+				}
+			}
+		}
 	}
 
 	return out, nil

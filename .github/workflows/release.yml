@@ -7,6 +7,10 @@ on:
 
 permissions:
   contents: write
+  packages: write
+  # Provenance for the npm package is signed through GitHub's OIDC identity, so
+  # the publish job needs to mint an id token.
+  id-token: write
 
 jobs:
   golden-drift:
@@ -72,6 +76,127 @@ jobs:
             soroauth.exe
           retention-days: 1
 
+  image:
+    name: build and publish container image
+    needs: golden-drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: log in to ghcr.io
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: derive image tags
+        id: tags
+        run: |
+          # ${GITHUB_REF_NAME} is the pushed tag, e.g. v0.1.0. The image gets
+          # that exact tag plus `latest`, so a pull without a tag always gets
+          # the newest release rather than needing the version pinned twice.
+          echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/soroauth/soroauth-go:${{ steps.tags.outputs.version }}
+            ghcr.io/soroauth/soroauth-go:latest
+
+  # Every parity suite must pass before the npm package is published. A package
+  # whose bytes nobody cross-checked is exactly the artifact issue #54 says must
+  # not ship, so this job re-runs the same checks CI runs rather than trusting
+  # that they ran on the branch: a tag can point at any commit.
+  wasm-parity:
+    name: parity suites before publish
+    needs: golden-drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: wasm/ts/package-lock.json
+      - name: python sdk parity
+        run: |
+          python3 -m venv .venv-parity
+          . .venv-parity/bin/activate
+          pip install -r testdata/parity-python/requirements.txt
+          python3 testdata/parity-python/parity.py
+          python3 testdata/parity-python/test_parity.py
+      - name: build the wasm module
+        run: ./wasm/build.sh
+      - name: wasm byte parity against the golden vectors
+        run: node wasm/parity.mjs
+      - name: typescript wrapper tests
+        working-directory: wasm/ts
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+  npm:
+    name: publish @soroauth/wasm
+    needs: wasm-parity
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Full history and tags so the tagged commit can be identified.
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+          cache-dependency-path: wasm/ts/package-lock.json
+      # The version is derived from the tag, and the tag must be the commit
+      # being published. Publishing from a branch, or from a commit the tag does
+      # not point at, would ship bytes that do not match the release.
+      - name: refuse to publish anything but the tagged commit
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "refusing to publish: GITHUB_REF_TYPE=${GITHUB_REF_TYPE}, expected 'tag'" >&2
+            exit 1
+          fi
+          head_sha="$(git rev-parse HEAD)"
+          tag_sha="$(git rev-parse "${GITHUB_REF_NAME}^{commit}")"
+          if [ "$head_sha" != "$tag_sha" ]; then
+            echo "refusing to publish: HEAD ${head_sha} is not ${GITHUB_REF_NAME} (${tag_sha})" >&2
+            exit 1
+          fi
+      - name: derive the package version from the tag
+        working-directory: wasm/ts
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          npm version "$version" --no-git-tag-version --allow-same-version
+          echo "publishing @soroauth/wasm@${version}"
+      - name: build the wasm module from the tagged commit
+        run: ./wasm/build.sh
+      # prepack stages the wasm binary and its runtime shim into the tarball, so
+      # the published package is self-contained and cannot reference a build
+      # from another commit. --provenance attaches a signed statement tying the
+      # tarball to this repository, commit and workflow run.
+      - name: publish with provenance
+        working-directory: wasm/ts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
+
   release:
     name: create release
     needs: build
@@ -115,3 +240,127 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: false
+
+  # `go install` can fail for reasons the repo's own tests never see — a
+  # module path typo, a tag the proxy refuses to index, a go.mod the
+  # toolchain rejects — so the release is not done until the exact tag it
+  # just published installs from the proxy and the installed CLI passes a
+  # smoke test. This job runs after the release exists, against the proxy
+  # rather than the checkout, so it proves what a user gets.
+  install-check:
+    name: install from proxy and smoke test
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      # The proxy indexes a new tag lazily: the tag push that started this
+      # workflow does not mean proxy.golang.org serves it yet. Poll its
+      # .info endpoint rather than failing the release on a race.
+      - name: wait for the proxy to index the tag
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          case "$tag" in
+            v*) ;;
+            *) echo "refusing: expected a version tag, got '${tag}'" >&2; exit 1;;
+          esac
+          for i in $(seq 1 30); do
+            if curl -fsS "https://proxy.golang.org/github.com/soroauth/soroauth-go/@v/${tag}.info"; then
+              echo "proxy serves ${tag}"
+              exit 0
+            fi
+            echo "attempt ${i}/30: proxy does not serve ${tag} yet, waiting 20s"
+            sleep 20
+          done
+          echo "proxy never indexed ${tag}" >&2
+          exit 1
+      # GOPROXY is pinned to the proxy (not the default chain, not direct)
+      # so this step cannot accidentally pass by fetching from git. GOBIN
+      # isolates the installed binary from the runner's GOPATH.
+      - name: install the CLI from the proxy
+        env:
+          GOPROXY: https://proxy.golang.org,direct
+          GOSUMDB: sum.golang.org
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          bindir="${RUNNER_TEMP}/soroauth-bin"
+          mkdir -p "$bindir"
+          for i in $(seq 1 5); do
+            if GOBIN="$bindir" go install "github.com/soroauth/soroauth-go/cmd/soroauth@${tag}"; then
+              break
+            fi
+            echo "attempt ${i}/5: go install failed, waiting 30s"
+            sleep 30
+            if [ "$i" = "5" ]; then
+              echo "go install of ${tag} failed after 5 attempts" >&2
+              exit 1
+            fi
+          done
+          test -x "${bindir}/soroauth"
+          "${bindir}/soroauth" help
+          echo "BIN=${bindir}/soroauth" >> "$GITHUB_ENV"
+      # The CLI check above proves cmd/soroauth builds; this one proves the
+      # library itself resolves as a dependency. A scratch module outside the
+      # checkout runs `go get` at the tag against the proxy, then compiles
+      # and runs a tiny program importing soroauth.
+      - name: verify the module resolves from the proxy
+        env:
+          GOPROXY: https://proxy.golang.org,direct
+          GOSUMDB: sum.golang.org
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          cd "$work"
+          go mod init installcheck >/dev/null
+          go get "github.com/soroauth/soroauth-go@${tag}"
+          go list -m github.com/soroauth/soroauth-go | grep -F "$tag"
+          cat > main.go <<'EOF'
+          package main
+
+          import (
+          	"fmt"
+          	"os"
+
+          	"github.com/soroauth/soroauth-go"
+          )
+
+          func main() {
+          	v, err := soroauth.ExpirationAfter(100, 200)
+          	if err != nil {
+          		fmt.Fprintf(os.Stderr, "ExpirationAfter: %v\n", err)
+          		os.Exit(1)
+          	}
+          	if v != 300 {
+          		fmt.Fprintf(os.Stderr, "unexpected expiration: got %d, want 300\n", v)
+          		os.Exit(1)
+          	}
+          	fmt.Println(v)
+          }
+          EOF
+          test "$(go run .)" = "300"
+          echo "module ${tag} resolves and links"
+      # The installed binary — not the checkout — inspects a committed
+      # golden vector and recomputes its payload, asserting both against the
+      # vector's recorded values. An install that yields a binary which runs
+      # but disagrees with the reference fails here rather than on a user's
+      # machine.
+      - name: CLI smoke test against a golden vector
+        run: |
+          set -euo pipefail
+          entry="$(python3 -c "import json; print(json.load(open('testdata/vectors/v2_single_testnet.json'))['unsigned_entry_xdr'])")"
+          expected_payload="$(python3 -c "import json; print(json.load(open('testdata/vectors/v2_single_testnet.json'))['payload_hex'])")"
+          echo "inspect:"
+          "$BIN" inspect --entry "$entry" --json | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['credential_type'] == 'address_v2', d; print('  credential_type:', d['credential_type']); print('  address:', d['address'])"
+          echo "payload:"
+          export EXPECTED_PAYLOAD="$expected_payload"
+          "$BIN" payload --entry "$entry" --valid-until 1234567 --network testnet --json | python3 -c "import json,sys,os; d=json.load(sys.stdin); exp=os.environ['EXPECTED_PAYLOAD']; assert d['payload'] == exp, (d['payload'], exp); print('  payload matches vector:', d['payload'])"

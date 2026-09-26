@@ -1,0 +1,519 @@
+package soroauth
+
+import (
+	"bytes"
+	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/stellar/go-stellar-sdk/keypair"
+	"github.com/stellar/go-stellar-sdk/network"
+	"github.com/stellar/go-stellar-sdk/xdr"
+)
+
+// signVectorEntry replays a golden vector's signing steps onto its unsigned
+// entry, so the verification tests below and golden_test.go agree on what the
+// "signed" entry for a vector is.
+func signVectorEntry(t *testing.T, v vector) xdr.SorobanAuthorizationEntry {
+	t.Helper()
+
+	var entry xdr.SorobanAuthorizationEntry
+	if err := xdr.SafeUnmarshalBase64(v.UnsignedEntryXDR, &entry); err != nil {
+		t.Fatalf("decoding the unsigned entry: %v", err)
+	}
+
+	signed := entry
+	for i, step := range v.Steps {
+		var opts []AuthorizeOption
+		if step.ForAddress != nil {
+			opts = append(opts, ForAddress(*step.ForAddress))
+		}
+		var err error
+		signed, err = AuthorizeEntry(context.Background(), signed,
+			signerForLabel(t, step.SignerLabel), v.ValidUntilLedger, v.NetworkPassphrase, opts...)
+		if err != nil {
+			t.Fatalf("step %d (%s): %v", i, step.SignerLabel, err)
+		}
+	}
+	return signed
+}
+
+// TestVerifyEntryGoldenVectors runs the engine over every signed golden vector.
+// This is the evidence that offline verification agrees with the entries the
+// reference implementation produced.
+//
+// Every node must come back verified or unsigned; a vector must never produce
+// an invalid or cannot-check verdict, because every vector is a classic
+// account signature laid out by the JS reference. The delegates vectors are the
+// interesting case: their top-level node is deliberately Void (CAP-71-01), so
+// it must be reported unsigned while every delegate verifies.
+func TestVerifyEntryGoldenVectors(t *testing.T) {
+	for _, v := range loadVectors(t) {
+		t.Run(v.Name, func(t *testing.T) {
+			var entry xdr.SorobanAuthorizationEntry
+			if err := xdr.SafeUnmarshalBase64(v.UnsignedEntryXDR, &entry); err != nil {
+				t.Fatalf("decoding the unsigned entry: %v", err)
+			}
+
+			// The source-account arm has no payload of its own; the report
+			// must say so rather than pretend to have checked something.
+			if entry.Credentials.Type == xdr.SorobanCredentialsTypeSorobanCredentialsSourceAccount {
+				report, err := VerifyEntry(entry, v.NetworkPassphrase)
+				if err != nil {
+					t.Fatalf("VerifyEntry: %v", err)
+				}
+				if len(report.Nodes) != 0 {
+					t.Fatalf("source-account entry reported %d nodes, want 0", len(report.Nodes))
+				}
+				if report.Note == "" {
+					t.Error("source-account entry reported no note explaining there is nothing to verify")
+				}
+				if !report.Verified() {
+					t.Error("source-account entry verified false; it has nothing that can fail")
+				}
+				return
+			}
+
+			signed := signVectorEntry(t, v)
+
+			// The engine must rebuild the payload from the entry's own stored
+			// expiration, which is what the vector recorded.
+			report, err := VerifyEntry(signed, v.NetworkPassphrase)
+			if err != nil {
+				t.Fatalf("VerifyEntry: %v", err)
+			}
+
+			if report.ValidUntilLedger != v.ValidUntilLedger {
+				t.Errorf("rebuilt over expiration %d, want the entry's stored %d",
+					report.ValidUntilLedger, v.ValidUntilLedger)
+			}
+			if len(report.Nodes) == 0 {
+				t.Fatal("entry reported no credential nodes")
+			}
+
+			// Which addresses the vector's own steps signed decides each node's
+			// expected verdict, so the assertion is derived from the case rather
+			// than assuming every delegate was signed. In the two-levels vector
+			// one address is signed once and fills both of its nodes, while the
+			// other delegate is deliberately left unsigned.
+			wantVerified := signedAddresses(t, v)
+			for i, node := range report.Nodes {
+				want := VerdictUnsigned
+				if wantVerified[node.Address] {
+					want = VerdictVerified
+				}
+				if node.Verdict != want {
+					t.Errorf("node %d (%s) verdict %q (%s), want %q",
+						i, node.Address, node.Verdict, node.Reason, want)
+				}
+			}
+
+			// The report must never call a golden vector invalid or
+			// cannot-check: every vector's nodes are classic account signatures.
+			for i, node := range report.Nodes {
+				if node.Verdict == VerdictInvalid || node.Verdict == VerdictCannotCheck {
+					t.Errorf("node %d (%s) verdict %q (%s); a golden vector must never be %q or %q",
+						i, node.Address, node.Verdict, node.Reason, VerdictInvalid, VerdictCannotCheck)
+				}
+			}
+
+			// A delegates vector's top-level node is Void (CAP-71-01), so it
+			// must never read as verified.
+			if entry.Credentials.Type == xdr.SorobanCredentialsTypeSorobanCredentialsAddressWithDelegates {
+				if report.Nodes[0].Verdict != VerdictUnsigned {
+					t.Errorf("delegates vector top-level node verdict %q, want %q (its signature is Void)",
+						report.Nodes[0].Verdict, VerdictUnsigned)
+				}
+				if len(report.Nodes) < 2 {
+					t.Fatalf("delegates vector reported %d nodes, want at least a top-level and a delegate", len(report.Nodes))
+				}
+			}
+
+			if report.Verified() != allNodesVerified(t, v) {
+				t.Errorf("Verified() = %v, want %v", report.Verified(), allNodesVerified(t, v))
+			}
+		})
+	}
+}
+
+// signedAddresses returns the set of addresses a vector's steps signed: the
+// explicit for_address when one was given, otherwise the signer's own address.
+func signedAddresses(t *testing.T, v vector) map[string]bool {
+	t.Helper()
+	out := map[string]bool{}
+	for _, step := range v.Steps {
+		if step.ForAddress != nil {
+			out[*step.ForAddress] = true
+			continue
+		}
+		kp, err := keypair.FromRawSeed(sha256.Sum256([]byte(step.SignerLabel)))
+		if err != nil {
+			t.Fatalf("deriving the keypair for %q: %v", step.SignerLabel, err)
+		}
+		out[kp.Address()] = true
+	}
+	return out
+}
+
+// allNodesVerified reports whether every credential node a vector has is in
+// the set its steps signed, and there is at least one such node.
+func allNodesVerified(t *testing.T, v vector) bool {
+	t.Helper()
+	if len(signedAddresses(t, v)) == 0 {
+		return false
+	}
+	var entry xdr.SorobanAuthorizationEntry
+	if err := xdr.SafeUnmarshalBase64(v.UnsignedEntryXDR, &entry); err != nil {
+		t.Fatalf("decoding the unsigned entry: %v", err)
+	}
+	signed := signVectorEntry(t, v)
+	nodes, err := credentialNodes(&signed)
+	if err != nil {
+		t.Fatalf("credentialNodes: %v", err)
+	}
+	want := signedAddresses(t, v)
+	for _, node := range nodes {
+		address, err := formatAddressBytes(node.encoded)
+		if err != nil {
+			t.Fatalf("formatAddressBytes: %v", err)
+		}
+		if !want[address] {
+			return false
+		}
+	}
+	return len(nodes) > 0
+}
+
+// TestVerifyEntryCoversLegacyAndV2 exercises the engine directly on the two
+// single-node address arms, including the address-bound flag each arm reports.
+func TestVerifyEntryCoversLegacyAndV2(t *testing.T) {
+	tests := []struct {
+		name      string
+		armType   xdr.SorobanCredentialsType
+		wantBound bool
+	}{
+		{name: "legacy", armType: xdr.SorobanCredentialsTypeSorobanCredentialsAddress, wantBound: false},
+		{name: "v2", armType: xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, wantBound: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entry, signer := signedEntryFixture(t, tt.armType)
+			signed, err := AuthorizeEntry(context.Background(), entry, signer, testValidUntilLedger, network.TestNetworkPassphrase)
+			if err != nil {
+				t.Fatalf("AuthorizeEntry: %v", err)
+			}
+
+			report, err := VerifyEntry(signed, network.TestNetworkPassphrase)
+			if err != nil {
+				t.Fatalf("VerifyEntry: %v", err)
+			}
+			if report.AddressBound != tt.wantBound {
+				t.Errorf("AddressBound = %v, want %v", report.AddressBound, tt.wantBound)
+			}
+			if len(report.Nodes) != 1 || report.Nodes[0].Verdict != VerdictVerified {
+				t.Fatalf("got %+v, want a single verified node", report.Nodes)
+			}
+			if !report.Verified() {
+				t.Error("Verified() = false for a correctly signed entry")
+			}
+		})
+	}
+}
+
+// TestVerifyEntryRejectsATamperedSignature is the guard that makes the engine
+// worth having: a signature that is present and well-formed but wrong must be
+// reported invalid, not verified.
+func TestVerifyEntryRejectsATamperedSignature(t *testing.T) {
+	entry, signer := signedEntryFixture(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2)
+	signed, err := AuthorizeEntry(context.Background(), entry, signer, testValidUntilLedger, network.TestNetworkPassphrase)
+	if err != nil {
+		t.Fatalf("AuthorizeEntry: %v", err)
+	}
+
+	credentials, err := addressCredentials(signed.Credentials)
+	if err != nil {
+		t.Fatalf("addressCredentials: %v", err)
+	}
+	publicKey, signature, err := parseAccountSignature(credentials.Signature)
+	if err != nil {
+		t.Fatalf("parseAccountSignature: %v", err)
+	}
+
+	// Flip one bit of the signature, leaving the public key and shape intact.
+	tampered := append([]byte(nil), signature...)
+	tampered[0] ^= 0x01
+	credentials.Signature = scVec(accountSignature(publicKey, tampered))
+
+	report, err := VerifyEntry(signed, network.TestNetworkPassphrase)
+	if err != nil {
+		t.Fatalf("VerifyEntry: %v", err)
+	}
+	if len(report.Nodes) != 1 {
+		t.Fatalf("got %d nodes, want 1", len(report.Nodes))
+	}
+	if report.Nodes[0].Verdict != VerdictInvalid {
+		t.Errorf("verdict = %q (%s), want %q", report.Nodes[0].Verdict, report.Nodes[0].Reason, VerdictInvalid)
+	}
+	if report.Verified() {
+		t.Error("a tampered signature reported Verified true")
+	}
+}
+
+// TestVerifyEntryCannotCheckCustomShapes proves the fail-closed rule: a
+// signature this engine does not recognise is reported as cannot-check, never
+// as verified, and the reason names the contract as the authority.
+func TestVerifyEntryCannotCheckCustomShapes(t *testing.T) {
+	entry, signer := signedEntryFixture(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2)
+	signed, err := AuthorizeEntry(context.Background(), entry, signer, testValidUntilLedger, network.TestNetworkPassphrase)
+	if err != nil {
+		t.Fatalf("AuthorizeEntry: %v", err)
+	}
+	tests := []struct {
+		name      string
+		signature xdr.ScVal
+	}{
+		{name: "opaque bytes", signature: scBytes([]byte("not an account signature"))},
+		{name: "a map", signature: scMapVal()},
+		{name: "a vector holding two maps", signature: scVec(scMapVal(), scMapVal())},
+		{name: "a vector holding a symbol", signature: scVec(scSymbol("x"))},
+		{name: "an integer", signature: scI64(1)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			candidate := signed
+			candidateCredentials, err := addressCredentials(candidate.Credentials)
+			if err != nil {
+				t.Fatalf("addressCredentials: %v", err)
+			}
+			candidateCredentials.Signature = tt.signature
+
+			report, err := VerifyEntry(candidate, network.TestNetworkPassphrase)
+			if err != nil {
+				t.Fatalf("VerifyEntry: %v", err)
+			}
+			if len(report.Nodes) != 1 {
+				t.Fatalf("got %d nodes, want 1", len(report.Nodes))
+			}
+			if report.Nodes[0].Verdict != VerdictCannotCheck {
+				t.Errorf("verdict = %q, want %q", report.Nodes[0].Verdict, VerdictCannotCheck)
+			}
+			if !strings.Contains(report.Nodes[0].Reason, "__check_auth") && !strings.Contains(report.Nodes[0].Reason, "cannot be checked offline") {
+				t.Errorf("reason %q does not explain that only the account defines validity", report.Nodes[0].Reason)
+			}
+		})
+	}
+}
+
+// TestVerifyEntryReportsUnsignedNode covers the empty-vector placeholder the
+// simulation and the JS reference both use, and the Void placeholder CAP-71-01
+// permits.
+func TestVerifyEntryReportsUnsignedNode(t *testing.T) {
+	tests := []struct {
+		name      string
+		signature xdr.ScVal
+	}{
+		{name: "void", signature: xdr.ScVal{Type: xdr.ScValTypeScvVoid}},
+		{name: "empty vector", signature: scVec()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entry := entryForArm(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 5)
+			credentials, err := addressCredentials(entry.Credentials)
+			if err != nil {
+				t.Fatalf("addressCredentials: %v", err)
+			}
+			credentials.Signature = tt.signature
+
+			report, err := VerifyEntry(entry, network.TestNetworkPassphrase)
+			if err != nil {
+				t.Fatalf("VerifyEntry: %v", err)
+			}
+			if len(report.Nodes) != 1 || report.Nodes[0].Verdict != VerdictUnsigned {
+				t.Fatalf("got %+v, want one unsigned node", report.Nodes)
+			}
+			if !report.HasUnsignedNodes() {
+				t.Error("HasUnsignedNodes() = false for an unsigned node")
+			}
+			if report.Verified() {
+				t.Error("Verified() = true for an unsigned node")
+			}
+		})
+	}
+}
+
+// TestVerifyEntryCannotCheckAContractNode proves a node addressed to a C…
+// contract is never verified, whatever its signature looks like.
+func TestVerifyEntryCannotCheckAContractNode(t *testing.T) {
+	contractAddress, err := ParseAddress(testContractAddress(t, "verify-contract-address"))
+	if err != nil {
+		t.Fatalf("ParseAddress: %v", err)
+	}
+
+	accountKey, err := rawEd25519Key(testKeypair(t, "verify-contract-node").Address())
+	if err != nil {
+		t.Fatalf("rawEd25519Key: %v", err)
+	}
+	// A correctly shaped signature, so only the contract-address rule can be
+	// what produces the verdict.
+	signature := scVec(accountSignature(accountKey, make([]byte, ed25519.SignatureSize)))
+
+	credentials := xdr.SorobanAddressCredentials{
+		Address:                   contractAddress,
+		Nonce:                     11,
+		SignatureExpirationLedger: 0,
+		Signature:                 signature,
+	}
+	entry := xdr.SorobanAuthorizationEntry{
+		Credentials:    xdr.SorobanCredentials{Type: xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, AddressV2: &credentials},
+		RootInvocation: testInvocation(t),
+	}
+
+	report, err := VerifyEntry(entry, network.TestNetworkPassphrase)
+	if err != nil {
+		t.Fatalf("VerifyEntry: %v", err)
+	}
+	if len(report.Nodes) != 1 {
+		t.Fatalf("got %d nodes, want 1", len(report.Nodes))
+	}
+	if report.Nodes[0].Verdict != VerdictCannotCheck {
+		t.Errorf("verdict = %q (%s), want %q", report.Nodes[0].Verdict, report.Nodes[0].Reason, VerdictCannotCheck)
+	}
+	if !strings.Contains(report.Nodes[0].Reason, "__check_auth") {
+		t.Errorf("reason %q does not name the contract as the authority", report.Nodes[0].Reason)
+	}
+}
+
+// TestVerifyEntryNestedDelegateTree signs a top-level node plus a delegate that
+// itself has a nested delegate, and checks that every node is reached.
+func TestVerifyEntryNestedDelegateTree(t *testing.T) {
+	helper := NewEd25519Signer(testKeypair(t, "verify-nested-helper"))
+	// The top-level signer must own the entry's own address, because
+	// AuthorizeEntry only writes onto a node whose address equals the target.
+	top := NewEd25519Signer(testKeypair(t, "soroauth-preimage-signer"))
+	nested := NewEd25519Signer(testKeypair(t, "verify-nested-inner"))
+
+	unsigned := entryForArm(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 21)
+	wrapped, err := WithDelegates(unsigned, testValidUntilLedger, []Delegate{{
+		Address: helper.Address(),
+		Nested:  []Delegate{{Address: nested.Address()}},
+	}}, nil)
+	if err != nil {
+		t.Fatalf("WithDelegates: %v", err)
+	}
+
+	signed := wrapped
+	for _, signer := range []Signer{top, helper, nested} {
+		signed, err = AuthorizeEntry(context.Background(), signed, signer, testValidUntilLedger, network.TestNetworkPassphrase)
+		if err != nil {
+			t.Fatalf("AuthorizeEntry(%s): %v", signer.Address(), err)
+		}
+	}
+
+	report, err := VerifyEntry(signed, network.TestNetworkPassphrase)
+	if err != nil {
+		t.Fatalf("VerifyEntry: %v", err)
+	}
+	// Top-level plus the outer delegate plus the nested delegate.
+	if len(report.Nodes) != 3 {
+		t.Fatalf("got %d nodes, want 3: %+v", len(report.Nodes), report.Nodes)
+	}
+	for i, node := range report.Nodes {
+		if node.Verdict != VerdictVerified {
+			t.Errorf("node %d (%s) verdict %q (%s), want %q", i, node.Address, node.Verdict, node.Reason, VerdictVerified)
+		}
+	}
+	if !report.Verified() {
+		t.Error("Verified() = false for a fully signed tree")
+	}
+}
+
+// TestVerifyEntrySourceAccount covers the pass-through arm: there is nothing to
+// check and the report says so.
+func TestVerifyEntrySourceAccount(t *testing.T) {
+	entry := entryForArm(t, xdr.SorobanCredentialsTypeSorobanCredentialsSourceAccount, 3)
+
+	report, err := VerifyEntry(entry, network.TestNetworkPassphrase)
+	if err != nil {
+		t.Fatalf("VerifyEntry: %v", err)
+	}
+	if report.CredentialType != CredentialTypeSourceAccount {
+		t.Errorf("CredentialType = %q, want %q", report.CredentialType, CredentialTypeSourceAccount)
+	}
+	if len(report.Nodes) != 0 {
+		t.Errorf("got %d nodes, want 0", len(report.Nodes))
+	}
+	if report.Note == "" {
+		t.Error("no note explaining that the envelope covers the source-account arm")
+	}
+	if !report.Verified() {
+		t.Error("Verified() = false; there is nothing in this arm that can fail")
+	}
+}
+
+func TestVerifyEntryUnsupportedArm(t *testing.T) {
+	entry := xdr.SorobanAuthorizationEntry{
+		Credentials:    xdr.SorobanCredentials{Type: xdr.SorobanCredentialsType(99)},
+		RootInvocation: testInvocation(t),
+	}
+
+	_, err := VerifyEntry(entry, network.TestNetworkPassphrase)
+	if !errors.Is(err, ErrUnsupportedCredentials) {
+		t.Fatalf("err = %v, want ErrUnsupportedCredentials", err)
+	}
+}
+
+func TestVerifyEntryRejectsEmptyPassphrase(t *testing.T) {
+	entry, _ := signedEntryFixture(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2)
+
+	_, err := VerifyEntry(entry, "")
+	if err == nil {
+		t.Fatal("VerifyEntry accepted an empty network passphrase")
+	}
+}
+
+// TestVerifyEntryDoesNotMutateInput holds VerifyEntry to the same guarantee
+// every other entry-taking function gives: the caller's entry is never
+// written to.
+func TestVerifyEntryDoesNotMutateInput(t *testing.T) {
+	entry, signer := signedEntryFixture(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressWithDelegates)
+	signed, err := AuthorizeEntry(context.Background(), entry, signer, testValidUntilLedger, network.TestNetworkPassphrase)
+	if err != nil {
+		t.Fatalf("AuthorizeEntry: %v", err)
+	}
+
+	before, err := signed.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshalling before: %v", err)
+	}
+
+	if _, err := VerifyEntry(signed, network.TestNetworkPassphrase); err != nil {
+		t.Fatalf("VerifyEntry: %v", err)
+	}
+
+	after, err := signed.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshalling after: %v", err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Errorf("VerifyEntry mutated its input\n before %x\n  after %x", before, after)
+	}
+}
+
+// scMapVal and scI64 are small ScVal constructors the custom-shape table needs;
+// the accountSignature builder in signer.go covers the shape these are not.
+func scMapVal() xdr.ScVal {
+	entries := xdr.ScMap{{Key: scSymbol("not_a_signature"), Val: scBytes([]byte("x"))}}
+	p := &entries
+	return xdr.ScVal{Type: xdr.ScValTypeScvMap, Map: &p}
+}
+
+func scI64(v int64) xdr.ScVal {
+	value := xdr.Int64(v)
+	return xdr.ScVal{Type: xdr.ScValTypeScvI64, I64: &value}
+}

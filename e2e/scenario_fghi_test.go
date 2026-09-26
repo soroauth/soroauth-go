@@ -8,13 +8,54 @@ import (
 
 	"github.com/stellar/go-stellar-sdk/keypair"
 	rpc "github.com/stellar/go-stellar-sdk/protocols/rpc"
+
+	"github.com/soroauth/soroauth-go"
 )
 
 // The scenarios in this file put the two delegate-window fixtures in front of a
-// live host. They reuse delegatesFlow from scenario_de_test.go: the wrapping,
-// the per-address signing and the two simulation passes are identical, and the
-// only thing that changes is which account contract the transfer is authorized
-// by and what its __check_auth decides.
+// live host. They go through delegatesFlow below: the wrapping, the per-address
+// signing and the two simulation passes are identical, and the only thing that
+// changes is which account contract the transfer is authorized by and what its
+// __check_auth decides.
+
+// delegatesFlow adapts the delegate helper's original signature to runScenario,
+// the one runner every scenario uses since #196 unified the three copied flows.
+//
+// These four scenarios were written against that original signature
+// (t, h, payer, contract, to, delegatesToAttach, signers, expectFailure). Rather
+// than restore a second copy of the record/sign/enforce/submit flow — exactly
+// what #196 removed — this turns the arguments into a scenarioSpec and lets
+// runScenario do the work, so there stays one place that decides how a scenario
+// runs.
+func delegatesFlow(
+	t *testing.T,
+	h *harness,
+	payer *keypair.Full,
+	contract string,
+	to *keypair.Full,
+	delegatesToAttach []string,
+	signers []*keypair.Full,
+	expectFailure bool,
+) submission {
+	t.Helper()
+
+	op := h.transferOp(t, scAddressOf(t, contract), scAddressOf(t, to.Address()),
+		transferAmount, payer.Address())
+
+	flowSigners := make([]soroauth.Signer, 0, len(signers))
+	for _, kp := range signers {
+		flowSigners = append(flowSigners, soroauth.NewEd25519Signer(kp))
+	}
+
+	return runScenario(t, h, scenarioSpec{
+		payer:         payer,
+		op:            op,
+		upgradedAuth:  true,
+		signers:       flowSigners,
+		prepare:       prepareDelegates(contract, delegatesToAttach),
+		expectFailure: expectFailure,
+	})
+}
 
 // TestScenarioF proves a session key inside its window is accepted by a live
 // host: a contract account holding XLM transfers it, authorized only by a

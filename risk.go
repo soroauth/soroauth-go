@@ -10,6 +10,10 @@ import (
 // FindingSeverity ranks the importance of a finding.
 type FindingSeverity string
 
+// The three severities a Finding can carry, in increasing order of
+// importance: info notes a fact worth surfacing, warning flags something a
+// signer should look at before approving, and critical flags something the
+// analyzer believes should block signing outright.
 const (
 	SeverityInfo     FindingSeverity = "info"
 	SeverityWarning  FindingSeverity = "warning"
@@ -261,17 +265,20 @@ func countUnsignedDelegates(delegates []NodeInfo) int {
 	return count
 }
 
-// AnalyzeWithCurrentLedger is a convenience wrapper that fetches the current
-// ledger from an RPC client and runs Analyze. The client must implement the
-// minimal interface with a GetLatestLedger method.
-//
-// This is provided for callers who want expiration checking but don't want to
-// manage ledger state themselves. The RPC call is best-effort; if it fails,
-// analysis proceeds without expiration checking (equivalent to CurrentLedger=0).
+// LedgerSource is the minimal RPC client capability AnalyzeWithCurrentLedger
+// needs: just enough to read the current ledger, so callers do not have to
+// satisfy a wider RPC client interface just to get expiration checking.
 type LedgerSource interface {
 	GetLatestLedger(ctx context.Context) (uint32, error)
 }
 
+// AnalyzeWithCurrentLedger is a convenience wrapper that fetches the current
+// ledger from src and runs Analyze with it.
+//
+// This is for callers who want expiration checking but don't want to manage
+// ledger state themselves. The RPC call is best-effort; if it fails, analysis
+// proceeds without expiration checking (equivalent to CurrentLedger=0), since
+// a failed status lookup should degrade the analysis rather than block it.
 func AnalyzeWithCurrentLedger(ctx context.Context, entry xdr.SorobanAuthorizationEntry, cfg *RiskConfig, src LedgerSource) ([]Finding, error) {
 	if cfg == nil {
 		defaultCfg := DefaultRiskConfig()

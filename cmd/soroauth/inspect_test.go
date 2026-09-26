@@ -41,6 +41,68 @@ func inspectEntry(t *testing.T, entryXDR string) report {
 	return got
 }
 
+// TestInspectJSONFailureStaysOnStdout proves the failure path in JSON mode
+// stays machine-readable: exactly one JSON object on stdout, an error field in
+// it, and nothing on stderr for the run() layer to have to strip.
+func TestInspectJSONFailureStaysOnStdout(t *testing.T) {
+	stdout, stderr, err := runCLI(t, "inspect", "--entry", "not-base64", "--json")
+	if err == nil {
+		t.Fatal("inspect --json accepted a malformed entry")
+	}
+
+	var out struct {
+		Error string `json:"error"`
+	}
+	if jsonErr := json.Unmarshal([]byte(stdout), &out); jsonErr != nil {
+		t.Fatalf("stdout is not a single JSON object: %v\n%s", jsonErr, stdout)
+	}
+	if out.Error == "" {
+		t.Errorf("the JSON error object has no error field: %s", stdout)
+	}
+	if stderr != "" {
+		t.Errorf("stderr is not empty in JSON mode: %q", stderr)
+	}
+}
+
+// TestInspectFailureLeavesStdoutEmpty is the non-JSON half of the same rule:
+// a failed inspect emits no report fragments a caller could mistake for
+// results.
+func TestInspectFailureLeavesStdoutEmpty(t *testing.T) {
+	stdout, _, err := runCLI(t, "inspect", "--entry", "not-base64")
+	if err == nil {
+		t.Fatal("inspect accepted a malformed entry")
+	}
+	if stdout != "" {
+		t.Errorf("stdout is not empty on failure: %q", stdout)
+	}
+}
+
+// TestInspectJSONOutputIsResultsOnly checks the success path emits exactly one
+// JSON object and no trailing text.
+func TestInspectJSONOutputIsResultsOnly(t *testing.T) {
+	v := loadVector(t, "v2_single_testnet")
+
+	stdout, stderr, err := runCLI(t, "inspect", "--entry", v.UnsignedEntryXDR, "--json")
+	if err != nil {
+		t.Fatalf("inspect --json returned an error: %v", err)
+	}
+	if stderr != "" {
+		t.Errorf("stderr is not empty: %q", stderr)
+	}
+
+	trimmed := strings.TrimSpace(stdout)
+	if !strings.HasPrefix(trimmed, "{") || !strings.HasSuffix(trimmed, "}") {
+		t.Errorf("stdout is not a single JSON object: %q", stdout)
+	}
+	var got report
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\n%s", err, stdout)
+	}
+	if got.CredentialType != "address_v2" {
+		t.Errorf("credential_type is %q, want address_v2", got.CredentialType)
+	}
+}
+
 func TestInspectReportsAV2Entry(t *testing.T) {
 	v := loadVector(t, "v2_single_testnet")
 	got := inspectEntry(t, v.UnsignedEntryXDR)
@@ -193,5 +255,49 @@ func TestInspectRejects(t *testing.T) {
 				t.Errorf("a failing command wrote to stdout: %q", stdout)
 			}
 		})
+	}
+}
+
+// TestInspectJSONErrorStaysOnStdoutOnly proves inspect's --json flag, added
+// for parity with every other subcommand, both parses (inspect's success
+// output was already JSON, but the flag itself was previously rejected as
+// unknown) and, on a failure, moves the error to a JSON object on stdout
+// with nothing written to stderr — the same contract "sign", "payload" and
+// "delegates" already give a caller under --json.
+func TestInspectJSONErrorStaysOnStdoutOnly(t *testing.T) {
+	stdout, stderr, err := runCLI(t, "inspect", "--entry", "not-base64", "--json")
+	if err == nil {
+		t.Fatal("expected an error for a malformed --entry")
+	}
+	if stderr != "" {
+		t.Errorf("stderr must stay empty when --json handles the error, got %q", stderr)
+	}
+	var out struct {
+		Error string `json:"error"`
+	}
+	if jsonErr := json.Unmarshal([]byte(stdout), &out); jsonErr != nil {
+		t.Fatalf("decoding stdout as JSON: %v\nstdout: %s", jsonErr, stdout)
+	}
+	if !strings.Contains(out.Error, "decoding --entry") {
+		t.Errorf("error field %q does not mention the decode failure", out.Error)
+	}
+}
+
+// TestInspectJSONFlagDoesNotChangeSuccessOutput proves --json is accepted
+// without altering inspect's already-JSON success output, so existing
+// scripts that call inspect without the flag keep working unchanged.
+func TestInspectJSONFlagDoesNotChangeSuccessOutput(t *testing.T) {
+	v := loadVector(t, "legacy_negative_nonce")
+
+	withFlag, _, err := runCLI(t, "inspect", "--entry", v.UnsignedEntryXDR, "--json")
+	if err != nil {
+		t.Fatalf("inspect --json returned an error: %v", err)
+	}
+	without, _, err := runCLI(t, "inspect", "--entry", v.UnsignedEntryXDR)
+	if err != nil {
+		t.Fatalf("inspect returned an error: %v", err)
+	}
+	if withFlag != without {
+		t.Errorf("--json changed inspect's success output:\nwith:    %s\nwithout: %s", withFlag, without)
 	}
 }

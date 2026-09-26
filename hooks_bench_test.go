@@ -14,46 +14,29 @@ func BenchmarkAuthorizeEntryWithHooks(b *testing.B) {
 	kp, _ := keypair.FromRawSeed(sha256.Sum256([]byte("soroauth-bench-hook")))
 	signer := NewEd25519Signer(kp)
 
-	// The credential's ScAddress has to be a real one: a zero ScAddress has a
-	// nil AccountId and panics in the generated encoder the deep copy calls.
-	// It also has to be the signer's own address for ForAddress to match a node.
-	accountID, err := xdr.AddressToAccountId(kp.Address())
+	address := signer.Address()
+	addr, err := ParseAddress(address)
 	if err != nil {
-		b.Fatalf("decoding the benchmark address: %v", err)
-	}
-	address := xdr.ScAddress{
-		Type:      xdr.ScAddressTypeScAddressTypeAccount,
-		AccountId: &accountID,
+		b.Fatalf("parsing the benchmark signer address: %v", err)
 	}
 
-	var contractID xdr.ContractId
-	for i := range contractID {
-		contractID[i] = byte(i)
-	}
+	// AuthorizeEntry deep-copies the entry with an XDR round-trip, so the entry
+	// has to be a complete, valid XDR value: the SDK's encoder dereferences
+	// ScAddress.AccountId for an account address and ContractFn for a contract
+	// call, and panics on the zero values. A fixture with a zero ScAddress and
+	// no RootInvocation crashes the benchmark instead of measuring anything, so
+	// both are built for real here.
 	entry := xdr.SorobanAuthorizationEntry{
 		Credentials: xdr.SorobanCredentials{
 			Type: xdr.SorobanCredentialsTypeSorobanCredentialsAddress,
 			Address: &xdr.SorobanAddressCredentials{
-				Address:                   address,
+				Address:                   addr,
 				Nonce:                     1,
 				SignatureExpirationLedger: xdr.Uint32(testValidUntilLedger),
 				Signature:                 xdr.ScVal{Type: xdr.ScValTypeScvVoid},
 			},
 		},
-		// The root invocation must be a real one: the generated encoder
-		// dereferences Function's union arm, which is nil on a zero value.
-		RootInvocation: xdr.SorobanAuthorizedInvocation{
-			Function: xdr.SorobanAuthorizedFunction{
-				Type: xdr.SorobanAuthorizedFunctionTypeSorobanAuthorizedFunctionTypeContractFn,
-				ContractFn: &xdr.InvokeContractArgs{
-					ContractAddress: xdr.ScAddress{
-						Type:       xdr.ScAddressTypeScAddressTypeContract,
-						ContractId: &contractID,
-					},
-					FunctionName: xdr.ScSymbol("transfer"),
-				},
-			},
-		},
+		RootInvocation: benchInvocation(b),
 	}
 
 	ctx := context.Background()

@@ -434,3 +434,152 @@ func TestSignerFuncWithoutACallback(t *testing.T) {
 		t.Errorf("error %q does not match ErrMissingSigner", err)
 	}
 }
+
+func TestPasskeySignerFlags(t *testing.T) {
+	validAuthData := func(flags byte) []byte {
+		var buf [37]byte
+		buf[32] = flags
+		return buf[:]
+	}
+
+	dummyScVal := scBytes([]byte("passkey-sig"))
+
+	tests := []struct {
+		name        string
+		authData    []byte
+		opts        []PasskeySignerOption
+		wantErr     bool
+		errContains string
+	}{
+		{
+
+			name:     "no flags required, empty auth data ok",
+			authData: nil,
+			opts:     nil,
+			wantErr:  false,
+		},
+		{
+			name:     "require UP, flag set (0x01)",
+			authData: validAuthData(0x01),
+			opts:     []PasskeySignerOption{RequireUserPresence(true)},
+			wantErr:  false,
+		},
+		{
+			name:        "require UP, flag missing (0x00)",
+			authData:    validAuthData(0x00),
+			opts:        []PasskeySignerOption{RequireUserPresence(true)},
+			wantErr:     true,
+			errContains: "user presence (UP) required",
+		},
+		{
+			name:     "require UV, flag set (0x04)",
+			authData: validAuthData(0x04),
+			opts:     []PasskeySignerOption{RequireUserVerification(true)},
+			wantErr:  false,
+		},
+		{
+			name:        "require UV, flag missing (0x01)",
+			authData:    validAuthData(0x01),
+			opts:        []PasskeySignerOption{RequireUserVerification(true)},
+			wantErr:     true,
+			errContains: "user verification (UV) required",
+		},
+		{
+			name:     "require both UP and UV, both set (0x05)",
+			authData: validAuthData(0x05),
+			opts:     []PasskeySignerOption{RequireUserPresence(true), RequireUserVerification(true)},
+			wantErr:  false,
+		},
+		{
+			name:        "require both UP and UV, only UP set (0x01)",
+			authData:    validAuthData(0x01),
+			opts:        []PasskeySignerOption{RequireUserPresence(true), RequireUserVerification(true)},
+			wantErr:     true,
+			errContains: "user verification (UV) required",
+		},
+		{
+			name:        "fail closed on short auth data",
+			authData:    []byte{0x01, 0x02},
+			opts:        []PasskeySignerOption{RequireUserPresence(true)},
+			wantErr:     true,
+			errContains: "authenticatorData too short",
+		},
+		{
+			name:        "fail closed on nil auth data when required",
+			authData:    nil,
+			opts:        []PasskeySignerOption{RequireUserPresence(true)},
+			wantErr:     true,
+			errContains: "authenticatorData too short",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			signer := NewPasskeySigner("G...", tt.authData, func(context.Context, xdr.HashIdPreimage, [32]byte) (xdr.ScVal, error) {
+				return dummyScVal, nil
+			}, tt.opts...)
+
+			_, err := signer.Sign(context.Background(), xdr.HashIdPreimage{}, testPayload("x"))
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Sign() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+				t.Errorf("error %q does not contain %q", err, tt.errContains)
+			}
+		})
+	}
+}
+
+// TestEd25519SignatureScVal proves the exported builder produces byte-identical
+// output to NewEd25519Signer for the same key and payload, so an external
+// signer adapter can use it without the shape drifting from the in-process one.
+func TestEd25519SignatureScVal(t *testing.T) {
+	kp := testKeypair(t, "soroauth-scval-builder")
+	raw, err := rawEd25519Key(kp.Address())
+	if err != nil {
+		t.Fatalf("rawEd25519Key: %v", err)
+	}
+	payload := testPayload("scval")
+	signature, err := kp.Sign(payload[:])
+	if err != nil {
+		t.Fatalf("signing: %v", err)
+	}
+
+	got, err := Ed25519SignatureScVal(raw, signature)
+	if err != nil {
+		t.Fatalf("Ed25519SignatureScVal: %v", err)
+	}
+
+	want, err := NewEd25519Signer(kp).Sign(context.Background(), xdr.HashIdPreimage{}, payload)
+	if err != nil {
+		t.Fatalf("NewEd25519Signer.Sign: %v", err)
+	}
+	gotBytes, err := got.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshalling the built ScVal: %v", err)
+	}
+	wantBytes, err := want.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshalling the signer's ScVal: %v", err)
+	}
+	if !bytes.Equal(gotBytes, wantBytes) {
+		t.Error("Ed25519SignatureScVal output differs from NewEd25519Signer output")
+	}
+
+	for _, tt := range []struct {
+		name string
+		pub  []byte
+		sig  []byte
+	}{
+		{"short public key", raw[:31], signature},
+		{"long public key", append(append([]byte{}, raw...), 0), signature},
+		{"short signature", raw, signature[:63]},
+		{"long signature", raw, append(append([]byte{}, signature...), 0)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := Ed25519SignatureScVal(tt.pub, tt.sig); err == nil {
+				t.Error("Ed25519SignatureScVal accepted a wrong-length value, want an error")
+			}
+		})
+	}
+}

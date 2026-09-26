@@ -1,0 +1,10 @@
+# The Python reference implementation the parity harness is proven against.
+# Pinned exactly, the same way testdata/gen/package.json pins
+# @stellar/stellar-sdk for the JS side.
+stellar-sdk==16.1.0
+
+# xdrlib3 is the XDR packer/unpacker stellar-sdk uses to turn a preimage into
+# the bytes this harness hashes. It is pinned too: a different runtime is a
+# different byte producer, and byte parity is the whole point. The version is
+# the one stellar-sdk==16.1.0 resolves today.
+xdrlib3==0.1.1

@@ -68,9 +68,9 @@ func Plan(validUntilLedger uint32, policy []DelegatePolicy, registrations ...Sig
 		}
 	}
 
-	// Sort and validate at each level. The top level is depth 1; the
-	// recursion inside buildDelegateNodes counts levels from there and
-	// refuses a tree past MaxDecodeDepth (see ErrDecodeLimit).
+	// Sort and validate at each level. Depth starts at 1, matching the
+	// top-level call in WithDelegates, so buildDelegateNodes' own
+	// MaxDecodeDepth guard covers a policy that nests past the limit.
 	nodes, err := buildDelegateNodes(delegates, 1)
 	if err != nil {
 		return PlannedTree{}, err

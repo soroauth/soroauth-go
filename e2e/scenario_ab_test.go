@@ -60,9 +60,12 @@ func TestScenarioA(t *testing.T) {
 		t.Fatalf("scenario A failed on-chain (status %s):\n%s", result.Status, result.RawError)
 	}
 	if result.Arm != "SorobanCredentialsTypeSorobanCredentialsAddress" {
-		t.Errorf("submitted envelope carried arm %q, want the legacy address arm", result.Arm)
+		t.Errorf("submitted envelope carried credentials arm %q, want legacy address", result.Arm)
 	}
 }
+
+// TestScenarioPasskeySignerFlags proves that passkey signers correctly reject assertions
+// missing required user-presence (UP) or user-verification (UV) flags before signing or submission.
 
 // TestScenarioB proves the CAP-71 SOROBAN_CREDENTIALS_ADDRESS_V2 arm is
 // accepted live. It asks simulation for V2 first, and upgrades locally if the

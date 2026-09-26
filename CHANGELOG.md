@@ -7,31 +7,135 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Fixed
+### Added
 
-**`ParseAddress` — canonical strkey input (issue #122)**
+**Offline verification**
 
-- `ParseAddress` refuses non-canonical SEP-23 base32 spellings of an address —
-  lower- or mixed-case, base32 padding, surrounding whitespace, extra
-  characters, and non-zero unused trailing bits — rather than recovering the
-  same version byte and payload from them. This was already the behaviour,
-  inherited from `go-stellar-sdk` `strkey.DecodeAny`/`decodeString`; it is now
-  pinned by `TestParseAddressRejectsNonCanonicalEncodings`, which asserts the
-  decoder's own reason for each form, by a case-altered property in the gopter
-  suite, and by `ExampleParseAddress`/`ExampleFormatAddress`, and is documented
-  on the function. A caller can therefore rely on an accepted address string
-  being the one canonical spelling of a key, not merely one of several strings
-  that decode to it.
-- Added `BenchmarkParseAddress` and `BenchmarkFormatAddress` with committed
-  alloc/byte budgets, and added a budget for the previously unbudgeted
-  `BenchmarkDecodeAuthorizationEntry`. The existing signing-path benchmarks are
-  unchanged and within budget: on Intel(R) Core(TM) i5-6300HQ, linux/amd64,
-  go1.25.4, `BenchmarkAuthorizeEntry` measured 71/74/101/160 allocs per arm and
-  `BenchmarkAuthorizeAll` 1360 allocs, all below the committed budgets.
+- `VerifyEntry` rebuilds the signing payload from an entry exactly as it
+  stands — including the `SignatureExpirationLedger` stored on it — and decides
+  every classic-account signature against it, so an entry can be checked
+  without submitting it and without paying a fee to find out. It reports a
+  verdict per credential node (`verified`, `unsigned`, `invalid`,
+  `cannot_check`) across all three address arms and nested delegate trees. A
+  custom account's signature is reported as `cannot_check` and never as
+  `verified`: only the contract's `__check_auth` defines its validity. Whether a
+  key is a signer of the account, and whether enough signers signed, are
+  account-state questions the engine cannot see and does not claim to answer.
+  (#59)
+- The `soroauth verify` subcommand exposes that engine from the shell, with
+  `--json`, `--allow-unsigned` for the Void top-level node a delegates-only
+  account legitimately has, and a non-zero exit unless every node verified. It
+  accepts a whole envelope as well as a single entry. (#60)
+- `remote`, a new package, defines an HTTP signing protocol that transmits the
+  **preimage** alongside the payload so a remote signer can inspect what it is
+  approving rather than blind-signing a digest. It ships a reference `Server`
+  that recomputes SHA-256 of the preimage and refuses a mismatched payload, an
+  optional `Approver` callback that observes each approval, and a client
+  `Signer` that satisfies `soroauth.Signer` and attaches its context to the
+  request so cancellation aborts an in-flight call. It has no authentication
+  and holds no key store, and is documented as a reference, not a service. The
+  root module does not depend on it. (#34)
 
-  **Migration:** none. No accepted input changes meaning and no input that was
-  accepted before is refused now; this change is tests, docs and benchmarks.
-  No emitted signature or entry bytes change, so golden vectors are unaffected.
+**Shell completions (`soroauth completions`)**
+
+- New subcommand: `soroauth completions --shell bash|zsh|fish` prints a
+  completion script for that shell on stdout (`--json` wraps it with the
+  shell name). The scripts complete the subcommands, each subcommand's flags,
+  and the enumerable flag values (`--shell`, `--format`, and the `--network`
+  shorthands `testnet`/`public`); fish additionally carries each flag's
+  description into the tab menu. `--secret-env` is completed by name only:
+  the shells never see or complete a variable's value. (#114)
+- The scripts are generated from a spec table that is checked, in both
+  directions, against the flags each subcommand really registers:
+  `TestSpecsMatchTheRealFlagSets` drives every `flag`-based subcommand's real
+  flag parsing and fails when the table and the `FlagSet` disagree, so a flag
+  added without updating the completions cannot ship silently missing from
+  them. (`tui`, which parses its arguments by hand, is checked against its
+  own usage text instead.)
+- The generated scripts are verified functionally in the test suite: the bash
+  script is sourced by real bash and its completion function queried, the
+  fish script is sourced by real fish and its `complete` rules queried, and
+  the zsh script is `zsh -n`-checked and registered under a real `compinit`.
+  All three are deterministic — the same shell always produces byte-identical
+  output.
+
+**Delegate plans and stricter batch signing for `AuthorizeAll`**
+
+- `AuthorizeAll` now takes optional `AuthorizeAllOption`s. `WithDelegatePlans`
+  wraps a named address's entry in the delegates arm (via `WithDelegates`)
+  before signing, so using delegates through the batch helper no longer
+  means unpacking the batch, wrapping one entry by hand, and repacking. An
+  entry with no plan is signed exactly as before — this is additive, not a
+  behavior change — and a plan address that matches no entry in the batch
+  is `ErrDelegatePlanUnmatched`, never a silent no-op. (#104)
+- `RequireAllSigned` makes `AuthorizeAll` fail with the new
+  `ErrUnsignedCredentialNode` if any credential node in the resulting
+  batch — including a delegates entry's top-level node — is left
+  unsigned. It is opt-in and literal: a delegates-only account that
+  deliberately leaves its top-level node `Void` should not pass this
+  option for that entry. No migration is needed; existing callers that
+  never pass these options see no behavior change, since `AuthorizeAll`'s
+  signature only gained a trailing variadic parameter. (#103)
+
+**Nonce tracking**
+
+- `NonceTracker`, with `NewInMemoryNonceTracker`, is a pluggable,
+  concurrency-safe helper for avoiding nonce collisions across concurrent
+  signing within one process. It is a best-effort local aid, not a
+  correctness guarantee — the host remains the sole authority on whether a
+  nonce is valid — and is entirely independent of nonce generation:
+  nothing in `AuthorizeInvocation` changed, and using a `NonceTracker` is
+  opt-in. (#91)
+
+**Protocol version matrix**
+
+- `ArmProtocolVersion` records the Stellar protocol version each
+  credential arm's CAP was introduced in (CAP-46-11 → Protocol 20 for the
+  source-account and legacy arms; CAP-71-01 / CAP-71-02 → Protocol 27 for
+  V2 and the delegates arm), sourced from each CAP's own preamble. The
+  README's new "Protocol version support" table documents the same
+  numbers, and `TestArmProtocolVersionMatchesTheReadme` fails the normal
+  test suite if the two drift. (#92)
+
+**Passkey signing guide**
+
+- `docs/passkeys.md`: an end-to-end guide to the passkey flow — the browser
+  ceremony, assertion transport, challenge binding, ES256 verification, and
+  submission — with the signature shape stated for one example wallet contract
+  and the guide's Go examples extracted from compiling source in
+  `internal/readmesnippets/passkey.go` (`TestPasskeysGuideSnippetsMatchTheirSource`
+  fails on drift). It states plainly what has on-chain and golden-vector
+  evidence behind it and what has none yet: the passkey signature shape is
+  proven only by the guide's own example until the assertion parser (#25), the
+  full `PasskeySigner` (#26), the wallet-library golden vectors (#27) and the
+  passkey e2e scenario (#28) land. (#31)
+
+**The two-pass simulation requirement**
+
+- The README gained a "The two-pass simulation requirement" section: what the
+  record pass does, what the enforce pass does, and what goes wrong without the
+  second one — a resource-fee failure on-chain after fees, which reads like a
+  signature problem but is a pricing problem. It notes that the Go SDK has no
+  `assembleTransaction` equivalent, shows the explicit assembly (attaching the
+  simulated `SorobanTransactionData` to the operation, per
+  `e2e/harness_test.go`), flags the enforcing pass's value as a pre-flight
+  check, names the rejection-scenario exception, and commits to linking a
+  future `Soroban RPC integration helpers` package once it exists (#110). The
+  example is compiled by CI as `internal/readmesnippets/twopass.go` and kept
+  byte-identical by `TestReadmeSnippetsMatchTheirSource`.
+
+**Migration guide for hand-rolled signing code**
+
+- `docs/migrating.md`: a guide for teams replacing their own signing code with
+  soroauth — a mapping table from common hand-rolled patterns onto soroauth
+  calls, the four documented differences from the JS SDK restated at the point
+  a migration hits them, a byte-identical verification step (capture the old
+  code's output as a baseline, sign the same inputs, compare `MarshalBinary`),
+  the four cases where bytes legitimately differ, and a migration checklist.
+  Its Go examples are compiled by CI as `internal/readmesnippets/migrate.go`
+  and kept byte-identical by `TestGuideSnippetsMatchTheirSource`, which now
+  covers the guides under `docs/` the way the README's snippets are covered.
+  (#111)
 
 ### Added (docs correctness)
 
