@@ -2,7 +2,10 @@ package soroauth
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -574,4 +577,103 @@ func xdrcopyEntry(t *testing.T, entry xdr.SorobanAuthorizationEntry) (xdr.Soroba
 		return xdr.SorobanAuthorizationEntry{}, err
 	}
 	return out, nil
+}
+
+type Vector struct {
+	UnsignedEntryXDR string `json:"unsigned_entry_xdr"`
+}
+
+func loadVector(t testing.TB, name string) Vector {
+	t.Helper()
+	path := filepath.Join("testdata", "vectors", name+".json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading vector %s: %v", name, err)
+	}
+	var v Vector
+	if err := json.Unmarshal(data, &v); err != nil {
+		t.Fatalf("unmarshalling vector %s: %v", name, err)
+	}
+	return v
+}
+
+func FuzzValidateDelegateOrder(f *testing.F) {
+	// Seed corpus from golden vectors and malformed trees.
+	v := loadVector(f, "delegates_unsorted_with_nested")
+	var goldEntry xdr.SorobanAuthorizationEntry
+	err := xdr.SafeUnmarshalBase64(v.UnsignedEntryXDR, &goldEntry)
+	directErr := err == nil
+	if directErr {
+		f.Add([]byte(v.UnsignedEntryXDR))
+	}
+
+	// Use a dummy or test helper via a standalone func or t
+	entry := entryForArm(&testing.T{}, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 42)
+	d1 := testKeypair(&testing.T{}, "soroauth-delegate-1").Address()
+	d2 := testKeypair(&testing.T{}, "soroauth-delegate-2").Address()
+
+	wellFormed, err := WithDelegates(entry, testValidUntilLedger,
+		[]Delegate{{Address: d1, Nested: []Delegate{{Address: d2}}}, {Address: d2}}, nil)
+	if err == nil {
+		bin, err := wellFormed.MarshalBinary()
+		if err == nil {
+			f.Add(bin)
+		}
+	}
+
+	// Add a malformed/duplicate seed bytes
+	if err == nil {
+		broken, _ := xdrcopyEntry(&testing.T{}, wellFormed)
+		if broken.Credentials.AddressWithDelegates.Delegates != nil && len(broken.Credentials.AddressWithDelegates.Delegates) > 1 {
+			broken.Credentials.AddressWithDelegates.Delegates[1].Address = broken.Credentials.AddressWithDelegates.Delegates[0].Address
+			if bin, err := broken.MarshalBinary(); err == nil {
+				f.Add(bin)
+			}
+		}
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		var entry xdr.SorobanAuthorizationEntry
+		if err := entry.UnmarshalBinary(data); err != nil {
+			return
+		}
+
+		// Ensure ValidateDelegateOrder never panics on arbitrary bytes/structures.
+		err := ValidateDelegateOrder(entry)
+		if err == nil {
+			// If ValidateDelegateOrder accepts the entry, every level of delegates
+			// must be strictly ascending with no duplicates.
+			if entry.Credentials.Type == xdr.SorobanCredentialsTypeSorobanCredentialsAddressWithDelegates {
+				checkStrictAscendingLevels(t, entry.Credentials.AddressWithDelegates.Delegates)
+			}
+		}
+	})
+}
+
+func checkStrictAscendingLevels(t *testing.T, nodes []xdr.SorobanDelegateSignature) {
+	t.Helper()
+	if len(nodes) <= 1 {
+		for _, node := range nodes {
+			checkStrictAscendingLevels(t, node.NestedDelegates)
+		}
+		return
+	}
+
+	for i := 1; i < len(nodes); i++ {
+		prevEncoded, err := addressBytes(nodes[i-1].Address)
+		if err != nil {
+			t.Fatalf("failed encoding previous address: %v", err)
+		}
+		currEncoded, err := addressBytes(nodes[i].Address)
+		if err != nil {
+			t.Fatalf("failed encoding current address: %v", err)
+		}
+		if bytes.Compare(prevEncoded, currEncoded) >= 0 {
+			t.Errorf("accepted delegates level is not strictly ascending or contains duplicates")
+		}
+	}
+
+	for _, node := range nodes {
+		checkStrictAscendingLevels(t, node.NestedDelegates)
+	}
 }
