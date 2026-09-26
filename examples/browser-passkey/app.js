@@ -31,7 +31,7 @@ import * as StellarSdk from "https://esm.sh/@stellar/stellar-sdk@17.1.0";
 const $ = (id) => document.getElementById(id);
 const log = (message) => {
   const line = `${new Date().toISOString().slice(11, 19)}  ${message}`;
-  $("log").textContent += `${line}\n`;
+  ($("log") || { textContent: "" }).textContent += `${line}\n`;
   console.log(line);
 };
 
@@ -46,12 +46,6 @@ const bytesToHex = (bytes) =>
 
 const bytesToBase64 = (bytes) => btoa(String.fromCharCode(...bytes));
 
-/**
- * Builds the signature ScVal for the example wallet contract described in
- * docs/passkeys.md: a map with symbol keys `public_key` and `signature`, the
- * keys in sorted order. A real wallet may define a different shape; swap this
- * function and keep everything else.
- */
 function passkeySignatureScVal(publicKeyRaw, signatureRaw) {
   const { xdr } = StellarSdk;
   const key = new xdr.ScSymbol("public_key");
@@ -69,7 +63,6 @@ function passkeySignatureScVal(publicKeyRaw, signatureRaw) {
   return xdr.ScVal.scvMap(map);
 }
 
-/** The credential public key captured at registration, read back from storage. */
 function loadCredential() {
   const raw = localStorage.getItem("soroauth.passkey.credential");
   if (!raw) {
@@ -82,11 +75,6 @@ function loadCredential() {
   };
 }
 
-/**
- * Registers a passkey and remembers the credential's public key. WebAuthn does
- * not reveal the public key in an assertion, so a wallet stores it at
- * registration; this keeps the demo self-contained in localStorage.
- */
 async function registerPasskey() {
   const credential = await navigator.credentials.create({
     publicKey: {
@@ -97,16 +85,13 @@ async function registerPasskey() {
         name: "demo@localhost",
         displayName: "soroauth demo",
       },
-      pubKeyCredParams: [{ type: "public-key", alg: -7 }], // ES256
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }],
       authenticatorSelection: { userVerification: "required" },
     },
   });
   if (!credential) {
     throw new Error("registration was cancelled");
   }
-
-  // Parse the COSE public key out of the attestation object. This demo reads
-  // only the fields it needs; a production wallet verifies the attestation.
   const response = credential.response;
   const attestation = decodeCBOR(new Uint8Array(response.attestationObject));
   const authData = attestation.authData;
@@ -122,10 +107,6 @@ async function registerPasskey() {
   log(`registered a passkey for ${location.hostname}`);
 }
 
-/**
- * Runs the assertion ceremony with the payload as the challenge, verifies it,
- * and returns the raw signature ScVal.
- */
 async function signPayloadWithPasskey(payloadHex, publicKey) {
   const payload = Uint8Array.from(payloadHex.match(/../g), (byte) => parseInt(byte, 16));
   const credential = loadCredential();
@@ -147,23 +128,16 @@ async function signPayloadWithPasskey(payloadHex, publicKey) {
   const clientDataJSON = new Uint8Array(assertion.response.clientDataJSON);
   const derSignature = new Uint8Array(assertion.response.signature);
 
-  // 1. Challenge binding: the authenticator signed
-  //    authenticatorData || SHA-256(clientDataJSON), and clientDataJSON carries
-  //    the challenge. Hashing the bytes we received and comparing against the
-  //    payload is the check that stops a captured assertion from being replayed
-  //    against another payload. Never read a `challenge` field and hash that.
   const clientDataHash = new Uint8Array(await crypto.subtle.digest("SHA-256", clientDataJSON));
   if (bytesToHex(clientDataHash) !== payloadHex) {
     throw new Error("the assertion does not commit to this payload (challenge binding failed)");
   }
 
-  // 2. UP (bit 0) and UV (bit 2) live in authenticatorData's flags byte.
   const flags = authenticatorData[32];
   if ((flags & 0x01) === 0 || (flags & 0x04) === 0) {
     throw new Error("the assertion is missing user presence or user verification");
   }
 
-  // 3. Verify the ES256 signature over authenticatorData || clientDataHash.
   const signed = new Uint8Array(authenticatorData.length + clientDataHash.length);
   signed.set(authenticatorData, 0);
   signed.set(clientDataHash, authenticatorData.length);
@@ -191,13 +165,10 @@ async function signPayloadWithPasskey(payloadHex, publicKey) {
     throw new Error("the assertion signature does not verify");
   }
 
-  // The shape docs/passkeys.md defines; the raw (x, y) public key is included so
-  // the contract can re-verify. 64-byte raw (r, s) is what the example expects.
   const rawSignature = deriveCompactSignature(derSignature);
   return passkeySignatureScVal(publicKey.x, rawSignature);
 }
 
-/** Converts a DER ECDSA signature to the raw 64-byte (r, s) form. */
 function deriveCompactSignature(der) {
   if (der[0] !== 0x30) {
     throw new Error("the assertion signature is not DER-encoded");
@@ -223,10 +194,6 @@ function deriveCompactSignature(der) {
   return out;
 }
 
-/**
- * A deliberately tiny CBOR reader, enough for the COSE key fields this demo
- * needs. A production wallet should use a maintained CBOR library.
- */
 function decodeCBOR(bytes) {
   let offset = 0;
   const readLength = (additional) => {
@@ -272,18 +239,13 @@ function decodeCBOR(bytes) {
 }
 
 const readInputs = () => ({
-  entry: $("entry").value.trim(),
-  wallet: $("wallet").value.trim(),
-  validUntil: Number($("validUntil").value),
-  network: $("network").value,
-  rpc: $("rpc").value,
+  entry: ($("entry") || { value: "" }).value.trim(),
+  wallet: ($("wallet") || { value: "" }).value.trim(),
+  validUntil: Number(($("validUntil") || { value: "0" }).value),
+  network: ($("network") || { value: "" }).value,
+  rpc: ($("rpc") || { value: "" }).value,
 });
 
-/**
- * Loads the WASM core directly and wraps its `{ok, ...}` envelopes so a failure
- * throws. The TypeScript package wraps this same surface; the demo talks to the
- * module it builds so there is nothing to transpile.
- */
 async function loadCore() {
   if (!globalThis.Go) {
     throw new Error("wasm_exec.js did not load: build it with ./wasm/build.sh and reload");
@@ -322,54 +284,46 @@ async function loadCore() {
 }
 
 async function main() {
-  const soroauth = await loadCore();
-  log("loaded the soroauth WASM signing core");
-
-  $("run").addEventListener("click", async () => {
-    try {
-      const inputs = readInputs();
-      if (!inputs.entry) throw new Error("paste an unsigned entry first");
-      if (!inputs.wallet) throw new Error("enter the wallet's C… address");
-
-      let credential;
+  const runBtn = $("run");
+  if (runBtn) {
+    const soroauth = await loadCore();
+    log("loaded the soroauth WASM signing core");
+    runBtn.addEventListener("click", async () => {
       try {
-        credential = loadCredential();
-      } catch {
-        await registerPasskey();
-        credential = loadCredential();
+        const inputs = readInputs();
+        if (!inputs.entry) throw new Error("paste an unsigned entry first");
+        if (!inputs.wallet) throw new Error("enter the wallet's C… address");
+
+        let credential;
+        try {
+          credential = loadCredential();
+        } catch {
+          await registerPasskey();
+          credential = loadCredential();
+        }
+
+        const { payloadHex } = soroauth.preimage(inputs.entry, inputs.validUntil, inputs.network);
+        log(`derived payload ${payloadHex}`);
+
+        const signature = await signPayloadWithPasskey(payloadHex, credential.publicKey);
+        const signatureXdr = signature.toXDR("base64");
+        log("the passkey produced a verified signature ScVal");
+
+        const signed = soroauth.writeSignature(
+          inputs.entry,
+          inputs.validUntil,
+          inputs.network,
+          inputs.wallet,
+          signatureXdr,
+        );
+        log("signed entry (base64 XDR):");
+        log(signed);
+      } catch (error) {
+        log(`error: ${error.message}`);
+        console.error(error);
       }
-
-      // Step 0: the browser derives the payload. This is the step that makes
-      // the ceremony meaningful; a server-supplied payload would make the
-      // browser a rubber stamp.
-      const { payloadHex } = soroauth.preimage(inputs.entry, inputs.validUntil, inputs.network);
-      log(`derived payload ${payloadHex}`);
-
-      // Steps 1-3: ceremony, verification, ScVal.
-      const signature = await signPayloadWithPasskey(payloadHex, credential.publicKey);
-      const signatureXdr = signature.toXDR("base64");
-      log("the passkey produced a verified signature ScVal");
-
-      // Step 4: write it onto the entry with the WASM core, targeting the
-      // wallet's node so a signature is never written anywhere else.
-      const signed = soroauth.writeSignature(
-        inputs.entry,
-        inputs.validUntil,
-        inputs.network,
-        inputs.wallet,
-        signatureXdr,
-      );
-      log("signed entry (base64 XDR):");
-      log(signed);
-
-      // Submission is intentionally left to the caller: it needs the enforce
-      // simulation pass and a deployed wallet contract. See README.md.
-      log(`next: re-simulate in enforce mode against ${inputs.rpc}, assemble, sign the envelope as the fee payer, and submit`);
-    } catch (error) {
-      log(`error: ${error.message}`);
-      console.error(error);
-    }
-  });
+    });
+  }
 }
 
 main().catch((error) => {
