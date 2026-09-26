@@ -173,6 +173,58 @@ var (
 	// tracker's own store has seen; it has no visibility into a nonce
 	// consumed elsewhere.
 	ErrNonceAlreadyReserved = errors.New("nonce already reserved for this address")
+
+	// ErrWebAuthnMalformedJSON is returned by ParseWebAuthnAssertion when the
+	// assertion is not valid JSON, or when its clientDataJSON is not valid
+	// JSON.
+	//
+	// These are separate layers of the same input (WebAuthn Level 2 §5.1.4
+	// serializes the credential, §5.8.1 defines the client data), so a
+	// truncation or a stray byte in either is refused here rather than
+	// producing a partially filled assertion.
+	ErrWebAuthnMalformedJSON = errors.New("webauthn assertion is not valid JSON")
+
+	// ErrWebAuthnMissingField is returned by ParseWebAuthnAssertion when a
+	// field the assertion must carry is absent or empty: one of
+	// response.clientDataJSON, response.authenticatorData or
+	// response.signature, or the challenge inside clientDataJSON.
+	//
+	// A missing field is never defaulted. An assertion without a challenge
+	// cannot bind the browser ceremony to the payload, and an assertion
+	// without a signature would authorize nothing.
+	ErrWebAuthnMissingField = errors.New("webauthn assertion is missing a field")
+
+	// ErrWebAuthnMalformedField is returned by ParseWebAuthnAssertion when a
+	// field is present but unusable: the base64url transport encoding of
+	// clientDataJSON, authenticatorData, signature or the challenge is
+	// invalid, or the credential type is not "public-key".
+	//
+	// It is distinct from ErrWebAuthnMissingField so a caller can tell a
+	// truncated capture (a field that never arrived) from a corrupted one
+	// (a field that arrived but does not decode).
+	ErrWebAuthnMalformedField = errors.New("webauthn assertion field is not valid base64url")
+
+	// ErrWebAuthnTruncatedAuthenticatorData is returned by
+	// ParseWebAuthnAssertion when the authenticator data is shorter than its
+	// fixed prefix.
+	//
+	// WebAuthn Level 2 §6.1 fixes that prefix at 32 bytes of RP ID hash, one
+	// byte of flags and four bytes of sign counter: 37 bytes before any
+	// attested credential data or extensions. Anything shorter cannot carry
+	// the flags, so a caller that checked for user presence or verification
+	// would be reading past the end of what it was given.
+	ErrWebAuthnTruncatedAuthenticatorData = errors.New("webauthn authenticatorData is shorter than its 37-byte fixed prefix")
+
+	// ErrWebAuthnChallengeMismatch is returned when the challenge the
+	// authenticator signed does not equal the payload expected of it.
+	//
+	// This is the security-critical check. WebAuthn binds a ceremony to a
+	// relying party through the challenge (WebAuthn Level 2 §5.8.1, §7.1 step
+	// 11), and the challenge is what ties the assertion the browser produced
+	// to this exact Soroban authorization payload. Accepting an assertion
+	// whose challenge is different would be accepting a signature over
+	// somebody else's ceremony.
+	ErrWebAuthnChallengeMismatch = errors.New("webauthn challenge does not match the expected payload")
 )
 
 // NoMatchingCredentialNodeError is returned when no credential node in the
