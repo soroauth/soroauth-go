@@ -86,6 +86,7 @@ terminal program, not something a script drives, so it has no `--json` mode.
 | `tree` | (the `EntryInfo` struct, same shape as `inspect`; without `--json` it prints an ASCII or DOT rendering instead) | `error` |
 | `doctor` | `checks`, `ok` | (checks carry their own `pass`/`detail`; see below) |
 | `cross-compile` | `target`, `size`, `sha256` (one per line) | `error` |
+| `completions` | `shell`, `script` | `error` |
 
 ### Worked invocation — JSON output
 
@@ -222,6 +223,36 @@ To reproduce a CI failure locally:
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o soroauth-arm64 ./cmd/soroauth
 ./soroauth-arm64 help
 ```
+
+### Completions — shell completion for subcommands and flags
+
+`soroauth completions --shell bash|zsh|fish` prints a completion script for
+that shell on stdout. The scripts complete the subcommands, each subcommand's
+flags, and the enumerable flag values (`--shell`, `--format`, `--network`'s
+two named shorthands); fish additionally shows each flag's description in the
+tab menu. `--secret-env` is completed by name only — the shells never see or
+complete a variable's value.
+
+Install by shell:
+
+```sh
+# bash — for the current session only
+source <(soroauth completions --shell bash)
+
+# bash — for every future session
+soroauth completions --shell bash > ~/.local/share/bash-completion/completions/soroauth
+
+# zsh — write to a directory in $fpath, before compinit runs
+soroauth completions --shell zsh > "${fpath[1]}/_soroauth"
+
+# fish — fish loads this automatically in new shells
+soroauth completions --shell fish > ~/.config/fish/completions/soroauth.fish
+```
+
+The scripts are generated from the same command/flag table the CLI parses, so
+a flag added to a subcommand without updating the completions spec fails the
+test suite (`TestSpecsMatchTheRealFlagSets`) rather than shipping a completion
+script that silently omits it.
 
 ### Release workflow
 

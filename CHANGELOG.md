@@ -9,6 +9,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+**Shell completions (`soroauth completions`)**
+
+- New subcommand: `soroauth completions --shell bash|zsh|fish` prints a
+  completion script for that shell on stdout (`--json` wraps it with the
+  shell name). The scripts complete the subcommands, each subcommand's flags,
+  and the enumerable flag values (`--shell`, `--format`, and the `--network`
+  shorthands `testnet`/`public`); fish additionally carries each flag's
+  description into the tab menu. `--secret-env` is completed by name only:
+  the shells never see or complete a variable's value. (#114)
+- The scripts are generated from a spec table that is checked, in both
+  directions, against the flags each subcommand really registers:
+  `TestSpecsMatchTheRealFlagSets` drives every `flag`-based subcommand's real
+  flag parsing and fails when the table and the `FlagSet` disagree, so a flag
+  added without updating the completions cannot ship silently missing from
+  them. (`tui`, which parses its arguments by hand, is checked against its
+  own usage text instead.)
+- The generated scripts are verified functionally in the test suite: the bash
+  script is sourced by real bash and its completion function queried, the
+  fish script is sourced by real fish and its `complete` rules queried, and
+  the zsh script is `zsh -n`-checked and registered under a real `compinit`.
+  All three are deterministic — the same shell always produces byte-identical
+  output.
+
 **Delegate plans and stricter batch signing for `AuthorizeAll`**
 
 - `AuthorizeAll` now takes optional `AuthorizeAllOption`s. `WithDelegatePlans`

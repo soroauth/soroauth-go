@@ -83,6 +83,7 @@ commands:
   tui            interactive TUI for inspecting and signing an entry
   doctor         check the local environment for common first-run problems
   cross-compile  build soroauth for multiple targets
+  completions    emit a shell completion script (bash, zsh, fish)
 
 run "soroauth <command> -h" for the flags of a command.
 
@@ -134,6 +135,8 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) er
 		return runDoctor(args[1:], stdout, stderr, getenv)
 	case "cross-compile":
 		return runCrossCompile(args[1:], stdout, stderr)
+	case "completions":
+		return runCompletions(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, usage)
 		return nil
