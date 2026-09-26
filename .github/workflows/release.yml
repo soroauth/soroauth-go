@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write
   packages: write
+  # Provenance for the npm package is signed through GitHub's OIDC identity, so
+  # the publish job needs to mint an id token.
+  id-token: write
 
 jobs:
   golden-drift:
@@ -101,6 +104,98 @@ jobs:
           tags: |
             ghcr.io/soroauth/soroauth-go:${{ steps.tags.outputs.version }}
             ghcr.io/soroauth/soroauth-go:latest
+
+  # Every parity suite must pass before the npm package is published. A package
+  # whose bytes nobody cross-checked is exactly the artifact issue #54 says must
+  # not ship, so this job re-runs the same checks CI runs rather than trusting
+  # that they ran on the branch: a tag can point at any commit.
+  wasm-parity:
+    name: parity suites before publish
+    needs: golden-drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: wasm/ts/package-lock.json
+      - name: python sdk parity
+        run: |
+          python3 -m venv .venv-parity
+          . .venv-parity/bin/activate
+          pip install -r testdata/parity-python/requirements.txt
+          python3 testdata/parity-python/parity.py
+          python3 testdata/parity-python/test_parity.py
+      - name: build the wasm module
+        run: ./wasm/build.sh
+      - name: wasm byte parity against the golden vectors
+        run: node wasm/parity.mjs
+      - name: typescript wrapper tests
+        working-directory: wasm/ts
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+  npm:
+    name: publish @soroauth/wasm
+    needs: wasm-parity
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Full history and tags so the tagged commit can be identified.
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+          cache-dependency-path: wasm/ts/package-lock.json
+      # The version is derived from the tag, and the tag must be the commit
+      # being published. Publishing from a branch, or from a commit the tag does
+      # not point at, would ship bytes that do not match the release.
+      - name: refuse to publish anything but the tagged commit
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "refusing to publish: GITHUB_REF_TYPE=${GITHUB_REF_TYPE}, expected 'tag'" >&2
+            exit 1
+          fi
+          head_sha="$(git rev-parse HEAD)"
+          tag_sha="$(git rev-parse "${GITHUB_REF_NAME}^{commit}")"
+          if [ "$head_sha" != "$tag_sha" ]; then
+            echo "refusing to publish: HEAD ${head_sha} is not ${GITHUB_REF_NAME} (${tag_sha})" >&2
+            exit 1
+          fi
+      - name: derive the package version from the tag
+        working-directory: wasm/ts
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          npm version "$version" --no-git-tag-version --allow-same-version
+          echo "publishing @soroauth/wasm@${version}"
+      - name: build the wasm module from the tagged commit
+        run: ./wasm/build.sh
+      # prepack stages the wasm binary and its runtime shim into the tarball, so
+      # the published package is self-contained and cannot reference a build
+      # from another commit. --provenance attaches a signed statement tying the
+      # tarball to this repository, commit and workflow run.
+      - name: publish with provenance
+        working-directory: wasm/ts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
 
   release:
     name: create release
