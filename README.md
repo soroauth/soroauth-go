@@ -736,6 +736,8 @@ bytes — is covered in [docs/migrating.md](docs/migrating.md).
 Choosing the right signer for your threat model — in-memory, multisig, Vault,
 Ledger, KMS, remote, and passkey signers — is covered in
 [docs/signers.md](docs/signers.md).
+For a sequential three-party delegate handoff — including the shared-expiration
+rule — see [docs/multi-party-signing.md](docs/multi-party-signing.md).
 
 ## Proven on testnet
 
