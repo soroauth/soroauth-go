@@ -27,6 +27,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   same source emit identical bytes. `make man` writes `bin/soroauth.1`, and
   every `v*` release attaches `soroauth.1` alongside the binaries. (#141)
 
+- `--entry` input failures now say which of the two problems a value has: it is
+  not base64 at all, or it decodes as base64 but is not an authorization entry
+  (or a transaction envelope with an invokeHostFunction operation). The two used
+  to read identically, and they call for different fixes. Neither message
+  echoes the input, which may be a signed entry. (#142)
+
 - Passkey signature-shape golden vectors. `testdata/gen/gen-passkey.mjs` drives
   a pinned `smart-account-kit@0.8.0` (the OpenZeppelin/Stellar SDK for smart
   accounts with WebAuthn passkeys) and records the `{ public_key, signature }`
