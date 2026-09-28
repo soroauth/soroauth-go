@@ -733,6 +733,9 @@ is (and is not yet) proven — see [docs/passkeys.md](docs/passkeys.md).
 Replacing hand-rolled signing code with soroauth — pattern mappings, the four
 differences from the JS SDK, and how to verify the migration produced identical
 bytes — is covered in [docs/migrating.md](docs/migrating.md).
+Choosing the right signer for your threat model — in-memory, multisig, Vault,
+Ledger, KMS, remote, and passkey signers — is covered in
+[docs/signers.md](docs/signers.md).
 
 ## Proven on testnet
 
