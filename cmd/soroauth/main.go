@@ -80,6 +80,7 @@ commands:
   doctor         check the local environment for common first-run problems
   cross-compile  build soroauth for multiple targets
   completions    emit a shell completion script (bash, zsh, fish)
+  man            emit a roff man page
   wasm-budget    measure the wasm core against a size ceiling
 
 run "soroauth <command> -h" for the flags of a command.
@@ -152,6 +153,8 @@ func runWithStdin(args []string, stdout, stderr io.Writer, getenv func(string) s
 		return runCrossCompile(args[1:], stdout, stderr)
 	case "completions":
 		return runCompletions(args[1:], stdout, stderr)
+	case "man":
+		return runMan(args[1:], stdout, stderr)
 	case "wasm-budget":
 		return runWASMBudget(args[1:], stdout, stderr)
 	case "--version", "-version":

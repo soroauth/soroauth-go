@@ -20,6 +20,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   binary so it cannot drift from the toolchain that produced it. A test fails
   if the release workflow stops passing the fields. (#140)
 
+- New subcommand: `soroauth man` emits a roff man page for the CLI, to stdout
+  or to a file with `--out`. The page is generated from the same command/flag
+  table the shell completions come from, so it cannot document a flag the
+  binary does not accept, and it carries no build timestamp — two builds of the
+  same source emit identical bytes. `make man` writes `bin/soroauth.1`, and
+  every `v*` release attaches `soroauth.1` alongside the binaries. (#141)
+
 - Passkey signature-shape golden vectors. `testdata/gen/gen-passkey.mjs` drives
   a pinned `smart-account-kit@0.8.0` (the OpenZeppelin/Stellar SDK for smart
   accounts with WebAuthn passkeys) and records the `{ public_key, signature }`

@@ -168,6 +168,14 @@ var commandSpecs = []commandSpec{
 		},
 	},
 	{
+		Name:        "man",
+		Description: "emit a roff man page",
+		Flags: []flagSpec{
+			{Name: "out", Description: "write the page to this path instead of stdout", TakesValue: true},
+			{Name: "json", Description: "output as JSON", TakesValue: false},
+		},
+	},
+	{
 		Name:        "wasm-budget",
 		Description: "measure the wasm core against a size ceiling",
 		Flags: []flagSpec{
