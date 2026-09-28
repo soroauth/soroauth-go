@@ -7,6 +7,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+- `ExpirationAfter` has a runnable doc example. `ExampleExpirationAfter` walks
+  the "about an hour" case and both refusals (a zero lifetime, and a sum that
+  would overflow a ledger sequence), so the function's contract is executed by
+  `go test` rather than described in prose that can go stale. (#139)
+
+- `soroauth --version` reports the build version, commit and Go toolchain. The
+  three build fields are stamped with `-ldflags`: the release workflow passes
+  the tag, the commit and the run's date, and `make build` stamps the checkout
+  it built from. A binary built with neither reports `dev`/`unknown` rather
+  than an empty string, and the toolchain version is read from the running
+  binary so it cannot drift from the toolchain that produced it. A test fails
+  if the release workflow stops passing the fields. (#140)
+
+- New subcommand: `soroauth man` emits a roff man page for the CLI, to stdout
+  or to a file with `--out`. The page is generated from the same command/flag
+  table the shell completions come from, so it cannot document a flag the
+  binary does not accept, and it carries no build timestamp — two builds of the
+  same source emit identical bytes. `make man` writes `bin/soroauth.1`, and
+  every `v*` release attaches `soroauth.1` alongside the binaries. (#141)
+
+- `--entry` input failures now say which of the two problems a value has: it is
+  not base64 at all, or it decodes as base64 but is not an authorization entry
+  (or a transaction envelope with an invokeHostFunction operation). The two used
+  to read identically, and they call for different fixes. Neither message
+  echoes the input, which may be a signed entry. (#142)
+
 - Passkey signature-shape golden vectors. `testdata/gen/gen-passkey.mjs` drives
   a pinned `smart-account-kit@0.8.0` (the OpenZeppelin/Stellar SDK for smart
   accounts with WebAuthn passkeys) and records the `{ public_key, signature }`

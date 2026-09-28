@@ -90,6 +90,7 @@ terminal program, not something a script drives, so it has no `--json` mode.
 | `doctor` | `checks`, `ok` | (checks carry their own `pass`/`detail`; see below) |
 | `cross-compile` | `target`, `size`, `sha256` (one per line) | `error` |
 | `completions` | `shell`, `script` | `error` |
+| `man` | `format`, `page` | `error` |
 
 ### Worked invocation — JSON output
 
@@ -296,6 +297,50 @@ a flag added to a subcommand without updating the completions spec fails the
 test suite (`TestSpecsMatchTheRealFlagSets`) rather than shipping a completion
 script that silently omits it.
 
+### Version — which build am I running?
+
+`soroauth --version` prints the release tag, the commit and the Go toolchain
+version the binary was built with:
+
+```sh
+soroauth --version
+```
+
+```
+soroauth v0.2.0
+commit: 9f1c3ab
+built: 2026-09-28T11:04:02Z
+go: go1.25.4
+```
+
+The three build fields are stamped at build time with `-ldflags`. The release
+workflow passes the tag, the commit and the run's date
+(`.github/workflows/release.yml`); `make build` stamps the checkout it was
+built from. A binary built without either — a plain `go build`, or a
+`go install` — reports `dev`, `unknown` and `unknown` rather than empty
+strings, so a bug report that says `dev` is telling you it did not come from a
+release. The toolchain line is read from the running binary
+(`runtime.Version()`), so it cannot drift from the toolchain that produced it.
+
+### Man page
+
+`soroauth man` prints a man page for the CLI, and `--out` writes it to a file
+for a packager (Homebrew, apt, an RPM) to install:
+
+```sh
+# Read it without installing anything
+soroauth man --out /tmp/soroauth.1 && man /tmp/soroauth.1
+
+# What a packaging step writes
+soroauth man --out soroauth.1
+```
+
+`make man` builds the CLI and writes `bin/soroauth.1`. The page is generated
+from the same command/flag table the completion scripts come from, so it
+cannot document a flag the binary does not accept, and it carries no build
+timestamp: two builds of the same source emit identical bytes. Every `v*`
+release attaches `soroauth.1` alongside the binaries.
+
 ### Wasm budget — fail the build when the wasm core outgrows its ceiling
 
 `soroauth wasm-budget` measures the compiled js/wasm signing core and exits
@@ -348,7 +393,8 @@ runs on version tags (`v*`). It:
    `darwin/arm64`, `windows/amd64`.
 3. Creates a GitHub Release whose notes are extracted from `CHANGELOG.md` for
    the tagged version.
-4. Attaches all six binaries to the release.
+4. Attaches the built binaries and the generated man page (`soroauth.1`) to
+   the release.
 
 To cut a release:
 
