@@ -7,6 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+- `ExpirationAfter` has a runnable doc example. `ExampleExpirationAfter` walks
+  the "about an hour" case and both refusals (a zero lifetime, and a sum that
+  would overflow a ledger sequence), so the function's contract is executed by
+  `go test` rather than described in prose that can go stale. (#139)
+
 - Passkey signature-shape golden vectors. `testdata/gen/gen-passkey.mjs` drives
   a pinned `smart-account-kit@0.8.0` (the OpenZeppelin/Stellar SDK for smart
   accounts with WebAuthn passkeys) and records the `{ public_key, signature }`
