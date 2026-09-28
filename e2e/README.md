@@ -123,11 +123,11 @@ The tests are split by role rather than kept in one file:
 
 ## The fixture contracts
 
-Five contracts, all custom accounts, each existing only so a scenario has
-something to authenticate against. All five are deliberately not products: no
-policies, no admin functions, no upgradability, and no way to change the key set
-after construction. Do not deploy them to mainnet or use them as smart-account
-starting points.
+Five contracts in the workspace, plus one separate source fixture, each exist
+to exercise a narrow authentication or policy path. None is audited or
+feature-complete; do not deploy them to mainnet or use them as smart-account
+starting points. See [Contract Fixtures](../docs/FIXTURES.md) for the paths
+each one exercises and the limits of its test coverage.
 
 - **`contracts/modular-account`** carries no signature of its own and authorizes
   purely by forwarding to CAP-71 delegated signers. Scenarios D and E.
@@ -139,10 +139,13 @@ starting points.
 - **`contracts/passkey-wallet`** registers a P-256 (secp256r1) credential public
   key at construction and verifies an ES256 signature over the authorization
   payload inside `__check_auth`. Scenarios J and K.
+- **`contracts/social-recovery`** exercises guardian-authorized signer rotation
+  after a timelock. It is not in the contract workspace and has no live e2e
+  scenario; its narrower coverage is described in the fixture guide.
 
-Each has its own unit tests: `cargo test -p modular-account`,
+Workspace fixtures have unit tests: `cargo test -p modular-account`,
 `cargo test -p session-keys`, `cargo test -p threshold-account`,
-`cargo test -p passkey-wallet`.
+`cargo test -p policy-account`, and `cargo test -p passkey-wallet`.
 
 ### The two clocks in the session-key fixture
 
