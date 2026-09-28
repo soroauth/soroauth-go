@@ -14,6 +14,17 @@ NODE ?= node
 BIN_DIR := bin
 BIN     := $(BIN_DIR)/soroauth
 
+# Build metadata the CLI reports with --version. The release workflow overrides
+# all three with the tag, the commit and the run's date (see
+# .github/workflows/release.yml); a local `make build` reports the checkout it
+# was built from, which is what makes a bug report against a locally built
+# binary actionable. Each falls back to a self-describing value rather than an
+# empty string, so a source tarball with no git metadata still builds.
+VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT     ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS    := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(BUILD_DATE)
+
 .PHONY: all help fmt vet test build vectors vectors-check demo-check e2e clean parity parity-rust differential wasm wasm-check wasm-budget ts-test
 
 # The default target runs exactly what a pull request has to pass before the
@@ -57,7 +68,7 @@ test:
 	$(GO) test ./...
 
 build:
-	$(GO) build -o $(BIN) ./cmd/soroauth
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/soroauth
 
 # Golden vectors are generated, committed artefacts. Regenerating them is safe;
 # `vectors-check` is the one that proves the committed files match, which is

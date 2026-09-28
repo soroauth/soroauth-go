@@ -12,6 +12,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   would overflow a ledger sequence), so the function's contract is executed by
   `go test` rather than described in prose that can go stale. (#139)
 
+- `soroauth --version` reports the build version, commit and Go toolchain. The
+  three build fields are stamped with `-ldflags`: the release workflow passes
+  the tag, the commit and the run's date, and `make build` stamps the checkout
+  it built from. A binary built with neither reports `dev`/`unknown` rather
+  than an empty string, and the toolchain version is read from the running
+  binary so it cannot drift from the toolchain that produced it. A test fails
+  if the release workflow stops passing the fields. (#140)
+
 - Passkey signature-shape golden vectors. `testdata/gen/gen-passkey.mjs` drives
   a pinned `smart-account-kit@0.8.0` (the OpenZeppelin/Stellar SDK for smart
   accounts with WebAuthn passkeys) and records the `{ public_key, signature }`

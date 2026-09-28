@@ -296,6 +296,31 @@ a flag added to a subcommand without updating the completions spec fails the
 test suite (`TestSpecsMatchTheRealFlagSets`) rather than shipping a completion
 script that silently omits it.
 
+### Version — which build am I running?
+
+`soroauth --version` prints the release tag, the commit and the Go toolchain
+version the binary was built with:
+
+```sh
+soroauth --version
+```
+
+```
+soroauth v0.2.0
+commit: 9f1c3ab
+built: 2026-09-28T11:04:02Z
+go: go1.25.4
+```
+
+The three build fields are stamped at build time with `-ldflags`. The release
+workflow passes the tag, the commit and the run's date
+(`.github/workflows/release.yml`); `make build` stamps the checkout it was
+built from. A binary built without either — a plain `go build`, or a
+`go install` — reports `dev`, `unknown` and `unknown` rather than empty
+strings, so a bug report that says `dev` is telling you it did not come from a
+release. The toolchain line is read from the running binary
+(`runtime.Version()`), so it cannot drift from the toolchain that produced it.
+
 ### Wasm budget — fail the build when the wasm core outgrows its ceiling
 
 `soroauth wasm-budget` measures the compiled js/wasm signing core and exits

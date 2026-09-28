@@ -84,6 +84,10 @@ commands:
 
 run "soroauth <command> -h" for the flags of a command.
 
+flags:
+  --version      print the build version, commit and Go version
+  -h, --help     print this help
+
 exit codes:
   0  success
   1  general error (internal or unclassified)
@@ -150,6 +154,8 @@ func runWithStdin(args []string, stdout, stderr io.Writer, getenv func(string) s
 		return runCompletions(args[1:], stdout, stderr)
 	case "wasm-budget":
 		return runWASMBudget(args[1:], stdout, stderr)
+	case "--version", "-version":
+		return runVersion(stdout)
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, usage)
 		return nil
