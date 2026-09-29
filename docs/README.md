@@ -27,6 +27,7 @@ the architecture note and the guides is the one they need. The repository root
 | [verification-limits](verification-limits.md)   | What `soroauth verify` can and cannot establish offline.                                                           |
 | [verification-service](verification-service.md) | How to run the HTTP verification service, and what it will and will not do.                                        |
 | [sdk-support](sdk-support.md)                   | Which `go-stellar-sdk` versions are supported and how the pin moves.                                               |
+| [browser](browser.md)                           | How to use soroauth from a browser page: installing and loading the wasm module, and the passkey flow.             |
 
 ## Reference
 
@@ -45,6 +46,7 @@ the architecture note and the guides is the one they need. The repository root
 | [e2e/README](../e2e/README.md)                                       | What each live testnet scenario proves, and how the two-pass simulation flow works.         |
 | [e2e/RESULTS](../e2e/RESULTS.md)                                     | The transaction hashes and observed credential arms from a real testnet run.                |
 | [fuzzing](fuzzing.md)                                                | How the fuzz targets run continuously, and how a crash becomes a committed regression seed. |
+| [parity](parity.md)                                                  | What agreement across implementations does and does not establish.                          |
 | [differential fuzzing](../testdata/differential/README.md)           | How random entries are checked across the Go, JS and Python implementations.                |
 | [frozen divergences](../testdata/differential/regressions/README.md) | The regression corpus of cases the implementations once disagreed on.                       |
 | [Python parity](../testdata/parity-python/README.md)                 | How the vectors are recomputed with the Python `stellar-sdk`.                               |

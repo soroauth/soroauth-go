@@ -88,7 +88,9 @@ byte-for-byte against `@stellar/stellar-sdk@17.1.0` by nine golden vectors, and
 proven against a live host by the testnet scenarios in
 [e2e/RESULTS.md](e2e/RESULTS.md) — but agreeing with a reference implementation
 and being accepted by a host are not the same thing as having been audited, and
-neither rules out a class of bug that both implementations share.
+neither rules out a class of bug that both implementations share. What each
+suite covers, and what none of them rule out, is stated in
+[docs/parity.md](docs/parity.md).
 
 Judge it accordingly before signing anything valuable with it, and read the
 code.

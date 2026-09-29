@@ -766,6 +766,10 @@ The signing core builds for `js/wasm`, so a browser can derive the bytes it
 signs instead of trusting a server for the payload. This is what makes passkey
 signing possible without a round trip that hands over the preimage.
 
+If you are integrating from a browser page, start with
+[docs/browser.md](docs/browser.md): install, load, a minimal working snippet,
+and the demo.
+
 - The module lives in `cmd/soroauthwasm` and is built with `wasm/build.sh`. It
   exposes building a preimage, hashing it to a payload, writing an externally
   produced signature onto an entry, and a deterministic ed25519 path for tests.
@@ -821,6 +825,9 @@ depth, sub-invocation trees, both nonce signs and the `int64` edges — and
 requires Go, JS and Python to agree on every payload. A divergence is a release
 blocker, not a test flake. See
 [testdata/differential/README.md](testdata/differential/README.md).
+
+What that agreement does and does not establish — and what no offline suite can
+rule out — is stated in one place in [docs/parity.md](docs/parity.md).
 
 ## Status
 
