@@ -292,6 +292,14 @@ matters:
 - **It does not decide how long the signature lives.** The expiration ledger
   is `AuthorizeEntry`'s argument, and it is both signed over and written in.
 
+The callback form of the signer is runnable end to end as
+`ExampleNewPasskeySigner_authorizeEndToEnd` on
+[`NewPasskeySigner`](../example_test.go): it derives a wallet address and a P-256
+credential key from fixed labels, signs the payload, writes the signature with
+`AuthorizeEntry` and `ForAddress`, reads it back, and verifies it against the
+payload rebuilt from the signed entry. `go test` runs it, so it cannot drift from
+the library the way a snippet copied into a post can.
+
 ## Step 4: enforce mode and submission
 
 Signing changes what the transaction costs. A transaction assembled from the

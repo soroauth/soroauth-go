@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+- `NewPasskeySigner` has a runnable end-to-end example.
+  `ExampleNewPasskeySigner_authorizeEndToEnd` signs a passkey wallet's
+  address-bound credential node: it derives the wallet address and its P-256
+  credential key from fixed labels, signs with `SignSecp256r1` and
+  `Secp256r1SignatureScVal`, writes the result with `AuthorizeEntry` and
+  `ForAddress`, and then checks the signature that landed in the entry against
+  the payload rebuilt from that same entry. It also shows the user-verification
+  guard refusing an assertion that only proves presence. Every printed line is
+  stable across runs; the 64 signature bytes are not, because ES256 signs with a
+  fresh nonce each time, so they are verified rather than printed. Examples are
+  compiled and run by `go test`, so this one cannot rot the way a prose snippet
+  can. (#32)
+
 - `ExpirationAfter` has a runnable doc example. `ExampleExpirationAfter` walks
   the "about an hour" case and both refusals (a zero lifetime, and a sum that
   would overflow a ledger sequence), so the function's contract is executed by
