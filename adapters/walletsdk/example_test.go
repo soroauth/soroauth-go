@@ -99,3 +99,17 @@ func ExampleFromOKXKeypair() {
 	}
 	_ = generic
 }
+
+func ExampleNewSigner() {
+	kp, err := okxkeypair.Random()
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+	signer, err := walletsdk.NewSigner(kp)
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+	fmt.Printf("signer != nil: %t\n", signer != nil)
+}
