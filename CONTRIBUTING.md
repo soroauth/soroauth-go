@@ -595,39 +595,94 @@ make fuzz               # every target, 30s each (override: make fuzz FUZZTIME=2
 go run ./cmd/gencorpus  # regenerate the seed corpus from the golden vectors
 ```
 
-The seeds land in `testdata/fuzz/<TargetName>/`. That path is not a choice: Go
-reads a target's seed corpus from `testdata/fuzz/<TargetName>` and nowhere else,
-and each file must be in Go's corpus format (a `go test fuzz v1` header, then
-one Go literal per fuzz argument) or it fails the package's tests instead of
-being skipped. Every seed runs as a named subtest under the ordinary
-`go test ./...`, so a seed that starts failing fails the suite with no `-fuzz`
-flag needed:
+#### The six fuzz targets
+
+| Target                         | Package            | Run command                                                                  |
+| ------------------------------ | ------------------ | ---------------------------------------------------------------------------- |
+| `FuzzValidateDelegateOrder`    | root (`.`)         | `go test -run '^$' -fuzz FuzzValidateDelegateOrder -fuzztime 30s .`          |
+| `FuzzInspect`                  | root (`.`)         | `go test -run '^$' -fuzz FuzzInspect -fuzztime 30s .`                        |
+| `FuzzPreimage`                 | root (`.`)         | `go test -run '^$' -fuzz FuzzPreimage -fuzztime 30s .`                       |
+| `FuzzPayload`                  | root (`.`)         | `go test -run '^$' -fuzz FuzzPayload -fuzztime 30s .`                        |
+| `FuzzDecodeAuthorizationEntry` | root (`.`)         | `go test -run '^$' -fuzz FuzzDecodeAuthorizationEntry -fuzztime 30s .`       |
+| `FuzzCopyRoundTrip`            | `internal/xdrcopy` | `go test -run '^$' -fuzz FuzzCopyRoundTrip -fuzztime 30s ./internal/xdrcopy` |
+
+Run all six with one command:
 
 ```sh
-go test -run FuzzValidateDelegateOrder -v .
+make fuzz                       # 30s each
+make fuzz FUZZTIME=2m           # 2 minutes each
 ```
 
+#### Seed corpus location
+
+The seed corpus lives in `testdata/fuzz/<TargetName>/` for the five root-package
+targets, and in `internal/xdrcopy/testdata/fuzz/FuzzCopyRoundTrip/` for
+`FuzzCopyRoundTrip`. Go reads a target's seeds **only** from its dedicated
+directory; files elsewhere are ignored. Every file must be in Go's corpus format
+(a `go test fuzz v1` header followed by one Go literal per fuzz argument). A
+file in the wrong format fails the package's tests rather than being skipped.
+
+Regenerate the seeds from the committed golden vectors:
+
+```sh
+go run ./cmd/gencorpus
 ```
-=== RUN   FuzzValidateDelegateOrder/v2_sub_invocations_0
---- PASS: FuzzValidateDelegateOrder (0.01s)
+
+This is deterministic: the same vectors produce byte-identical corpus files. CI
+runs it on every push and fails if the committed seeds drift.
+
+#### Running a single seed as a regression test
+
+Each corpus file runs as a named subtest under `go test ./...` with no `-fuzz`
+flag. To run one seed by name:
+
+```sh
+go test -run 'FuzzValidateDelegateOrder/v2_sub_invocations_0' -v .
 ```
 
-Two rules about those files:
+#### Reproducing a CI crash locally
 
-- **Never hand-edit a generated seed.** Change the vectors or the generator and
-  regenerate; CI regenerates and fails on drift. `gencorpus` tracks what it
-  generated in `testdata/fuzz/.gencorpus/` and deletes only those files, so a
-  committed crash reproducer sharing the directory survives regeneration.
-- **A crash reproducer is committed as the fuzzer wrote it**, together with the
-  fix, so it keeps running as a regression subtest. The one exception to the
-  no-hand-edit rule above, because it is evidence of a finding rather than a
-  generated artefact.
+When the nightly `continuous-fuzz` workflow finds a crash, it files (or comments
+on) an issue titled `[fuzz] <Target> found a failing input`. The issue body
+includes:
 
-When a target builds seeds with the test helpers, pass `f` straight through: the
-helpers take `testing.TB`, which `*testing.F` satisfies. Do not build a
-`&testing.T{}` literal to satisfy them: it is an uninitialised struct, so
-`Helper()` and `Fatalf()` on one panic instead of reporting, and a seed that
-failed to build would take the whole target down rather than failing it.
+- The tail of the fuzz log.
+- The one-command local reproduction (e.g.,
+  `go test -run '^$' -fuzz FuzzInspect -fuzztime 30s .`).
+- Every reproducer the run wrote, base64-encoded, ready to decode into the
+  target's seed corpus directory.
+
+To reproduce:
+
+1. Decode the base64 block into `testdata/fuzz/<Target>/`, keeping the filename
+   the fuzzer wrote.
+2. Confirm it fails:
+
+   ```sh
+   go test -run 'Fuzz<Target>/<filename>' <package>
+   ```
+
+   Example:
+
+   ```sh
+   go test -run 'FuzzInspect/trailing_garbage_byte_0' .
+   ```
+
+3. Fix the code. If the input turns out to be legal and the target's property
+   overstated — as happened with the trailing-byte input — fix the property and
+   say so in the commit body.
+4. Confirm the seed passes and the full suite is green:
+
+   ```sh
+   go test ./...
+   ```
+
+5. Commit the fix and the seed together. The seed now runs on every `go test`,
+   which is what makes it a regression test rather than a log line.
+
+The differential harness in `testdata/differential/` is a different kind of
+fuzzing — random entries checked across the Go, JS and Python implementations —
+and is documented in its own README.
 
 ### Capturing regressions
 
