@@ -594,14 +594,14 @@ go run ./cmd/gencorpus  # regenerate the seed corpus from the golden vectors
 
 #### The six fuzz targets
 
-| Target                            | Package           | Run command                                                                          |
-| --------------------------------- | ----------------- | ------------------------------------------------------------------------------------ |
-| `FuzzValidateDelegateOrder`       | root (`.`)        | `go test -run '^$' -fuzz FuzzValidateDelegateOrder -fuzztime 30s .`                  |
-| `FuzzInspect`                     | root (`.`)        | `go test -run '^$' -fuzz FuzzInspect -fuzztime 30s .`                                |
-| `FuzzPreimage`                    | root (`.`)        | `go test -run '^$' -fuzz FuzzPreimage -fuzztime 30s .`                               |
-| `FuzzPayload`                     | root (`.`)        | `go test -run '^$' -fuzz FuzzPayload -fuzztime 30s .`                                |
-| `FuzzDecodeAuthorizationEntry`    | root (`.`)        | `go test -run '^$' -fuzz FuzzDecodeAuthorizationEntry -fuzztime 30s .`               |
-| `FuzzCopyRoundTrip`               | `internal/xdrcopy`| `go test -run '^$' -fuzz FuzzCopyRoundTrip -fuzztime 30s ./internal/xdrcopy`        |
+| Target                         | Package            | Run command                                                                  |
+| ------------------------------ | ------------------ | ---------------------------------------------------------------------------- |
+| `FuzzValidateDelegateOrder`    | root (`.`)         | `go test -run '^$' -fuzz FuzzValidateDelegateOrder -fuzztime 30s .`          |
+| `FuzzInspect`                  | root (`.`)         | `go test -run '^$' -fuzz FuzzInspect -fuzztime 30s .`                        |
+| `FuzzPreimage`                 | root (`.`)         | `go test -run '^$' -fuzz FuzzPreimage -fuzztime 30s .`                       |
+| `FuzzPayload`                  | root (`.`)         | `go test -run '^$' -fuzz FuzzPayload -fuzztime 30s .`                        |
+| `FuzzDecodeAuthorizationEntry` | root (`.`)         | `go test -run '^$' -fuzz FuzzDecodeAuthorizationEntry -fuzztime 30s .`       |
+| `FuzzCopyRoundTrip`            | `internal/xdrcopy` | `go test -run '^$' -fuzz FuzzCopyRoundTrip -fuzztime 30s ./internal/xdrcopy` |
 
 Run all six with one command:
 
@@ -615,10 +615,9 @@ make fuzz FUZZTIME=2m           # 2 minutes each
 The seed corpus lives in `testdata/fuzz/<TargetName>/` for the five root-package
 targets, and in `internal/xdrcopy/testdata/fuzz/FuzzCopyRoundTrip/` for
 `FuzzCopyRoundTrip`. Go reads a target's seeds **only** from its dedicated
-directory; files elsewhere are ignored. Every file must be in Go's corpus
-format (a `go test fuzz v1` header followed by one Go literal per fuzz
-argument). A file in the wrong format fails the package's tests rather than
-being skipped.
+directory; files elsewhere are ignored. Every file must be in Go's corpus format
+(a `go test fuzz v1` header followed by one Go literal per fuzz argument). A
+file in the wrong format fails the package's tests rather than being skipped.
 
 Regenerate the seeds from the committed golden vectors:
 
@@ -640,12 +639,13 @@ go test -run 'FuzzValidateDelegateOrder/v2_sub_invocations_0' -v .
 
 #### Reproducing a CI crash locally
 
-When the nightly `continuous-fuzz` workflow finds a crash, it files (or
-comments on) an issue titled `[fuzz] <Target> found a failing input`. The issue
-body includes:
+When the nightly `continuous-fuzz` workflow finds a crash, it files (or comments
+on) an issue titled `[fuzz] <Target> found a failing input`. The issue body
+includes:
 
 - The tail of the fuzz log.
-- The one-command local reproduction (e.g., `go test -run '^$' -fuzz FuzzInspect -fuzztime 30s .`).
+- The one-command local reproduction (e.g.,
+  `go test -run '^$' -fuzz FuzzInspect -fuzztime 30s .`).
 - Every reproducer the run wrote, base64-encoded, ready to decode into the
   target's seed corpus directory.
 
