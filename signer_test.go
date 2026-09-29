@@ -3,6 +3,7 @@ package soroauth
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"crypto/ed25519"
 	"errors"
 	"fmt"
@@ -731,4 +732,47 @@ func TestEd25519SignatureScVal(t *testing.T) {
 			}
 		})
 	}
+}
+
+func ExampleNewEd25519Signer() {
+	kp, _ := keypair.FromRawSeed([32]byte{1, 2, 3})
+	signer := NewEd25519Signer(kp)
+	fmt.Printf("signer address: %s\n", signer.Address())
+
+	// Output: signer address: GARB7ZPWQWNBUT7MPECXZHJSZDJ7YNLOCRFR3I5Q7EAW55XSTCENUEPG
+}
+
+func ExampleNewAccountMultiSigner() {
+	kp1, _ := keypair.FromRawSeed([32]byte{1, 2, 3})
+	kp2, _ := keypair.FromRawSeed([32]byte{4, 5, 6})
+	// A multisig account address
+	account := "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+	signer, err := NewAccountMultiSigner(account, kp1, kp2)
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+	fmt.Printf("signer address: %s\n", signer.Address())
+
+	// Output: signer address: GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF
+}
+
+func ExampleNewPasskeySignerFromAssertion() {
+	var pubKey ecdsa.PublicKey
+	assertion := &WebAuthnAssertion{
+		AuthenticatorData: make([]byte, 37),
+		ClientDataJSON:    []byte(`{"type":"webauthn.get","challenge":"..."}`),
+		Signature:         make([]byte, 64),
+		ChallengeString:   "...",
+	}
+
+	signer := NewPasskeySignerFromAssertion(
+		"GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+		&pubKey,
+		assertion,
+	)
+
+	fmt.Printf("signer address: %s\n", signer.Address())
+
+	// Output: signer address: GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF
 }
