@@ -30,7 +30,8 @@ Two optional pieces need more:
   `@stellar/stellar-sdk@17.1.0` declares).
 - **Running the e2e tests** needs Rust 1.93.0 (pinned in
   `e2e/contracts/rust-toolchain.toml`, rustup will fetch it) and `stellar-cli`
-  28.0.0.
+  28.0.0. See [the fixture contract quickstart](docs/fixture-quickstart.md) for
+  a step-by-step build and deploy guide from a clean checkout.
 - **Working on the wallet SDK adapter** (`adapters/walletsdk`) needs nothing
   extra, but it is a module of its own with its own test loop; see
   [The nested adapter module](#the-nested-adapter-module).
@@ -465,7 +466,9 @@ only from a real, complete run — it is what the README's testnet claims point
 at.
 
 See [e2e/README.md](e2e/README.md) for what each scenario proves and why the two
-rejection scenarios exist.
+rejection scenarios exist. For a step-by-step guide to building and deploying
+the fixture contracts manually from a clean checkout, see [the fixture contract
+quickstart](docs/fixture-quickstart.md).
 
 ## Scheduled e2e runs (CI)
 
