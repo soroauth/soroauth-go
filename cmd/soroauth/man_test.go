@@ -186,7 +186,7 @@ func TestManPageParsesWithRealRoff(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s rejected the man page: %v\noutput:\n%s", formatter.name, err, out)
 		}
-		rendered := string(out)
+		rendered := stripOverstrike(string(out))
 		if !strings.Contains(rendered, "SOROAUTH") {
 			t.Errorf("%s rendered a page with no SOROAUTH heading:\n%s", formatter.name, rendered)
 		}
@@ -196,6 +196,30 @@ func TestManPageParsesWithRealRoff(t *testing.T) {
 		return
 	}
 	t.Skip("neither mandoc nor groff is on PATH")
+}
+
+// stripOverstrike removes the backspace overstrike a terminal formatter emits
+// for bold and underline: bold "N" is rendered "N\bN", and underlined "c" is
+// rendered "_\bc".
+//
+// Without this the assertions below match against those sequences rather than
+// the text, so "--entry" is never found and "NAME" reads as "NNAAMMEE". That
+// is environment-specific: mandoc on macOS overstrikes where the groff builds
+// on the CI runners do not, so the test passed in CI and failed for anyone
+// working on a Mac. This is `col -b` in eight lines, so the test does not gain
+// a dependency on col being installed.
+func stripOverstrike(s string) string {
+	out := make([]rune, 0, len(s))
+	for _, r := range s {
+		if r == '\b' {
+			if len(out) > 0 {
+				out = out[:len(out)-1]
+			}
+			continue
+		}
+		out = append(out, r)
+	}
+	return string(out)
 }
 
 // TestManThroughTheDispatcher asserts the subcommand is reachable the way a
