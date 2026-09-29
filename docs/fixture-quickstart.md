@@ -32,11 +32,11 @@ channel = "1.93.0"
 targets = ["wasm32v1-none"]
 ```
 
-**Why this pin:** `soroban-sdk` 27.0.6 (used by the fixture contracts) declares a
-minimum Rust version of 1.91.0. However, `stellar-cli` 28.0.0 (the tool that
+**Why this pin:** `soroban-sdk` 27.0.6 (used by the fixture contracts) declares
+a minimum Rust version of 1.91.0. However, `stellar-cli` 28.0.0 (the tool that
 compiles contracts to Wasm) declares a minimum Rust version of 1.93.0. Using
-1.91.0 would allow the contract crates to compile in isolation, but the CLI
-that performs the build would fail. The pin at 1.93.0 satisfies both.
+1.91.0 would allow the contract crates to compile in isolation, but the CLI that
+performs the build would fail. The pin at 1.93.0 satisfies both.
 
 If you use `rustup`, it will automatically fetch and use 1.93.0 when you `cd`
 into `e2e/contracts/`.
@@ -64,19 +64,20 @@ standard Soroban deployment profile.
 ls -lh target/wasm32v1-none/release/*.wasm
 ```
 
-You should see one `.wasm` file per fixture (e.g.,
-`modular_account.wasm`, `session_keys.wasm`, etc.).
+You should see one `.wasm` file per fixture (e.g., `modular_account.wasm`,
+`session_keys.wasm`, etc.).
 
 ### Run contract unit tests
 
-Each fixture has Rust unit tests covering its constructor, `__check_auth`
-logic, and error paths:
+Each fixture has Rust unit tests covering its constructor, `__check_auth` logic,
+and error paths:
 
 ```sh
 cargo test --workspace
 ```
 
 Expected passing tests include:
+
 - `modular-account`: constructor storage, `NoDelegates`, `UnknownDelegate`
 - `session-keys`: window registration, in-window acceptance, expiry rejection
 - `threshold-account`: M-of-N threshold, exactly M signers, M-1 rejection
@@ -117,18 +118,19 @@ Replace `<G-ACCOUNT-1>` and `<G-ACCOUNT-2>` with the G… addresses you want as
 delegated signers for the modular account. The constructor arguments vary by
 fixture:
 
-| Fixture           | Constructor arguments (JSON array)                                                                           |
-| ----------------- | ------------------------------------------------------------------------------------------------------------ |
-| `modular-account` | `--signers '["G...", "G..."]'`                                                                               |
-| `session-keys`    | *(no constructor args; session keys registered via contract calls)*                                          |
-| `threshold-account`| `--threshold 2 --signers '["G...", "G...", "G..."]'`                                                        |
-| `policy-account`  | `--limit 10000000 --period 100 --signer "G..."`                                                              |
-| `passkey-wallet`  | `--credential_key "<P256_PUBLIC_KEY_BASE64>"`                                                                |
-| `social-recovery` | `--guardians '["G...", "G..."] --signer "G..." --delay 10`                                                  |
+| Fixture             | Constructor arguments (JSON array)                                  |
+| ------------------- | ------------------------------------------------------------------- |
+| `modular-account`   | `--signers '["G...", "G..."]'`                                      |
+| `session-keys`      | _(no constructor args; session keys registered via contract calls)_ |
+| `threshold-account` | `--threshold 2 --signers '["G...", "G...", "G..."]'`                |
+| `policy-account`    | `--limit 10000000 --period 100 --signer "G..."`                     |
+| `passkey-wallet`    | `--credential_key "<P256_PUBLIC_KEY_BASE64>"`                       |
+| `social-recovery`   | `--guardians '["G...", "G..."] --signer "G..." --delay 10`          |
 
 **Note:** The e2e test suite generates accounts and deploys fixtures
 programmatically at runtime (see `e2e/deploy_test.go`). The CLI commands above
-are for manual debugging only; the test suite does not require manual deployment.
+are for manual debugging only; the test suite does not require manual
+deployment.
 
 ### Verify deployment
 
@@ -162,17 +164,19 @@ them via friendbot — no manual deployment is needed for the test run.
 
 ## Troubleshooting
 
-| Problem                                                  | Resolution                                                                                          |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `error: toolchain '1.93.0' not installed`                | Run `rustup install 1.93.0 && rustup target add wasm32v1-none --toolchain 1.93.0`                 |
-| `stellar: command not found`                             | Install `stellar-cli` 28.0.0: `cargo install --locked stellar-cli@28.0.0`                          |
-| `failed to build: crate requires rustc 1.93`             | You are not using the pinned toolchain; `cd e2e/contracts` and ensure `rustup show` reports 1.93.0 |
-| `wasm32v1-none target not found`                         | `rustup target add wasm32v1-none --toolchain 1.93.0`                                               |
-| Build succeeds but e2e tests fail with RPC errors        | Check `SOROAUTH_RPC_URL` (default `https://soroban-testnet.stellar.org`) and testnet status        |
-| Contract deployment fails with "insufficient balance"    | Fund the source account via friendbot before deploying                                             |
+| Problem                                               | Resolution                                                                                         |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `error: toolchain '1.93.0' not installed`             | Run `rustup install 1.93.0 && rustup target add wasm32v1-none --toolchain 1.93.0`                  |
+| `stellar: command not found`                          | Install `stellar-cli` 28.0.0: `cargo install --locked stellar-cli@28.0.0`                          |
+| `failed to build: crate requires rustc 1.93`          | You are not using the pinned toolchain; `cd e2e/contracts` and ensure `rustup show` reports 1.93.0 |
+| `wasm32v1-none target not found`                      | `rustup target add wasm32v1-none --toolchain 1.93.0`                                               |
+| Build succeeds but e2e tests fail with RPC errors     | Check `SOROAUTH_RPC_URL` (default `https://soroban-testnet.stellar.org`) and testnet status        |
+| Contract deployment fails with "insufficient balance" | Fund the source account via friendbot before deploying                                             |
 
 ## Related documentation
 
 - [E2E test scenarios](e2e/README.md) — what each live scenario proves
-- [Fixture inventory](FIXTURES.md) — detailed table of all fixtures, their paths, and evidence
-- [CONTRIBUTING.md](../CONTRIBUTING.md#running-the-e2e-tests) — the one-liner for the full e2e run
+- [Fixture inventory](FIXTURES.md) — detailed table of all fixtures, their
+  paths, and evidence
+- [CONTRIBUTING.md](../CONTRIBUTING.md#running-the-e2e-tests) — the one-liner
+  for the full e2e run

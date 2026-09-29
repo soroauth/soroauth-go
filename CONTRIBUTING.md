@@ -467,8 +467,8 @@ at.
 
 See [e2e/README.md](e2e/README.md) for what each scenario proves and why the two
 rejection scenarios exist. For a step-by-step guide to building and deploying
-the fixture contracts manually from a clean checkout, see [the fixture contract
-quickstart](docs/fixture-quickstart.md).
+the fixture contracts manually from a clean checkout, see
+[the fixture contract quickstart](docs/fixture-quickstart.md).
 
 ## Scheduled e2e runs (CI)
 
