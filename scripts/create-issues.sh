@@ -73,6 +73,7 @@ create_label "area:testing"       "5319e7" "Golden vectors, fuzzing, benchmarks,
 create_label "area:api"           "0e8a16" "Exported library API"
 create_label "area:docs"          "006b75" "Documentation and guides"
 create_label "area:tooling"       "bfd4f2" "CLI, scripts, release automation"
+create_label "good first issue"   "7057ff" "Trivial and needs no Soroban context; a newcomer's first PR"
 echo
 
 # ---------------------------------------------------------------------------
@@ -93,11 +94,15 @@ awk -v dir="$WORKDIR" '
       print title    > (dir "/" sprintf("%02d", n) ".title")
       print recarea  > (dir "/" sprintf("%02d", n) ".area")
       print cplx     > (dir "/" sprintf("%02d", n) ".complexity")
+      print gfi      > (dir "/" sprintf("%02d", n) ".gfi")
+      print entry    > (dir "/" sprintf("%02d", n) ".entry")
       printf "%s",  summary  > (dir "/" sprintf("%02d", n) ".summary")
       printf "%s",  criteria > (dir "/" sprintf("%02d", n) ".criteria")
       close(dir "/" sprintf("%02d", n) ".title")
       close(dir "/" sprintf("%02d", n) ".area")
       close(dir "/" sprintf("%02d", n) ".complexity")
+      close(dir "/" sprintf("%02d", n) ".gfi")
+      close(dir "/" sprintf("%02d", n) ".entry")
       close(dir "/" sprintf("%02d", n) ".summary")
       close(dir "/" sprintf("%02d", n) ".criteria")
     }
@@ -124,6 +129,7 @@ awk -v dir="$WORKDIR" '
     # so reading the live variable then would label it with the next section.
     recarea = area
     cplx = ""; summary = ""; criteria = ""; mode = "summary"
+    gfi = ""; entry = ""
     next
   }
 
@@ -132,6 +138,18 @@ awk -v dir="$WORKDIR" '
   /^\*\*Complexity:\*\*/ {
     cplx = $0
     sub(/^\*\*Complexity:\*\* */, "", cplx)
+    next
+  }
+
+  # A labelled item carries a "**Good first issue.**" marker and a following
+  # "**Entry point:**" line. Both are issue metadata, not summary prose, so
+  # they are captured and skipped rather than folded into the body text.
+  /^\*\*Good first issue\.\*\*/ { gfi = "1"; next }
+
+  /^\*\*Entry point:\*\*/ {
+    entry = $0
+    sub(/^\*\*Entry point:\*\* */, "", entry)
+    gsub(/`/, "", entry)
     next
   }
 
@@ -171,6 +189,8 @@ for titlefile in "$WORKDIR"/*.title; do
   title="$(cat "$titlefile")"
   area="$(cat "$base.area")"
   complexity="$(cat "$base.complexity")"
+  gfi="$(cat "$base.gfi")"
+  entry="$(cat "$base.entry")"
   summary="$(trim_blank_edges < "$base.summary")"
   criteria="$(trim_blank_edges < "$base.criteria")"
 
@@ -181,8 +201,34 @@ for titlefile in "$WORKDIR"/*.title; do
     *) echo "issue '$title' has an unrecognised complexity: '$complexity'" >&2; exit 1 ;;
   esac
 
-  body="$(printf '## Summary\n\n%s\n\n## Acceptance criteria\n\n%s\n\n---\n\nFrom [`docs/ISSUE_BACKLOG.md`](https://github.com/%s/blob/main/docs/ISSUE_BACKLOG.md). Anything that changes the bytes soroauth emits must cite the CAP requiring it and ship a golden vector.\n' \
-    "$summary" "$criteria" "$REPO")"
+  # Built as literal multi-line strings rather than via command substitution:
+  # a trailing "$(...)" strips its own newlines, which would run each section
+  # into the next one.
+  body="## Summary
+
+${summary}
+
+"
+  if [[ "$gfi" == "1" && -n "$entry" ]]; then
+    body="${body}**Good first issue.** Entry point: \`${entry}\`.
+
+"
+  fi
+  body="${body}## Acceptance criteria
+
+${criteria}
+
+---
+
+From [\`docs/ISSUE_BACKLOG.md\`](https://github.com/${REPO}/blob/main/docs/ISSUE_BACKLOG.md). Anything that changes the bytes soroauth emits must cite the CAP requiring it and ship a golden vector.
+"
+
+  label_args=(--label "$complexity_label" --label "$area")
+  labels_desc="$complexity_label, $area"
+  if [[ "$gfi" == "1" ]]; then
+    label_args+=(--label "good first issue")
+    labels_desc="$labels_desc, good first issue"
+  fi
 
   count=$((count + 1))
 
@@ -190,13 +236,12 @@ for titlefile in "$WORKDIR"/*.title; do
     gh issue create \
       --repo "$REPO" \
       --title "$title" \
-      --label "$complexity_label" \
-      --label "$area" \
+      "${label_args[@]}" \
       --body "$body"
   else
     echo "=============================================================="
     echo "would create issue: $title"
-    echo "labels:             $complexity_label, $area"
+    echo "labels:             $labels_desc"
     echo "--------------------------------------------------------------"
     echo "$body"
     echo

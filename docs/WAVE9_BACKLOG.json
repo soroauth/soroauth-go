@@ -1855,6 +1855,8 @@
   "title": "feat(cmd): --version flag",
   "complexity": "trivial",
   "area": "tooling",
+  "good_first_issue": true,
+  "entry_point": "cmd/soroauth/main.go",
   "description": "Report the build version, commit and Go version.",
   "why": "A bug report against a CLI that cannot state its own version costs a round trip every time.",
   "criteria": [
@@ -1871,6 +1873,8 @@
   "title": "feat(cmd): generate a man page",
   "complexity": "trivial",
   "area": "tooling",
+  "good_first_issue": true,
+  "entry_point": "cmd/soroauth/main.go",
   "description": "Emit a man page for the CLI.",
   "why": "Packaging for Homebrew or apt expects one, and it is a small amount of work for a distribution requirement.",
   "criteria": [
@@ -1887,6 +1891,8 @@
   "title": "fix(cmd): distinguish malformed base64 from a wrong XDR type",
   "complexity": "trivial",
   "area": "tooling",
+  "good_first_issue": true,
+  "entry_point": "decode.go",
   "description": "Separate 'this is not base64' from 'this decoded but is not an authorization entry'.",
   "why": "Both produce the same message today, and they call for completely different fixes.",
   "criteria": [
@@ -1903,6 +1909,8 @@
   "title": "chore: add CODEOWNERS",
   "complexity": "trivial",
   "area": "docs",
+  "good_first_issue": true,
+  "entry_point": ".github/CODEOWNERS",
   "description": "Add a CODEOWNERS file for review routing.",
   "why": "The ruleset does not require code-owner review, but CODEOWNERS still routes review requests automatically as contributors arrive.",
   "criteria": [
@@ -1919,6 +1927,8 @@
   "title": "chore: security issue template pointing to advisories",
   "complexity": "trivial",
   "area": "docs",
+  "good_first_issue": true,
+  "entry_point": ".github/ISSUE_TEMPLATE/security.yml",
   "description": "A security template that redirects to private advisories rather than collecting a public report.",
   "why": "SECURITY.md says report privately, but someone opening a blank issue never sees it. The template is the last place to intercept.",
   "criteria": [
@@ -1935,6 +1945,8 @@
   "title": "docs: badges in the README header",
   "complexity": "trivial",
   "area": "docs",
+  "good_first_issue": true,
+  "entry_point": "README.md",
   "description": "Add CI status, pkg.go.dev and licence badges.",
   "why": "Badges are the fastest signal to a visitor that the project is tested and maintained.",
   "criteria": [
@@ -1951,6 +1963,8 @@
   "title": "chore: Dependabot for Go modules",
   "complexity": "trivial",
   "area": "tooling",
+  "good_first_issue": true,
+  "entry_point": ".github/dependabot.yml",
   "description": "Enable Dependabot for the Go module.",
   "why": "The SDK is pinned deliberately; Dependabot makes the decision to move deliberate rather than forgotten.",
   "criteria": [
@@ -1967,6 +1981,8 @@
   "title": "chore: Dependabot for GitHub Actions",
   "complexity": "trivial",
   "area": "tooling",
+  "good_first_issue": true,
+  "entry_point": ".github/dependabot.yml",
   "description": "Enable Dependabot for workflow actions.",
   "why": "The actions are pinned to major versions and will otherwise drift out of support silently.",
   "criteria": [
@@ -1982,6 +1998,8 @@
   "title": "chore: Dependabot for the vector generator",
   "complexity": "trivial",
   "area": "tooling",
+  "good_first_issue": true,
+  "entry_point": ".github/dependabot.yml",
   "description": "Enable Dependabot for `testdata/gen`.",
   "why": "The JS SDK is pinned exactly and any bump must regenerate vectors \u2014 a PR is exactly the right place for that to surface.",
   "criteria": [
@@ -2014,6 +2032,8 @@
   "title": "chore: add .editorconfig",
   "complexity": "trivial",
   "area": "tooling",
+  "good_first_issue": true,
+  "entry_point": ".editorconfig",
   "description": "Add an .editorconfig matching gofmt and the existing markdown style.",
   "why": "CI enforces gofmt but contributors only find out after pushing.",
   "criteria": [
@@ -2077,6 +2097,8 @@
   "title": "ci: run vet with the e2e tag",
   "complexity": "trivial",
   "area": "testing",
+  "good_first_issue": true,
+  "entry_point": ".github/workflows/ci.yml",
   "description": "Run `go vet -tags e2e ./...` in CI.",
   "why": "The e2e files are excluded from the default build, so they can break without CI noticing until someone runs them.",
   "criteria": [
@@ -2109,6 +2131,8 @@
   "title": "test: assert every sentinel error has a test producing it",
   "complexity": "trivial",
   "area": "testing",
+  "good_first_issue": true,
+  "entry_point": "errors_test.go",
   "description": "A meta-test verifying each exported sentinel is produced by at least one test.",
   "why": "It is a stated project rule and currently upheld by hand.",
   "criteria": [
@@ -2125,6 +2149,8 @@
   "title": "docs: table of contents in the README",
   "complexity": "trivial",
   "area": "docs",
+  "good_first_issue": true,
+  "entry_point": "README.md",
   "description": "Add a table of contents.",
   "why": "The README is now long enough that the testnet evidence and the JS differences are below the fold.",
   "criteria": [
@@ -2141,6 +2167,8 @@
   "title": "docs: FAQ",
   "complexity": "trivial",
   "area": "docs",
+  "good_first_issue": true,
+  "entry_point": "docs/faq.md",
   "description": "An FAQ covering the questions the design invites.",
   "why": "Why is there no default top-level write, why does AuthorizeAll not require every delegate, why is the expiration inclusive \u2014 all answered in doc comments and hard to find.",
   "criteria": [
@@ -2173,6 +2201,8 @@
   "title": "docs: examples directory index",
   "complexity": "trivial",
   "area": "docs",
+  "good_first_issue": true,
+  "entry_point": "examples/README.md",
   "description": "A README indexing the examples with what each shows.",
   "why": "As examples accumulate there is no map, and readers open them at random.",
   "criteria": [
@@ -2189,6 +2219,8 @@
   "title": "docs: contributor onboarding checklist",
   "complexity": "trivial",
   "area": "docs",
+  "good_first_issue": true,
+  "entry_point": "CONTRIBUTING.md",
   "description": "A short checklist for a first contribution.",
   "why": "CONTRIBUTING.md is thorough, which makes it long. A checklist gets someone to their first green PR faster.",
   "criteria": [
@@ -2221,6 +2253,8 @@
   "title": "docs: deprecation and support policy",
   "complexity": "trivial",
   "area": "docs",
+  "good_first_issue": true,
+  "entry_point": "docs/deprecation-policy.md",
   "description": "State how long a released version is supported and how breaking changes are announced.",
   "why": "SECURITY.md says only the latest release gets fixes. Pre-1.0 the breaking-change policy is unstated, and integrators need it.",
   "criteria": [
@@ -2269,6 +2303,8 @@
   "title": "chore: licence header check",
   "complexity": "trivial",
   "area": "tooling",
+  "good_first_issue": true,
+  "entry_point": ".github/workflows/ci.yml",
   "description": "Verify source files carry the expected licence header, or document that they deliberately do not.",
   "why": "Apache-2.0 is declared at the repo level and the files carry no headers. That is a valid choice and should be a recorded one.",
   "criteria": [
@@ -2301,6 +2337,8 @@
   "title": "chore: add SUPPORT.md",
   "complexity": "trivial",
   "area": "docs",
+  "good_first_issue": true,
+  "entry_point": "SUPPORT.md",
   "description": "A short file directing people to the right channel for questions, bugs and security reports.",
   "why": "GitHub surfaces SUPPORT.md when someone opens an issue. Without it, questions, bug reports and security reports all arrive the same way.",
   "criteria": [
@@ -2317,6 +2355,8 @@
   "title": "chore: add CITATION.cff",
   "complexity": "trivial",
   "area": "docs",
+  "good_first_issue": true,
+  "entry_point": "CITATION.cff",
   "description": "Add citation metadata so the project can be cited in research or audit write-ups.",
   "why": "Signing libraries get referenced in security write-ups, and GitHub renders CITATION.cff as a Cite button automatically.",
   "criteria": [
@@ -2333,6 +2373,8 @@
   "title": "chore: add .gitattributes",
   "complexity": "trivial",
   "area": "tooling",
+  "good_first_issue": true,
+  "entry_point": ".gitattributes",
   "description": "Normalise line endings and mark generated files.",
   "why": "The golden vectors and lockfiles are generated artefacts. Marking them keeps diffs readable and stops a Windows checkout rewriting line endings under the drift check.",
   "criteria": [
@@ -2349,6 +2391,8 @@
   "title": "docs: document the deterministic test-key scheme in one place",
   "complexity": "trivial",
   "area": "testing",
+  "good_first_issue": true,
+  "entry_point": "CONTRIBUTING.md",
   "description": "Explain once that every test key is derived from a plaintext label, and that those keys are therefore public.",
   "why": "The scheme is stated in gen.mjs's header and SECURITY.md, and assumed silently in several test files. A contributor adding a test needs to find it on the first look.",
   "criteria": [
@@ -2381,6 +2425,8 @@
   "title": "docs: index page for the docs directory",
   "complexity": "trivial",
   "area": "docs",
+  "good_first_issue": true,
+  "entry_point": "docs/README.md",
   "description": "An index listing the documents and what each is for.",
   "why": "There are now README, ARCHITECTURE, CONTRIBUTING, SECURITY, CHANGELOG, the issue backlog and the e2e docs, with no map between them.",
   "criteria": [
@@ -2397,6 +2443,8 @@
   "title": "ci: normalise Markdown formatting",
   "complexity": "trivial",
   "area": "docs",
+  "good_first_issue": true,
+  "entry_point": ".github/workflows/ci.yml",
   "description": "Run a Markdown formatter in CI so prose diffs stay about content.",
   "why": "The docs are hand-wrapped at varying widths. As contributors arrive, reformatting noise will start burying real changes in review.",
   "criteria": [
@@ -2413,6 +2461,8 @@
   "title": "docs: render the architecture diagrams as images",
   "complexity": "trivial",
   "area": "docs",
+  "good_first_issue": true,
+  "entry_point": "docs/diagrams/",
   "description": "Replace the ASCII diagrams in ARCHITECTURE.md with rendered diagrams, keeping a text fallback.",
   "why": "The signing flow and delegate tree are the two things a newcomer most needs to see, and ASCII limits how clearly they can be drawn.",
   "criteria": [
@@ -2429,6 +2479,8 @@
   "title": "docs: document the label taxonomy",
   "complexity": "trivial",
   "area": "docs",
+  "good_first_issue": true,
+  "entry_point": "docs/labels.md",
   "description": "Explain what each complexity and area label means and who applies them.",
   "why": "Contributors pick work by label, and complexity maps to points. What separates Medium from High should be written down rather than inferred.",
   "criteria": [
@@ -2445,6 +2497,8 @@
   "title": "chore: document the go.mod retract policy",
   "complexity": "trivial",
   "area": "docs",
+  "good_first_issue": true,
+  "entry_point": "go.mod",
   "description": "State when a released version would be retracted and how that is communicated.",
   "why": "A signing bug in a published version needs a retraction path decided before it is needed, not during an incident.",
   "criteria": [
