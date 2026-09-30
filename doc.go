@@ -34,5 +34,13 @@
 // txnbuild and clients/rpcclient rather than wrapping them, and signers are an
 // interface of which only an in-memory ed25519 implementation ships.
 //
+// The package example shows that path end to end: DecodeAuthorizationEntry on
+// an entry from simulateTransaction, UpgradeToV2 when simulation returned the
+// legacy arm, ExpirationAfter on the ledger simulation reported,
+// AuthorizeEntry to sign, and the base64 encoding that goes back into the
+// transaction. Real submissions need a second, enforce-mode simulation after
+// signing; the README's "The two-pass simulation requirement" section explains
+// why.
+//
 // Status: v0.1.0, unaudited.
 package soroauth

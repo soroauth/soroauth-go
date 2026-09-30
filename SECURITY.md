@@ -99,10 +99,102 @@ code.
 
 Only the latest release receives fixes. At v0.1.0 that is the only release.
 
+## Retracting a release
+
+A published version is never deleted and its tag is never moved. When a version
+must not be used, it is retracted with a `retract` directive in `go.mod`. This
+policy is decided now so that it does not have to be decided during an incident.
+
+### When a version is retracted
+
+A version is retracted if either of these is true:
+
+- **It has a critical bug from the [Scope](#scope) list above.** For example, it
+  signs over the wrong payload, writes a signature to the wrong credential node,
+  accepts an entry it should refuse, stores an expiration that differs from the
+  one it signed, or leaks a secret.
+- **It was published by mistake.** For example, the tag points at the wrong
+  commit, or the module does not build or cannot be imported.
+
+A version is **not** retracted for an ordinary bug that cannot produce a bad
+signature or expose a key, for a performance problem, or for missing support for
+something newer. An older release refuses a credential arm it does not know with
+`ErrUnsupportedCredentials` (`preimage.go`) instead of guessing. That is failing
+closed, not a signing bug. Those problems are fixed in the next release as
+usual.
+
+### How it is done
+
+1. The fix is released first, as a new version above every existing one. Only
+   the latest release receives fixes (see
+   [Supported versions](#supported-versions)), so the fix is never backported.
+   The remedy for a retracted version is always to upgrade to the latest.
+2. That release's `go.mod` retracts the bad version, with a one-line reason and
+   the advisory ID when there is one:
+
+   ```
+   retract v0.1.0 // Signs over the wrong payload for delegate trees; GHSA-xxxx-xxxx-xxxx.
+   ```
+
+   Go reads retractions from the `@latest` version's `go.mod` only, which is why
+   the directive ships in a new, higher version. `go mod edit -retract=v0.1.0`
+   writes the directive. A range such as `retract [v0.1.0, v0.1.2]` covers
+   several versions. If there is no fix yet, a new version can retract itself
+   together with the bad one.
+
+3. The root module and each module under `adapters/` have their own `go.mod`. A
+   retraction applies only to the module whose `go.mod` declares it, so each
+   affected module is retracted separately.
+
+### How it is communicated
+
+- A published GitHub Security Advisory, for anything in the [Scope](#scope)
+  list. It names the affected and fixed versions.
+- A `CHANGELOG.md` entry and release notes for the fixing release, saying which
+  version is retracted and why.
+- The reason in the `retract` comment, which the `go` command shows to anyone
+  who checks for updates.
+
+### What a retraction does to you
+
+A retraction is a warning, not a removal. What follows is from the
+[Go modules reference](https://go.dev/ref/mod#go-mod-file-retract), and each
+point was reproduced with go1.25.4 against a local module proxy:
+
+- **Existing builds keep working, silently.** A module that pins a retracted
+  version still downloads and builds it. `go build` and `go run` print no
+  warning. If you never check for updates, you will not notice. Watch the
+  advisory, or run one of the checks below in CI.
+- **Update checks show it.**
+
+  ```
+  $ go list -m -u all
+  example.com/signer v0.1.0 (retracted) [v0.1.1]
+
+  $ go list -m -retracted -f '{{.Version}} {{.Retracted}}' example.com/signer@v0.1.0
+  v0.1.0 [Signs over the wrong payload; see advisory GHSA-xxxx.]
+  ```
+
+- **New resolution avoids it.** `go get`, `go mod tidy`, `@latest` and range
+  queries skip retracted versions, and `go list -m -versions` hides them.
+  Requesting the exact version still works, with a warning:
+
+  ```
+  $ go get example.com/signer@v0.1.0
+  go: warning: example.com/signer@v0.1.0: retracted by module author: Signs over the wrong payload; see advisory GHSA-xxxx.
+  go: to switch to the latest unretracted version, run:
+  	go get example.com/signer@latest
+  ```
+
+To move off a retracted soroauth version, run
+`go get github.com/soroauth/soroauth-go@latest`. Then re-sign anything you
+signed with the retracted version that has not yet been submitted. The advisory
+says which signatures are affected.
+
 ## Keys in this repository
 
-Every keypair in `testdata/` is derived deterministically from a label committed
-in plain text, so those keys are public and anyone can spend from them. They
-exist to make signatures reproducible. Never fund them on mainnet. No key used
-by the e2e tests is written to disk; they are generated per run and funded by
-friendbot on testnet.
+Every test key in this repository is public and must never be funded on mainnet.
+How they are derived, and the rules for adding one, are in
+[Deterministic test keys](CONTRIBUTING.md#deterministic-test-keys). The e2e
+tests do not use them: their keys are generated per run, funded by friendbot on
+testnet, and never written to disk.

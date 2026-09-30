@@ -11,8 +11,8 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-// testKeypair derives a deterministic public test keypair from a label. These
-// keys are public by construction and must never be funded on mainnet.
+// testKeypair derives a public test keypair from a label; see
+// CONTRIBUTING.md#deterministic-test-keys.
 func testKeypair(t testing.TB, label string) *keypair.Full {
 	t.Helper()
 	kp, err := keypair.FromRawSeed(sha256.Sum256([]byte(label)))

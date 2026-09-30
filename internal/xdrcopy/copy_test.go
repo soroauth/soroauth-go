@@ -13,9 +13,8 @@ import (
 	xdrcodec "github.com/stellar/go-xdr/xdr3"
 )
 
-// testAddress derives a deterministic public test account from a label, the
-// scheme every soroauth test uses. These keys are public by construction and
-// must never be funded on mainnet.
+// testAddress derives a public test account from a label; see
+// CONTRIBUTING.md#deterministic-test-keys.
 func testAddress(t *testing.T, label string) xdr.ScAddress {
 	t.Helper()
 	kp, err := keypair.FromRawSeed(sha256.Sum256([]byte(label)))

@@ -10,7 +10,8 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-// vectorKeypair derives a vector's deterministic test keypair from its label.
+// vectorKeypair derives a vector's public test keypair from its label; see
+// CONTRIBUTING.md#deterministic-test-keys.
 func vectorKeypair(t *testing.T, label string) *keypair.Full {
 	t.Helper()
 	kp, err := keypair.FromRawSeed(sha256.Sum256([]byte(label)))

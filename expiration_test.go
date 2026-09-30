@@ -16,6 +16,10 @@ func TestExpirationAfter(t *testing.T) {
 	}{
 		{name: "one ledger ahead", latestLedger: 1000, ledgers: 1, want: 1001},
 		{name: "an hour of ledgers", latestLedger: 1234567, ledgers: 720, want: 1235287},
+		// The rows of the worked example in the ExpirationAfter doc comment;
+		// "one ledger ahead" above and "zero ledgers" in the rejects test are
+		// the other two.
+		{name: "doc comment worked example", latestLedger: 1000, ledgers: 720, want: 1720},
 		{name: "from genesis", latestLedger: 0, ledgers: 100, want: 100},
 		{
 			name:         "the largest sum that still fits",

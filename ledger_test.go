@@ -12,7 +12,7 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-// ledgerTestSeed is a public, deterministic seed used only by these tests.
+// ledgerTestSeed is a public test seed; see CONTRIBUTING.md#deterministic-test-keys.
 var ledgerTestSeed = sha256.Sum256([]byte("soroauth-ledger-test-key"))
 
 func ledgerTestKeypair(t *testing.T) *keypair.Full {

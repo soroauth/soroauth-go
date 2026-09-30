@@ -79,6 +79,7 @@
     "gocyclo",
     "goroutines",
     "GOBIN",
+    "GHSA",
     "govet",
     "gopter",
     "hash",

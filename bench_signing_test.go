@@ -30,7 +30,8 @@ import (
 //   go test -run '^$' -bench . -benchmem -count=1 . | tee /tmp/bench.out
 //   go run ./scripts/checkbench /tmp/bench.out testdata/bench/budgets.json
 
-// benchKeypair derives a deterministic public test keypair from a label.
+// benchKeypair derives a public test keypair from a label; see
+// CONTRIBUTING.md#deterministic-test-keys.
 func benchKeypair(b *testing.B, label string) *keypair.Full {
 	b.Helper()
 	kp, err := keypair.FromRawSeed(sha256.Sum256([]byte(label)))

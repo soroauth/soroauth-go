@@ -19,6 +19,18 @@ import (
 // doc comment describes the bound as exclusive; the host source is the
 // authority.
 //
+// A worked example of that boundary. Suppose the RPC reports latestLedger
+// 1000. Ledger 1000 has already closed, so a transaction built now is applied
+// in ledger 1001 at the earliest:
+//
+//	call                          returns    accepted if applied in     rejected from
+//	ExpirationAfter(1000, 1)      1001       ledger 1001                ledger 1002
+//	ExpirationAfter(1000, 720)    1720       ledgers 1001 to 1720       ledger 1721
+//	ExpirationAfter(1000, 0)      refused    never (1000 has closed)    -
+//
+// The returned ledger is the last one in which the entry is accepted, not the
+// first one in which it is rejected.
+//
 // It has an upper bound this function cannot enforce. The host also rejects a
 // value above the network's max_live_until_ledger, with "signature expiration
 // is too late" (same function). That is a network setting, so it cannot be
@@ -27,9 +39,11 @@ import (
 // who need the real ceiling must read it from the network.
 //
 // ledgers must be at least 1. Zero would produce an expiration equal to
-// latestLedger, which is valid for the current ledger only and almost certainly
-// not what the caller meant, so it is refused with ErrInvalidExpiration rather
-// than quietly producing a signature that expires immediately. An overflowing
+// latestLedger, which is already expired: the latest ledger an RPC reports has
+// closed, so the earliest ledger a transaction carrying the entry can be
+// applied in is latestLedger+1, and the host rejects it there. Zero is refused
+// with ErrInvalidExpiration rather than quietly producing a signature that can
+// never be accepted. An overflowing
 // sum is refused for the same reason: wrapping would turn a long lifetime into
 // an expiration in the past.
 func ExpirationAfter(latestLedger, ledgers uint32) (uint32, error) {

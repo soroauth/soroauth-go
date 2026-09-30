@@ -688,6 +688,13 @@ host rather than inferred:
 
 Zero is refused: by the rule above it is already expired, not permissive.
 
+A worked example: the RPC reports latest ledger 1000, which has already closed,
+so a transaction built now lands in ledger 1001 at the earliest.
+`ExpirationAfter(1000, 1)` returns 1001, which is accepted in ledger 1001 and
+rejected from ledger 1002. `ExpirationAfter(1000, 0)` is refused, because 1000
+has already passed. The same example, as a table, is in the `ExpirationAfter`
+doc comment.
+
 ## CAP-85 / Protocol 28
 
 As of this release (using `github.com/stellar/go-stellar-sdk` v0.7.3), **no

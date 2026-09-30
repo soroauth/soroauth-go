@@ -22,8 +22,8 @@ const testValidUntilLedger = uint32(1234567)
 // testPassphrase is the network passphrase the tests sign and verify under.
 const testPassphrase = network.TestNetworkPassphrase
 
-// testKeypair derives a deterministic ed25519 keypair from a label. The keys
-// are public by construction and must never be funded on mainnet.
+// testKeypair derives a public test keypair from a label; see
+// CONTRIBUTING.md#deterministic-test-keys.
 func testKeypair(t *testing.T, label string) *keypair.Full {
 	t.Helper()
 	kp, err := keypair.FromRawSeed(sha256.Sum256([]byte(label)))

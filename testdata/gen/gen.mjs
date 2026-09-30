@@ -17,11 +17,10 @@
 // deterministic (RFC 8032), so identical inputs give identical signature bytes
 // in any correct implementation.
 //
-// TEST KEYS. Every keypair below is derived as
-// Keypair.fromRawEd25519Seed(sha256(label)) from a label that is committed to
-// this repository in plain text. They are therefore PUBLIC keys that anyone can
-// derive and spend from. They exist only to make signatures reproducible.
-// Never send real value to them, and never fund them on mainnet.
+// TEST KEYS. Every key below is derived from a label committed here in plain
+// text, so they are PUBLIC: anyone can derive them and spend from them. Never
+// fund them on mainnet. The derivation and the rules for adding keys are in
+// "Deterministic test keys" in CONTRIBUTING.md (CONTRIBUTING.md#deterministic-test-keys).
 
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";

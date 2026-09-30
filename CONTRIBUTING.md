@@ -435,6 +435,43 @@ pinned to, since a vector from another build is not evidence about this one.
 complete output, so the one-element vector `smart-account-kit` wraps its map in
 is pinned rather than assumed.
 
+## Deterministic test keys
+
+Every key in the tests, examples, benchmarks and golden vectors is derived from
+a plaintext label committed in this repository. Signatures are then
+reproducible: ed25519 is deterministic, so the same label, payload and code give
+the same bytes on every machine and in every implementation. That is what lets a
+golden vector assert byte equality.
+
+The derivation is SHA-256 of the label, used as the seed:
+
+| Key                     | Go                                                                           | JS (`testdata/gen/`)                                             |
+| ----------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| ed25519 account (`G…`)  | `keypair.FromRawSeed(sha256.Sum256([]byte(label)))`                          | `Keypair.fromRawEd25519Seed(sha256(label))`                      |
+| contract address (`C…`) | `strkey.Encode(strkey.VersionByteContract, sha256(label))`                   | `Address.contract(sha256(label))`                                |
+| P-256 passkey key       | private scalar `sha256(label) mod n` (`testPasskeyKey` in `passkey_test.go`) | `sha256(label)` as the private key or scalar (`gen-passkey.mjs`) |
+
+For example, the golden vectors sign with the label `soroauth-vector-signer-1`,
+and `ExampleAuthorizeEntry` uses `soroauth-example-account`. A few examples
+(`constructor_examples_test.go`, `signer_test.go`) pass a literal seed such as
+`[32]byte{1, 2, 3}` instead. Those keys are just as public.
+
+**These keys are public.** Anyone who reads the label can derive the secret key
+and spend from the account. They exist only to make tests reproducible. Never
+fund them on mainnet, and never send them anything of value on any network.
+
+When you add a test:
+
+- Derive keys with the helper your package already has, such as `testKeypair` in
+  `address_test.go`, and pass a new label that says what the key is for
+  (`soroauth-<area>-<role>`). Do not invent key bytes by hand.
+- Do not rename a `soroauth-vector-signer-*` label. `gen.mjs` derives the
+  vectors' keys from those labels, so renaming one breaks every vector signed
+  with it.
+- Never use this scheme for a key that holds value. The e2e tests need funded
+  accounts, so they call `keypair.Random()` (`e2e/harness_test.go`), fund the
+  accounts from friendbot on testnet, and never write the keys to disk.
+
 ## Shared fixture deployment harness & running e2e tests
 
 The e2e test suite provides a shared fixture deployment harness

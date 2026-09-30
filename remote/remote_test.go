@@ -22,8 +22,8 @@ import (
 
 const testValidUntilLedger = uint32(1234567)
 
-// testKeypair derives a deterministic public test key from a label, the same
-// convention the rest of the repository's tests use.
+// testKeypair derives a public test keypair from a label; see
+// CONTRIBUTING.md#deterministic-test-keys.
 func testKeypair(t *testing.T, label string) *keypair.Full {
 	t.Helper()
 	kp, err := keypair.FromRawSeed(sha256.Sum256([]byte(label)))

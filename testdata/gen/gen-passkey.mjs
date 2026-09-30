@@ -138,7 +138,8 @@ const P256_ORDER = BigInt(
   "0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
 );
 
-// A deterministic P-256 public key, as uncompressed SEC1 (0x04 || X || Y). The
+// A deterministic P-256 public key, as uncompressed SEC1 (0x04 || X || Y), from
+// the public test-key scheme in CONTRIBUTING.md#deterministic-test-keys. The
 // private scalar is a hash of the label, so the point is fixed and genuinely on
 // the curve — which matters because soroauth refuses an off-curve key rather
 // than recording a shape it would never emit.

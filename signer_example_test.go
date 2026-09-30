@@ -18,8 +18,8 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-// signerExampleKey derives an ed25519 keypair from a fixed label, the scheme
-// every test key in this package uses. These are public test keys.
+// signerExampleKey derives a public test keypair from a label; see
+// CONTRIBUTING.md#deterministic-test-keys.
 func signerExampleKey(label string) (*keypair.Full, error) {
 	return keypair.FromRawSeed(sha256.Sum256([]byte(label)))
 }

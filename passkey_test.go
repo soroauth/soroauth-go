@@ -17,9 +17,8 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-// testPasskeyKey derives a deterministic P-256 key from a label, the same way
-// the ed25519 test keys are derived. Nothing is funded and nothing holds value;
-// the point is that a failing test reproduces.
+// testPasskeyKey derives a public P-256 test key from a label; see
+// CONTRIBUTING.md#deterministic-test-keys.
 func testPasskeyKey(t *testing.T, label string) *ecdsa.PrivateKey {
 	t.Helper()
 

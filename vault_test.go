@@ -17,8 +17,7 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-// vaultTestSeed is a public, deterministic seed. It exists only to make these
-// tests reproducible; it is never funded and never used outside tests.
+// vaultTestSeed is a public test seed; see CONTRIBUTING.md#deterministic-test-keys.
 var vaultTestSeed = sha256.Sum256([]byte("soroauth-vault-test-key"))
 
 func vaultTestKeypair(t *testing.T) *keypair.Full {

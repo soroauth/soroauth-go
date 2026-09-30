@@ -16,9 +16,8 @@ import (
 
 const testKeyVersion = "projects/test/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"
 
-// testKeypair derives a deterministic keypair from a public label, matching the
-// rest of the repository's test keys. These are public test keys and are never
-// funded.
+// testKeypair derives a public test keypair from a label; see
+// CONTRIBUTING.md#deterministic-test-keys.
 func testKeypair(t *testing.T, label string) *keypair.Full {
 	t.Helper()
 	seed := sha256.Sum256([]byte(label))

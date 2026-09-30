@@ -39,11 +39,9 @@ func loadVector(t *testing.T, name string) vectorFile {
 	return v
 }
 
-// testKeypair derives a deterministic key from a label, the same way the
-// CLI's tests derive theirs, so no test here invents key material. Labels
-// starting with "soroauth-vector-signer-" must stay exactly as they are:
-// testdata/gen/gen.mjs derives the vectors' own keys from those labels, so
-// signing a vector entry requires the key the vector was built for.
+// testKeypair derives a public test keypair from a label; see
+// CONTRIBUTING.md#deterministic-test-keys, including why the
+// "soroauth-vector-signer-" labels must stay exactly as they are.
 func testKeypair(t *testing.T, label string) *keypair.Full {
 	t.Helper()
 	kp, err := keypair.FromRawSeed(sha256.Sum256([]byte(label)))

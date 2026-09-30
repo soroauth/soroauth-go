@@ -188,9 +188,8 @@ func ExampleNewPasskeySigner() {
 // 64 bytes differ each time. The example verifies them rather than printing
 // them, which is the stronger claim anyway.
 func ExampleNewPasskeySigner_authorizeEndToEnd() {
-	// A passkey wallet's address, derived from a label the way the ed25519 test
-	// keys are. Nothing here is funded and nothing holds value; the point is
-	// that a failing run reproduces.
+	// A passkey wallet's address, derived from a public test label; see
+	// CONTRIBUTING.md#deterministic-test-keys.
 	walletSeed := sha256.Sum256([]byte("soroauth-example-passkey-wallet"))
 	walletStrkey, err := strkey.Encode(strkey.VersionByteContract, walletSeed[:])
 	if err != nil {
