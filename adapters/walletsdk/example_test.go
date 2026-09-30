@@ -2,6 +2,7 @@ package walletsdk_test
 
 import (
 	"context"
+	"fmt"
 
 	okxkeypair "github.com/okx/go-wallet-sdk/coins/stellar/keypair"
 	"github.com/stellar/go-stellar-sdk/network"
