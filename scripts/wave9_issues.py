@@ -36,6 +36,7 @@ LABELS = [
     ("area:tooling",       "bfd4f2", "CLI, CI, scripts, release automation"),
     ("area:integrations",  "d4c5f9", "WASM, browser, wallets, RPC, fixture contracts"),
     ("area:protocol",      "e99695", "CAP support and protocol compatibility"),
+    ("good first issue",   "7057ff", "Trivial and needs no Soroban context; a newcomer's first PR"),
 ]
 
 BEFORE_YOU_START = """## 📚 Before You Start
@@ -58,6 +59,9 @@ def render(issue):
     parts = ["## 📘 Description", issue["description"]]
     if issue.get("why"):
         parts += ["", "**Why this matters:** " + issue["why"]]
+    if issue.get("good_first_issue"):
+        parts += ["", "**Good first issue.** Entry point: `%s`."
+                  % issue.get("entry_point", "see the acceptance criteria")]
     parts += ["", "## ✅ Acceptance Criteria"]
     parts += ["- [ ] " + c for c in issue["criteria"]]
     parts += ["", "## 🔧 Implementation Guidance"]
@@ -88,6 +92,11 @@ def parse_markdown_backlog(path):
         cx = re.search(r"\*\*Complexity:\*\* *(\w+)", block)
         body = block.split("\n", 1)[1] if "\n" in block else ""
         body = re.sub(r"\*\*Complexity:\*\* *\w+\n?", "", body)
+        gfi = "**Good first issue.**" in body
+        ep = re.search(r"^\*\*Entry point:\*\* *(.+?)[ \t]*$", body, re.M)
+        entry_point = ep.group(1).strip().strip("`") if ep else None
+        body = re.sub(r"^\*\*Good first issue\.\*\*[ \t]*\n?", "", body, flags=re.M)
+        body = re.sub(r"^\*\*Entry point:\*\*[^\n]*\n?", "", body, flags=re.M)
         summary, criteria = body, []
         if "**Acceptance criteria**" in body:
             summary, crit = body.split("**Acceptance criteria**", 1)
@@ -99,6 +108,7 @@ def parse_markdown_backlog(path):
         summary = summary.strip().rstrip("-").strip()
         out.append(dict(title=title, complexity=(cx.group(1) if cx else "medium"),
                         area=area or "area:api", description=summary, why=None,
+                        good_first_issue=gfi, entry_point=entry_point,
                         criteria=criteria or ["Scope agreed on the issue before starting."],
                         guidance=["See CONTRIBUTING.md for setup, the test expectations and the PR checklist.",
                                   "If this turns out materially larger than its assigned complexity once you are in the code, say so on the issue."]))
@@ -159,10 +169,14 @@ def main():
         print("== create %d new issues ==" % len(todo))
         for issue in todo:
             labels = ["complexity:" + issue["complexity"], issue["area"]]
+            if issue.get("good_first_issue"):
+                labels.append("good first issue")
+            label_args = []
+            for label in labels:
+                label_args += ["--label", label]
             if args.apply:
                 url = gh("issue", "create", "--repo", REPO, "--title", issue["title"],
-                         "--body", render(issue),
-                         "--label", labels[0], "--label", labels[1]).strip()
+                         "--body", render(issue), *label_args).strip()
                 print("  %s  %s" % (url, issue["title"]))
             else:
                 print("=" * 70)

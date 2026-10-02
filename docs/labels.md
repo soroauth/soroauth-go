@@ -8,8 +8,8 @@ change, and one program label marks an issue as part of a Stellar Wave.
 
 The values below are the ones the repository's own issue tooling creates and
 accepts, so they are the source of truth rather than a description written after
-the fact: `scripts/wave9_issues.py` (`LABELS`, lines 29-38) and
-`scripts/create-issues.sh` (the `create_label` calls, lines 68-75).
+the fact: `scripts/wave9_issues.py` (`LABELS`, lines 29-39) and
+`scripts/create-issues.sh` (the `create_label` calls, lines 68-76).
 
 ## Complexity
 
@@ -65,12 +65,45 @@ complexity points are counted by; the backlog tooling in `scripts/` exists to
 publish the Wave's issues. It is applied to the issue when the Wave is
 assembled.
 
+## Good first issue
+
+`good first issue` is GitHub's own newcomer label, carried on top of a
+complexity label rather than instead of one. It means a contributor can finish
+the issue without any Soroban background, and it is applied only when **both**
+of these hold:
+
+- the issue is `complexity:trivial`, and
+- finishing it needs no understanding of the signing path — the preimage, the
+  payload, the credential arms, the delegate model — or of cryptography. The
+  change is confined to documentation, repository meta files, CI configuration,
+  or test scaffolding.
+
+A `complexity:trivial` issue that touches `preimage.go`, `authorize.go`,
+`delegates.go`, `signer.go` or `batch.go` is small but is **not** a good first
+issue, because even a one-line edit there means reading code that encodes the
+protocol.
+
+Every labelled issue also names its **entry point**: the one file (or file to
+add) where the work starts, rendered into the issue body and written into the
+backlog source. An issue with no single entry point is not a good first issue,
+however small it is.
+
+The pass is reviewed as the backlog grows. When an issue is added or its scope
+changes, re-check its label: a `good first issue` on something that has come to
+need the signing path is worse than no label at all.
+
 ## Who applies them
 
 - The **maintainer** creates the labels and sets the complexity and area labels
   when an issue is written or triaged. The two label families are created and
   attached by `scripts/create-issues.sh` and `scripts/wave9_issues.py`, and by
   hand for issues that do not come from the backlog.
+- The **`good first issue` label** is applied by the maintainer during a
+  labelling pass over the backlog, not by the contributor. It is set from the
+  `**Good first issue.**` and `**Entry point:**` lines in
+  [ISSUE_BACKLOG.md](ISSUE_BACKLOG.md), and from the `good_first_issue` and
+  `entry_point` fields in [`WAVE9_BACKLOG.json`](WAVE9_BACKLOG.json), so the
+  label and its entry point cannot drift from the issue body.
 - The **issue templates** apply the type label when a reporter files a `bug`,
   `enhancement` or `security` issue.
 - **Contributors** do not need to set labels. If you think an issue is

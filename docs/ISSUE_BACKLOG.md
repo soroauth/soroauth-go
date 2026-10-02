@@ -15,6 +15,13 @@ needs, not how long it takes.
 Anything that changes the bytes soroauth emits must cite the CAP that requires
 the change, and must come with a golden vector.
 
+An item marked **Good first issue.** is one a newcomer can finish with no
+Soroban background: it is trivial in size _and_ the change is confined to
+documentation, repository meta files, CI configuration, or test scaffolding, so
+it never requires reading the signing path. Each one names its **Entry point** —
+the single file (or file to add) where the work starts. The rule, and the
+`good first issue` label it maps to, are documented in [labels.md](labels.md).
+
 ---
 
 ## Signers
@@ -268,6 +275,10 @@ says, but it makes the CLI unable to express a tree the library handles fine.
 
 **Complexity:** trivial
 
+**Good first issue.**
+
+**Entry point:** `errors.go`
+
 `ErrNoMatchingCredentialNode`, `ErrDuplicateDelegate` and `ErrMissingSigner` all
 name an address in their message, but a caller wanting to act on it has to parse
 the string.
@@ -318,6 +329,10 @@ doc comment, but there is no guide showing the flow.
 
 **Complexity:** trivial
 
+**Good first issue.**
+
+**Entry point:** `README.md`
+
 CAP-71-01 needs record, then sign, then enforce. The e2e tests do it and
 `e2e/README.md` explains it, but a library user reading only the main README
 could reasonably skip the second pass and be confused by fee errors.
@@ -352,6 +367,10 @@ needs to check locally.
 
 **Complexity:** trivial
 
+**Good first issue.**
+
+**Entry point:** `cmd/soroauth/main.go`
+
 Every subcommand takes `--entry` as a base64 argument, which is awkward for
 large entries and for pipelines.
 
@@ -366,6 +385,10 @@ large entries and for pipelines.
 
 **Complexity:** trivial
 
+**Good first issue.**
+
+**Entry point:** `Dockerfile`
+
 CI systems that need to sign an entry should not have to install a Go toolchain.
 
 **Acceptance criteria**
@@ -378,6 +401,10 @@ CI systems that need to sign an entry should not have to install a Go toolchain.
 ### 21. Release automation
 
 **Complexity:** trivial
+
+**Good first issue.**
+
+**Entry point:** `.github/workflows/release.yml`
 
 v0.1.0 was tagged by hand.
 

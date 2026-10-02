@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"fmt"
+	"reflect"
 
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
@@ -32,7 +33,7 @@ type signer struct {
 // client with awsconfig.LoadDefaultConfig (or an explicitly configured
 // aws.Config) and pass it here.
 func NewSigner(address, keyID string, client SignerClient) (soroauth.Signer, error) {
-	if client == nil {
+	if isNilClient(client) {
 		return nil, fmt.Errorf("awskms: new signer: %w", soroauth.ErrMissingSigner)
 	}
 	if keyID == "" {
@@ -82,4 +83,24 @@ func (s *signer) Sign(ctx context.Context, _ xdr.HashIdPreimage, payload [32]byt
 		return xdr.ScVal{}, fmt.Errorf("awskms: sign: %w", err)
 	}
 	return value, nil
+}
+
+// isNilClient reports whether client is nil, including the typed nil an
+// interface holds when a nil *kms.Client is passed as a SignerClient. Without
+// this, `client == nil` is false for `var c *kms.Client`, the signer is
+// constructed, and it panics on the first Sign — at the moment it is asked to
+// authorize a transaction. Refusing at construction turns that into an error
+// the caller can see. The gcpkms adapter applies the same guard for the same
+// reason.
+func isNilClient(client any) bool {
+	if client == nil {
+		return true
+	}
+	v := reflect.ValueOf(client)
+	switch v.Kind() {
+	case reflect.Ptr, reflect.Interface, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
+		return v.IsNil()
+	default:
+		return false
+	}
 }

@@ -40,6 +40,38 @@ func BenchmarkDecodeAuthorizationEntry(b *testing.B) {
 	}
 }
 
+// BenchmarkParseAddress measures decoding a canonical G… strkey into an
+// xdr.ScAddress: the bounds-checked path every entry address and every CLI
+// argument goes through. It is budgeted in testdata/bench/budgets.json.
+func BenchmarkParseAddress(b *testing.B) {
+	address := benchKeypair(b, "soroauth-bench-parse-address").Address()
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if _, err := ParseAddress(address); err != nil {
+			b.Fatalf("ParseAddress returned an unexpected error: %v", err)
+		}
+	}
+}
+
+// BenchmarkFormatAddress measures the inverse: rendering an xdr.ScAddress back
+// to the strkey that names it. It is budgeted in testdata/bench/budgets.json.
+func BenchmarkFormatAddress(b *testing.B) {
+	address, err := ParseAddress(benchKeypair(b, "soroauth-bench-format-address").Address())
+	if err != nil {
+		b.Fatalf("parsing the benchmark address: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if _, err := FormatAddress(address); err != nil {
+			b.Fatalf("FormatAddress returned an unexpected error: %v", err)
+		}
+	}
+}
+
 // benchFullySignableBatch builds the same 12-entry, three-arm shape as
 // bench_signing_test.go's benchRealisticBatch, but with a signer for every
 // node RequireAllSigned will check — including each delegates entry's two
@@ -102,7 +134,7 @@ func BenchmarkVerifyEntry(b *testing.B) {
 		b.Fatalf("random keypair: %v", err)
 	}
 	signer := NewEd25519Signer(kp)
-	entry := entryForArm(nil, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 1)
+	entry := entryForArm(b, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 1)
 
 	address, err := ParseAddress(kp.Address())
 	if err != nil {
@@ -132,7 +164,7 @@ func BenchmarkVerifyAll(b *testing.B) {
 		b.Fatalf("random keypair: %v", err)
 	}
 	signer := NewEd25519Signer(kp)
-	entry := entryForArm(nil, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 1)
+	entry := entryForArm(b, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 1)
 
 	address, err := ParseAddress(kp.Address())
 	if err != nil {
