@@ -11,3 +11,66 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "ci"
+
+  # Go modules. The root module plus each adapter, because every nested go.mod
+  # is its own module: Dependabot does not walk into one from the root, so an
+  # omitted directory is an adapter whose dependencies are never updated. That
+  # has already bitten this repository once — adapters/awskms pinned versions
+  # that do not exist on any registry and nothing noticed.
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+  - package-ecosystem: "gomod"
+    directory: "/adapters/awskms"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+  - package-ecosystem: "gomod"
+    directory: "/adapters/gcpkms"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+  - package-ecosystem: "gomod"
+    directory: "/adapters/walletsdk"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+
+  # npm. Four separate projects, each with its own lockfile.
+  #
+  # testdata/gen is the one that matters most, and it is also the one where an
+  # update must never land unreviewed: it pins @stellar/stellar-sdk exactly,
+  # the generator refuses to run against any other version, and the vectors it
+  # writes are what proves this library byte-for-byte. A bump there is a change
+  # to the reference implementation, so it needs reading, regenerating and an
+  # explanation — not a merge.
+  - package-ecosystem: "npm"
+    directory: "/testdata/gen"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+  - package-ecosystem: "npm"
+    directory: "/testdata/differential"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+  - package-ecosystem: "npm"
+    directory: "/wasm/ts"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
