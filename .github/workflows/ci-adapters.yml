@@ -11,11 +11,11 @@ on:
   push:
     branches: [main]
     paths:
-      - 'adapters/**'
-      - '*.go'
-      - 'go.mod'
-      - 'go.sum'
-      - 'internal/**'
+      - "adapters/**"
+      - "*.go"
+      - "go.mod"
+      - "go.sum"
+      - "internal/**"
   workflow_dispatch:
 
 permissions:
@@ -87,4 +87,35 @@ jobs:
       # agrees with itself about.
       - name: test
         working-directory: adapters/gcpkms
+        run: go test -race ./...
+
+  awskms:
+    name: aws kms adapter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          # This module's own go.mod, not the root's; see the gcpkms job for
+          # why that distinction matters.
+          go-version-file: adapters/awskms/go.mod
+          check-latest: true
+          cache-dependency-path: adapters/awskms/go.sum
+      - name: gofmt
+        working-directory: adapters/awskms
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "these files are not gofmt clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: vet
+        working-directory: adapters/awskms
+        run: go vet ./...
+      # -race because the signer verifies its own output; the test suite is what
+      # says the signed bytes are a real ed25519 signature, not a shape the code
+      # agrees with itself about.
+      - name: test
+        working-directory: adapters/awskms
         run: go test -race ./...
