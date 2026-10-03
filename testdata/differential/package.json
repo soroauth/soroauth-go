@@ -11,6 +11,6 @@
     "verify": "node verify.mjs"
   },
   "dependencies": {
-    "@stellar/stellar-sdk": "17.1.0"
+    "@stellar/stellar-sdk": "17.2.0"
   }
 }
