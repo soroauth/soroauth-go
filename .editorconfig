@@ -1,0 +1,55 @@
+# Editor defaults, so a contributor's editor produces what CI already checks
+# rather than something gofmt or prettier then has to undo.
+#
+# This file does not decide anything. gofmt decides Go formatting, prettier
+# decides Markdown, and both run in the `vet and test` job. These settings
+# exist so the editor agrees with them before the push.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Go. Tabs, because that is what gofmt emits; indent_size is the width an
+# editor renders a tab at, not a conversion to spaces.
+[*.go]
+indent_style = tab
+indent_size = 4
+
+# Rust, for the e2e fixture contracts. rustfmt's default is four spaces.
+[*.rs]
+indent_style = space
+indent_size = 4
+
+# YAML cannot use tabs at all.
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+[*.{json,mjs,js,ts}]
+indent_style = space
+indent_size = 2
+
+# Markdown. Trailing whitespace is not trimmed here: two trailing spaces are a
+# hard line break, and prettier preserves them.
+[*.md]
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = false
+
+# Generated and recorded files. Listed so nobody's editor reformats evidence:
+# the vectors are regenerated and diffed by CI, and RESULTS.md is written by a
+# live run.
+[testdata/vectors/*.json]
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+
+[e2e/RESULTS.md]
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+
+[Makefile]
+indent_style = tab
