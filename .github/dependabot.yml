@@ -50,12 +50,34 @@ updates:
   # writes are what proves this library byte-for-byte. A bump there is a change
   # to the reference implementation, so it needs reading, regenerating and an
   # explanation — not a merge.
+  # testdata/gen is deliberately NOT updated by Dependabot.
+  #
+  # It pins @stellar/stellar-sdk exactly, gen.mjs refuses to run against any
+  # other version, and the vectors it writes are what proves this library
+  # byte-for-byte. A bump is therefore a change to the reference implementation,
+  # not a chore.
+  #
+  # This is not a precaution. #280 bumped it 17.1.0 -> 17.2.0 and was merged,
+  # which left package.json at 17.2.0, gen.mjs still demanding 17.1.0, and the
+  # vectors unregenerated:
+  #
+  #   refusing to generate vectors: @stellar/stellar-sdk is 17.2.0,
+  #   this generator is pinned to 17.1.0
+  #
+  # The `golden vectors are reproducible` job — the correctness gate for the
+  # whole library — failed on main until it was reverted.
+  #
+  # To move this pin on purpose: read what changed upstream, update
+  # REQUIRED_SDK_VERSION in gen.mjs and package.json together, regenerate, and
+  # explain every byte that moved in the commit body.
   - package-ecosystem: "npm"
     directory: "/testdata/gen"
     schedule:
       interval: "weekly"
     commit-message:
       prefix: "chore"
+    ignore:
+      - dependency-name: "@stellar/stellar-sdk"
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
