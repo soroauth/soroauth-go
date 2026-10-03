@@ -29,7 +29,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version-file: go.mod
+          # This module's own go.mod, not the root's. Each adapter is a separate
+          # module and may require a newer toolchain than the library: a
+          # Dependabot bump took adapters/gcpkms to go 1.26.0 while the root
+          # stayed at 1.25.0, and this job installed 1.25 and then failed to
+          # build the module that needed 1.26.
+          go-version-file: adapters/walletsdk/go.mod
           check-latest: true
           cache-dependency-path: adapters/walletsdk/go.sum
       - name: gofmt
@@ -57,7 +62,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version-file: go.mod
+          # This module's own go.mod, not the root's. Each adapter is a separate
+          # module and may require a newer toolchain than the library: a
+          # Dependabot bump took adapters/gcpkms to go 1.26.0 while the root
+          # stayed at 1.25.0, and this job installed 1.25 and then failed to
+          # build the module that needed 1.26.
+          go-version-file: adapters/gcpkms/go.mod
           check-latest: true
           cache-dependency-path: adapters/gcpkms/go.sum
       - name: gofmt
