@@ -14,6 +14,7 @@ the architecture note and the guides is the one they need. The repository root
 | [CONTRIBUTING](../CONTRIBUTING.md) | How to set up, what the tests expect, the commit format, and what a pull request has to pass.              |
 | [SECURITY](../SECURITY.md)         | How to report a vulnerability privately, what counts as critical, and the unaudited status of the library. |
 | [CHANGELOG](../CHANGELOG.md)       | What changed in each release.                                                                              |
+| [faq](faq.md)                      | Why soroauth behaves as it does: the recurring design questions, each with its source.                     |
 
 ## Guides
 
