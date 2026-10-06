@@ -486,7 +486,7 @@ func DiffEntries(a, b xdr.SorobanAuthorizationEntry) (EntryDiff, error) {
 		return EntryDiff{}, fmt.Errorf("soroauth: diff entries: second entry: %w", err)
 	}
 
-	nodeChanges, carriedOver, signaturesChanged, err := diffNodeSets(nodesA, nodesB)
+	nodeChanges, carriedOver, signaturesChanged, signedBefore, err := diffNodeSets(nodesA, nodesB)
 	if err != nil {
 		return EntryDiff{}, fmt.Errorf("soroauth: diff entries: %w", err)
 	}
@@ -516,20 +516,26 @@ func DiffEntries(a, b xdr.SorobanAuthorizationEntry) (EntryDiff, error) {
 		diff.Note = "the network passphrase is not carried in an entry, so it is not compared: " +
 			"two entries that are otherwise identical still have different payloads on different networks"
 	}
-	diff.Summary = summarize(diff)
+	diff.Summary = summarize(diff, signedBefore)
 	return diff, nil
 }
 
 // diffNodeSets pairs the credential nodes of two entries by path and reports
 // what happened to each. carriedOver lists the paths whose signature is present
 // and byte-identical on both sides, which is what makes a signature stale when
-// the payload moved.
-func diffNodeSets(a, b []diffNode) (changes []Change, carriedOver []string, signaturesChanged bool, err error) {
+// the payload moved. signedBefore says whether the first entry carried any
+// signature at all, which is what separates a first signing from a re-sign:
+// both move the payload and change a signature, and only one of them could
+// have invalidated something.
+func diffNodeSets(a, b []diffNode) (changes []Change, carriedOver []string, signaturesChanged, signedBefore bool, err error) {
 	left := make(map[string]xdr.ScVal, len(a))
 	order := make([]string, 0, len(a))
 	for _, node := range a {
 		left[node.path] = node.signature
 		order = append(order, node.path)
+		if isSigned(node.signature) {
+			signedBefore = true
+		}
 	}
 	right := make(map[string]xdr.ScVal, len(b))
 	for _, node := range b {
@@ -567,7 +573,7 @@ func diffNodeSets(a, b []diffNode) (changes []Change, carriedOver []string, sign
 		default:
 			same, equalErr := xdrEqual(before, after)
 			if equalErr != nil {
-				return nil, nil, false, equalErr
+				return nil, nil, false, false, equalErr
 			}
 			if same {
 				if isSigned(before) {
@@ -585,7 +591,7 @@ func diffNodeSets(a, b []diffNode) (changes []Change, carriedOver []string, sign
 			})
 		}
 	}
-	return changes, carriedOver, signaturesChanged, nil
+	return changes, carriedOver, signaturesChanged, signedBefore, nil
 }
 
 // sortChanges puts payload-affecting changes first, then orders by path, so the
@@ -608,7 +614,7 @@ func sortChanges(changes []Change) []Change {
 
 // summarize writes the one-line verdict. It is the first thing String() prints
 // and a field of the JSON, so neither output can be read without it.
-func summarize(d EntryDiff) string {
+func summarize(d EntryDiff, signedBefore bool) string {
 	switch {
 	case d.Identical:
 		return "identical: the two entries encode to the same bytes"
@@ -617,6 +623,10 @@ func summarize(d EntryDiff) string {
 			"PAYLOAD CHANGED and %s carried over unchanged: %s no longer valid",
 			plural(len(d.StaleSignatures), "signature", "signatures"),
 			isAre(len(d.StaleSignatures)))
+	case d.PayloadChanged && d.SignaturesChanged && !signedBefore:
+		// Nothing was signed before, so no signature could be invalidated.
+		// Calling this a re-sign would describe a risk that is not there.
+		return "payload changed, and the entry went from unsigned to signed: consistent with a first signing"
 	case d.PayloadChanged && d.SignaturesChanged:
 		return "payload changed, and every signature present was replaced: consistent with a re-sign"
 	case d.PayloadChanged:

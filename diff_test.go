@@ -258,6 +258,33 @@ func TestDiffEntriesWrapPair(t *testing.T) {
 	}
 }
 
+// TestDiffEntriesFirstSigningIsNotAResign separates two cases that look alike
+// in the fields — both move the payload and both change a signature — and are
+// not alike at all: a first signing cannot have invalidated anything, because
+// there was nothing to invalidate.
+func TestDiffEntriesFirstSigningIsNotAResign(t *testing.T) {
+	v := findVector(t, "v2_single_testnet")
+	unsigned := diffEntry(t, v.UnsignedEntryXDR)
+	signed := diffEntry(t, v.SignedEntryXDR)
+
+	diff, err := DiffEntries(unsigned, signed)
+	if err != nil {
+		t.Fatalf("diffing: %v", err)
+	}
+	if !diff.PayloadChanged || !diff.SignaturesChanged {
+		t.Fatalf("diff = %+v, want both the payload and a signature to have changed", diff)
+	}
+	if len(diff.StaleSignatures) != 0 {
+		t.Errorf("StaleSignatures = %v; the unsigned entry had nothing to invalidate", diff.StaleSignatures)
+	}
+	if !strings.Contains(diff.Summary, "first signing") {
+		t.Errorf("Summary = %q, want it to read as a first signing", diff.Summary)
+	}
+	if strings.Contains(diff.Summary, "re-sign") {
+		t.Errorf("Summary = %q calls a first signing a re-sign", diff.Summary)
+	}
+}
+
 func TestDiffEntriesIdentical(t *testing.T) {
 	entry := delegatesFixture(t)
 

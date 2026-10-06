@@ -160,6 +160,15 @@ var commandSpecs = []commandSpec{
 		},
 	},
 	{
+		Name:        "diff",
+		Description: "compare two entries and report what changed",
+		Flags: []flagSpec{
+			{Name: "before", Description: "the first authorization entry, as base64 XDR", TakesValue: true},
+			{Name: "after", Description: "the second authorization entry, as base64 XDR", TakesValue: true},
+			{Name: "json", Description: "output as JSON", TakesValue: false},
+		},
+	},
+	{
 		Name:        "completions",
 		Description: "emit a shell completion script",
 		Flags: []flagSpec{
