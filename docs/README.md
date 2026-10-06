@@ -31,13 +31,14 @@ the architecture note and the guides is the one they need. The repository root
 
 ## Reference
 
-| Document                                      | Answers                                                                                             |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| [analyzer-heuristics](analyzer-heuristics.md) | What each risk-analyzer heuristic catches and what it misses.                                       |
-| [FIXTURES](FIXTURES.md)                       | What each e2e fixture contract exercises, and why none is a product.                                |
-| [ISSUE_BACKLOG](ISSUE_BACKLOG.md)             | The written-up work that is not done yet; `WAVE9_BACKLOG.json` is the newer Wave's source of truth. |
-| [diagrams](diagrams/README.md)                | The rendered signing-flow and delegate-tree diagrams, and their committed sources.                  |
-| [UPSTREAM_PROPOSAL](../UPSTREAM_PROPOSAL.md)  | The proposal to add a minimal auth-entry signing helper to `go-stellar-sdk` itself.                 |
+| Document                                      | Answers                                                                                                   |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [analyzer-heuristics](analyzer-heuristics.md) | What each risk-analyzer heuristic catches and what it misses.                                             |
+| [glossary](glossary.md)                       | What credential arm, preimage, payload, nonce and delegate ordering mean, with the CAP that defines each. |
+| [FIXTURES](FIXTURES.md)                       | What each e2e fixture contract exercises, and why none is a product.                                      |
+| [ISSUE_BACKLOG](ISSUE_BACKLOG.md)             | The written-up work that is not done yet; `WAVE9_BACKLOG.json` is the newer Wave's source of truth.       |
+| [diagrams](diagrams/README.md)                | The rendered signing-flow and delegate-tree diagrams, and their committed sources.                        |
+| [UPSTREAM_PROPOSAL](../UPSTREAM_PROPOSAL.md)  | The proposal to add a minimal auth-entry signing helper to `go-stellar-sdk` itself.                       |
 
 ## Testing and evidence
 
