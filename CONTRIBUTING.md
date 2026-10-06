@@ -413,6 +413,34 @@ Use the first column's SHA (for an _annotated_ tag, `git ls-remote` also prints
 a `refs/tags/v7^{}` line — use that dereferenced commit SHA, not the tag
 object's own SHA).
 
+## Editing a workflow
+
+Two things about `.github/workflows/*.yml` that are easy to get wrong, because
+neither produces an error.
+
+**A `paths:` filter produces no check at all**, not a skipped one. A workflow
+that does not match is simply absent from the pull request, so a failure in it
+is invisible during review and is inherited by `main` on merge. That is how
+`spellcheck` stayed red across three merges: #286 added a word to this file, the
+workflow is `paths:`-filtered, and there was no row to look at. An `if:`-gated
+_job_ still reports a row; a `paths:`-filtered _workflow_ does not.
+
+So when you check whether a branch is green, list runs per workflow rather than
+reading the pull request's checks:
+
+```sh
+for f in .github/workflows/*.yml; do
+  gh run list --branch main --workflow "$(basename "$f")" --limit 1 \
+    --json conclusion,headSha,displayTitle
+done
+```
+
+**Every advisory workflow lists its own file in its `paths:`**, so an edit to a
+workflow re-runs it. Without that line a change to a workflow cannot validate
+itself: #294 changed only `ci-adapters.yml`, matched nothing in that workflow's
+own filter, and landed on `main` with its new job never having run once. If you
+add a workflow with a `paths:` filter, include its own path.
+
 ## Golden vectors
 
 `testdata/vectors/*.json` are generated, committed artefacts. They are the
