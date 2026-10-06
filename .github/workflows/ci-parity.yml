@@ -38,6 +38,11 @@ on:
       - 'go.mod'
       - 'go.sum'
       - 'internal/**'
+      # A workflow's own definition is in its paths, so an edit to this
+      # file re-runs it. Without this line a change to this workflow
+      # cannot validate itself: #294 changed only this file, matched
+      # nothing here, and landed on main with its new job never run.
+      - '.github/workflows/ci-parity.yml'
   schedule:
     # Weekly, Monday 07:00 UTC, staggered behind the link check (06:00) and the
     # spell check (06:30) so the runners are not all queued at once.
