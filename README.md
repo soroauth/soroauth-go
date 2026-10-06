@@ -1,5 +1,11 @@
 # soroauth
 
+[![ci](https://github.com/soroauth/soroauth-go/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/soroauth/soroauth-go/actions/workflows/ci.yml)
+[![Go reference](https://pkg.go.dev/badge/github.com/soroauth/soroauth-go.svg)](https://pkg.go.dev/github.com/soroauth/soroauth-go)
+[![Go report card](https://goreportcard.com/badge/github.com/soroauth/soroauth-go)](https://goreportcard.com/report/github.com/soroauth/soroauth-go)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Status](https://img.shields.io/badge/status-unaudited-orange)](SECURITY.md#status-of-this-library)
+
 soroauth builds, signs and inspects Soroban authorization entries in Go. When a
 contract calls `require_auth()` on an address that is not the transaction's
 source account, the transaction has to carry a signed
