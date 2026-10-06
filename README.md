@@ -34,6 +34,7 @@ credential arms: legacy `SOROBAN_CREDENTIALS_ADDRESS`, CAP-71
 - [Remote signing over HTTP](#remote-signing-over-http)
 - [Browser and WebAssembly](#browser-and-webassembly)
 - [Proven on testnet](#proven-on-testnet)
+- [FAQ](#faq)
 - [Status](#status)
 - [Contributing](#contributing)
 - [License](#license)
@@ -862,6 +863,13 @@ blocker, not a test flake. See
 
 What that agreement does and does not establish — and what no offline suite can
 rule out — is stated in one place in [docs/parity.md](docs/parity.md).
+
+## FAQ
+
+The questions this design invites — why there is no default write to the
+top-level node, why `AuthorizeAll` succeeds with a delegate node unsigned, why
+the expiration ledger is inclusive, whether the legacy arm is deprecated — are
+answered with their sources in [docs/faq.md](docs/faq.md).
 
 ## Status
 
