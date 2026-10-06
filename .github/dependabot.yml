@@ -84,12 +84,24 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "chore"
+  # testdata/differential pins the same reference SDK for the same reason, and
+  # is ignored for the same reason. Its verify.mjs refuses to run against any
+  # other version, so #278 bumping it to 17.2.0 left `ci / parity` failing on
+  # main with:
+  #
+  #   refusing to verify: @stellar/stellar-sdk is 17.2.0,
+  #   this verifier is pinned to 17.1.0
+  #
+  # Move it only alongside testdata/gen, deliberately, so the generator and the
+  # verifier never disagree about which implementation is the reference.
   - package-ecosystem: "npm"
     directory: "/testdata/differential"
     schedule:
       interval: "weekly"
     commit-message:
       prefix: "chore"
+    ignore:
+      - dependency-name: "@stellar/stellar-sdk"
   - package-ecosystem: "npm"
     directory: "/wasm/ts"
     schedule:
