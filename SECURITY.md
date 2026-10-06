@@ -78,7 +78,7 @@ reachable from untrusted input, and denial of service through malformed XDR.
 product — it has no admin functions, no upgradability and no policy engine by
 design, and findings about those absences are not vulnerabilities. Weaknesses in
 the Stellar protocol itself belong with the
-[Stellar Development Foundation](https://github.com/stellar/stellar-protocol/blob/master/SECURITY.md),
+[Stellar Development Foundation](https://github.com/stellar/stellar-protocol/security/policy),
 not here.
 
 ## Status of this library
