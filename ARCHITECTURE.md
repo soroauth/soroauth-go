@@ -7,6 +7,11 @@ rules are protocol requirements rather than local choices.
 If you are here to pick up an issue, read [CONTRIBUTING.md](CONTRIBUTING.md)
 first for setup and the PR checklist. This file is the map.
 
+If the vocabulary is new — credential arm, preimage, payload, nonce, delegate
+ordering — [docs/glossary.md](docs/glossary.md) defines each term in a sentence
+or two and cites the CAP that defines it. It is worth skimming before this file
+rather than after.
+
 Every Markdown file here is link-checked by the
 [`links` workflow](.github/workflows/links.yml) and spell-checked by the
 [`spellcheck` workflow](.github/workflows/spellcheck.yml). Neither gates a pull

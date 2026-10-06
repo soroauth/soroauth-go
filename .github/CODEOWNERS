@@ -1,0 +1,30 @@
+# Review ownership. GitHub requests a review from the owner of every path a
+# pull request touches.
+#
+# The branch ruleset does not require a code-owner review
+# (require_code_owner_review is false), so these are requests, not gates. They
+# exist so a change lands in front of someone who knows the area rather than
+# waiting to be noticed.
+
+# Everything, unless a more specific rule below wins.
+*                           @ciscokwiz
+
+# The signing path. These files decide what bytes get signed, so a change here
+# is the one most worth a second pair of eyes.
+/preimage.go                @ciscokwiz
+/signer.go                  @ciscokwiz
+/authorize.go               @ciscokwiz
+/delegates.go               @ciscokwiz
+/verify.go                  @ciscokwiz
+
+# The correctness gate. A change to the generator or the committed vectors
+# changes what "proven" means for the whole library.
+/testdata/gen/              @ciscokwiz
+/testdata/vectors/          @ciscokwiz
+/golden_test.go             @ciscokwiz
+
+# CI and the branch ruleset's required checks.
+/.github/                   @ciscokwiz
+
+# The build brief. Not to be modified; ownership here makes an attempt visible.
+/CLAUDE.md                  @ciscokwiz

@@ -3,16 +3,16 @@ module github.com/soroauth/soroauth-go/adapters/awskms
 go 1.25.0
 
 require (
-	github.com/aws/aws-sdk-go-v2/service/kms v1.41.0
+	github.com/aws/aws-sdk-go-v2/service/kms v1.61.1
 	github.com/soroauth/soroauth-go v0.0.0
 	github.com/stellar/go-stellar-sdk v0.7.3
 )
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.36.5 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.36 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.36 // indirect
-	github.com/aws/smithy-go v1.22.4 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.47.1 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.4 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.4 // indirect
+	github.com/aws/smithy-go v1.28.1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/bubbletea v1.3.10 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
