@@ -20,6 +20,7 @@ type vectorFile struct {
 	ValidUntilLedger  uint32 `json:"valid_until_ledger"`
 	PreWrapEntryXDR   string `json:"pre_wrap_entry_xdr"`
 	UnsignedEntryXDR  string `json:"unsigned_entry_xdr"`
+	SignedEntryXDR    string `json:"signed_entry_xdr"`
 	PreimageXDR       string `json:"preimage_xdr"`
 	PayloadHex        string `json:"payload_hex"`
 	Delegates         []struct {

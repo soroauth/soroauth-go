@@ -76,6 +76,7 @@ commands:
   delegates      wrap an entry in a delegated-signer credential
   inspect        print an entry's structure as JSON
   verify         check an entry's signatures without submitting it
+  diff           compare two entries and report what changed
   tree           render an entry's delegate tree as ASCII, DOT, or JSON
   tui            interactive TUI for inspecting and signing an entry
   doctor         check the local environment for common first-run problems
@@ -142,6 +143,8 @@ func runWithStdin(args []string, stdout, stderr io.Writer, getenv func(string) s
 		return runDelegatesWithStdin(args[1:], stdout, stderr, getenv, stdin)
 	case "inspect":
 		return runInspect(args[1:], stdout, stderr)
+	case "diff":
+		return runDiff(args[1:], stdout, stderr)
 	case "verify":
 		return runVerify(args[1:], stdout, stderr)
 	case "tree":
@@ -243,8 +246,16 @@ func classifyInput(value, want string, err error) error {
 // code, since the input is what is wrong and no retry against the same input
 // can succeed.
 func decodeEntry(value string) (xdr.SorobanAuthorizationEntry, error) {
+	return decodeEntryNamed("--entry", value)
+}
+
+// decodeEntryNamed is decodeEntry with the flag it is reading named, for the
+// subcommands that take more than one entry. The name goes into every message,
+// so a caller is sent to the flag that is actually wrong rather than to
+// "--entry", which diff does not have.
+func decodeEntryNamed(name, value string) (xdr.SorobanAuthorizationEntry, error) {
 	if value == "" {
-		return xdr.SorobanAuthorizationEntry{}, newErrorf(ExitUsageError, "--entry is required")
+		return xdr.SorobanAuthorizationEntry{}, newErrorf(ExitUsageError, "%s is required", name)
 	}
 	val, err := readEntryFlag(value)
 	if err != nil {
@@ -253,7 +264,7 @@ func decodeEntry(value string) (xdr.SorobanAuthorizationEntry, error) {
 	entry, err := soroauth.DecodeAuthorizationEntry(val)
 	if err != nil {
 		return xdr.SorobanAuthorizationEntry{}, newErrorf(ExitUsageError,
-			"decoding --entry: %w", classifyInput(val, "a Soroban authorization entry", err))
+			"decoding %s: %w", name, classifyInput(val, "a Soroban authorization entry", err))
 	}
 	return entry, nil
 }
