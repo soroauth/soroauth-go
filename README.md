@@ -1,5 +1,11 @@
 # soroauth
 
+[![ci](https://github.com/soroauth/soroauth-go/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/soroauth/soroauth-go/actions/workflows/ci.yml)
+[![Go reference](https://pkg.go.dev/badge/github.com/soroauth/soroauth-go.svg)](https://pkg.go.dev/github.com/soroauth/soroauth-go)
+[![Go report card](https://goreportcard.com/badge/github.com/soroauth/soroauth-go)](https://goreportcard.com/report/github.com/soroauth/soroauth-go)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Status](https://img.shields.io/badge/status-unaudited-orange)](SECURITY.md#status-of-this-library)
+
 soroauth builds, signs and inspects Soroban authorization entries in Go. When a
 contract calls `require_auth()` on an address that is not the transaction's
 source account, the transaction has to carry a signed
@@ -10,6 +16,27 @@ builds or signs those preimages. soroauth is that code, for all three address
 credential arms: legacy `SOROBAN_CREDENTIALS_ADDRESS`, CAP-71
 `SOROBAN_CREDENTIALS_ADDRESS_V2`, and CAP-71
 `SOROBAN_CREDENTIALS_ADDRESS_WITH_DELEGATES` including nested delegate trees.
+
+## Contents
+
+- [Install](#install)
+- [Common tasks](#common-tasks)
+- [Container image](#container-image)
+- [CLI](#cli)
+- [Quickstart](#quickstart)
+- [The two-pass simulation requirement](#the-two-pass-simulation-requirement)
+- [Credential types](#credential-types)
+- [Protocol version support](#protocol-version-support)
+- [Delegates](#delegates)
+- [Expiration](#expiration)
+- [CAP-85 / Protocol 28](#cap-85--protocol-28)
+- [Differences from the JS SDK](#differences-from-the-js-sdk)
+- [Remote signing over HTTP](#remote-signing-over-http)
+- [Browser and WebAssembly](#browser-and-webassembly)
+- [Proven on testnet](#proven-on-testnet)
+- [Status](#status)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Install
 

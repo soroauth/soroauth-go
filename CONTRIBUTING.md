@@ -764,6 +764,19 @@ since a method on an unexported type is not reachable through godoc.
   deep-copies first and has a test proving the input's bytes are unchanged.
 - **Errors that name the sentinel.** Wrap with
   `fmt.Errorf("soroauth: <operation>: %w", err)` and match with `errors.Is`.
+- **Every exported sentinel has a test that produces it.** This is checked, not
+  trusted: `TestEverySentinelHasAProducingTest` in `errors_meta_test.go` parses
+  the `Err*` names out of `errors.go`, scans every `_test.go` in the package,
+  and fails naming any sentinel no test mentions. So adding a sentinel without a
+  test fails the build.
+
+  The check is deliberately loose about _how_ a sentinel is asserted — directly
+  through `errors.Is`, through a `want` field in a table, through a `sentinel`
+  field — because all three are used here and a check that recognised only one
+  would fail honest tests. It therefore proves a sentinel is not forgotten, not
+  that it is well tested. If a sentinel is no longer produced by any code path,
+  delete it rather than writing a test to satisfy the check.
+
 - **Context is checked and passed down, never dropped.** Every exported function
   that takes a `context.Context` as its first parameter must check `ctx.Err()`
   before doing work — so a cancelled context fails closed even on a path that
