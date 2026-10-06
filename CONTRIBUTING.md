@@ -4,6 +4,47 @@ Thanks for looking. This library produces signatures that move money, so the bar
 for changes is higher than the size of the codebase suggests. Most of what
 follows exists to keep the evidence honest rather than to police style.
 
+## Your first contribution, in ten steps
+
+The rest of this document is long because it carries the reasoning behind each
+rule. This checklist is the short path to a green pull request; each step links
+the section that explains it.
+
+- [ ] **1. Pick an issue and get assigned.** Comment on it and wait. Complexity
+      and area labels are what work is chosen from — see
+      [Picking up an issue](#picking-up-an-issue).
+- [ ] **2. Clone and run the suite before changing anything**, so you know a
+      later failure is yours: `git clone … && cd soroauth-go && go test ./...`.
+      Go 1.25.0 or later is the only requirement for the library and CLI — see
+      [Setup](#setup).
+- [ ] **3. Branch.** Name it after the work, not the issue number alone:
+      `docs/161-onboarding-checklist`, `feat/entry-diff`.
+- [ ] **4. Write the test first where you can.** A test that cannot fail reads
+      as evidence and is worse than none; if you expect a failure, assert
+      _which_ failure — see [What a change needs](#what-a-change-needs).
+- [ ] **5. Cite anything you claim about the protocol.** A doc comment, README
+      line or commit body that states host behaviour needs the CAP, the
+      `rs-soroban-env` file and function, or the SDK file and line. Not memory.
+- [ ] **6. Never hand-edit a golden vector.** If your change moves the bytes,
+      regenerate with `make vectors` and say in the commit body which CAP
+      requires the move — see [Golden vectors](#golden-vectors).
+- [ ] **7. Run `make`** — that is `fmt`, `vet` and `test`. If you touched any
+      Markdown, also run `npx prettier --write '**/*.md'`, because the build
+      checks it. `golangci-lint run ./...` is a local gate worth running too —
+      see [Before you open a pull request](#before-you-open-a-pull-request) and
+      [Linting](#linting).
+- [ ] **8. Commit in conventional form**, lowercase and imperative, one logical
+      unit per commit, with the command you ran and its real output in the body
+      — see [Commit format](#commit-format).
+- [ ] **9. Open the pull request** with `Closes #<n>`, what you changed, and how
+      you verified it. Two checks gate the merge: `vet and test` and
+      `golden vectors are reproducible`.
+- [ ] **10. If the work turned out larger than its complexity label**, say so on
+      the issue rather than absorbing it silently.
+
+One thing that is not on the list: do not report a signature-correctness or
+key-handling bug in a public issue or pull request. See [Security](#security).
+
 ## Picking up an issue
 
 Issues carry a complexity label and an area label, and those two are how work is
