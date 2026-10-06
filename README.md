@@ -215,6 +215,54 @@ commit to it; it is not a promise the transaction will succeed. The full
 statement of what a green result does and does not guarantee is in
 [docs/verification-limits.md](docs/verification-limits.md).
 
+### Diff — what changed between two entries, and what it invalidated
+
+Reviewing a re-signed, upgraded or wrapped entry otherwise means comparing two
+base64 blobs. `diff` reports the difference, and separates the changes that
+invalidate signatures from the ones that do not — which is the whole point,
+because in a plain field list a changed expiration and a changed signature are
+both one line, and only the first is fatal.
+
+```sh
+./soroauth diff --before <base64> --after <base64>
+
+# JSON, for scripting
+./soroauth diff --before <base64> --after <base64> --json |
+  jq -r '.summary, (.stale_signatures // [])[]'
+```
+
+Under CAP-71-01 every credential node of an entry commits to the **same**
+payload, and that payload holds the credential arm, the nonce, the expiration
+ledger, the invocation tree and — on the address-bound arms — the address. So
+moving the expiration by one invalidates every signature in a delegate tree at
+once, without touching a single signature byte (delegate addresses elided here;
+the real output prints them in full):
+
+```
+PAYLOAD CHANGED and 4 signatures carried over unchanged: they are no longer valid
+
+stale signatures (committed to the old payload):
+  credentials.delegates[G…1]
+  credentials.delegates[G…2]
+  credentials.delegates[G…2].nested[G…3]
+  credentials.delegates[G…4]
+
+changes:
+  ! expiration     credentials.signatureExpirationLedger
+      1234567 -> 1234568
+
+  ! marks a change inside the signed payload
+```
+
+The delegate tree itself is **not** in the payload, so adding or removing a
+delegate changes the entry without invalidating anyone's signature, and the
+report says so rather than crying wolf.
+
+The exit code is 4 when the payload moved and at least one signature was carried
+over unchanged, and 0 otherwise — including when the entries simply differ. A
+difference is not a failure; an invalidated signature is. In the library this is
+`DiffEntries`, which returns the same report as a value.
+
 ### Doctor — check the local environment for common first-run problems
 
 Most first-run problems are environmental — an unreachable RPC endpoint, a
