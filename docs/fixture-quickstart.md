@@ -19,7 +19,7 @@ Deployment requires a funded testnet account and an RPC endpoint.
 ## Toolchain
 
 The exact pinned toolchain is declared in
-[`e2e/contracts/rust-toolchain.toml`](e2e/contracts/rust-toolchain.toml):
+[`e2e/contracts/rust-toolchain.toml`](../e2e/contracts/rust-toolchain.toml):
 
 ```toml
 # Pinned to satisfy the higher of the two rust-version floors this build needs:
@@ -175,7 +175,7 @@ them via friendbot — no manual deployment is needed for the test run.
 
 ## Related documentation
 
-- [E2E test scenarios](e2e/README.md) — what each live scenario proves
+- [E2E test scenarios](../e2e/README.md) — what each live scenario proves
 - [Fixture inventory](FIXTURES.md) — detailed table of all fixtures, their
   paths, and evidence
 - [CONTRIBUTING.md](../CONTRIBUTING.md#running-the-e2e-tests) — the one-liner
