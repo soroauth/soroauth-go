@@ -17,6 +17,27 @@ credential arms: legacy `SOROBAN_CREDENTIALS_ADDRESS`, CAP-71
 `SOROBAN_CREDENTIALS_ADDRESS_V2`, and CAP-71
 `SOROBAN_CREDENTIALS_ADDRESS_WITH_DELEGATES` including nested delegate trees.
 
+## Contents
+
+- [Install](#install)
+- [Common tasks](#common-tasks)
+- [Container image](#container-image)
+- [CLI](#cli)
+- [Quickstart](#quickstart)
+- [The two-pass simulation requirement](#the-two-pass-simulation-requirement)
+- [Credential types](#credential-types)
+- [Protocol version support](#protocol-version-support)
+- [Delegates](#delegates)
+- [Expiration](#expiration)
+- [CAP-85 / Protocol 28](#cap-85--protocol-28)
+- [Differences from the JS SDK](#differences-from-the-js-sdk)
+- [Remote signing over HTTP](#remote-signing-over-http)
+- [Browser and WebAssembly](#browser-and-webassembly)
+- [Proven on testnet](#proven-on-testnet)
+- [Status](#status)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Install
 
 ```sh
