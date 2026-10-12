@@ -22,6 +22,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 REPO = "soroauth/soroauth-go"
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -175,6 +176,9 @@ def main():
                    help="do not create or update labels")
     p.add_argument("--allow-duplicate-titles", action="store_true",
                    help="create an issue even when one with the same title exists")
+    p.add_argument("--delay", type=float, default=1.5, metavar="SECONDS",
+                   help="pause between creations to stay under GitHub's secondary rate limit "
+                        "for content creation (default 1.5; 0 disables)")
     p.add_argument("--bodies", action="store_true",
                    help="print every rendered body in the dry run (verbose)")
     p.add_argument("--markdown", metavar="PATH",
@@ -238,8 +242,23 @@ def main():
             label_args += ["--label", label]
 
         if args.apply:
-            url = gh("issue", "create", "--repo", REPO, "--title", issue["title"],
-                     "--body", render(issue), *label_args).strip()
+            # A pause between creations, because GitHub's secondary rate limit
+            # on content creation is not reported as a rate limit: it comes
+            # back as a generic 403, which would abort the run partway and
+            # leave the backlog half filed. The skip-by-title check above makes
+            # a resumed run safe, but not needing to resume is better.
+            if created and args.delay > 0:
+                time.sleep(args.delay)
+            try:
+                url = gh("issue", "create", "--repo", REPO, "--title", issue["title"],
+                         "--body", render(issue), *label_args).strip()
+            except subprocess.CalledProcessError as err:
+                print("\n  FAILED on %r" % issue["title"], file=sys.stderr)
+                print("  %s" % (err.stderr or "").strip(), file=sys.stderr)
+                print("\n  created %d before this failure. Re-running skips what exists,"
+                      % created, file=sys.stderr)
+                print("  so fix the cause and run the same command again.", file=sys.stderr)
+                return 1
             print("  %s  %s" % (url, issue["title"]))
             created += 1
         else:
