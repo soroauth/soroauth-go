@@ -43,16 +43,17 @@ the architecture note and the guides is the one they need. The repository root
 
 ## Testing and evidence
 
-| Document                                                             | Answers                                                                                     |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| [e2e/README](../e2e/README.md)                                       | What each live testnet scenario proves, and how the two-pass simulation flow works.         |
-| [e2e/RESULTS](../e2e/RESULTS.md)                                     | The transaction hashes and observed credential arms from a real testnet run.                |
-| [fuzzing](fuzzing.md)                                                | How the fuzz targets run continuously, and how a crash becomes a committed regression seed. |
-| [parity](parity.md)                                                  | What agreement across implementations does and does not establish.                          |
-| [differential fuzzing](../testdata/differential/README.md)           | How random entries are checked across the Go, JS and Python implementations.                |
-| [frozen divergences](../testdata/differential/regressions/README.md) | The regression corpus of cases the implementations once disagreed on.                       |
-| [Python parity](../testdata/parity-python/README.md)                 | How the vectors are recomputed with the Python `stellar-sdk`.                               |
-| [Rust parity](../testdata/parity-rust/README.md)                     | How the vectors are recomputed with the `stellar-xdr` crate the host itself uses.           |
+| Document                                                             | Answers                                                                                             |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| [e2e/README](../e2e/README.md)                                       | What each live testnet scenario proves, and how the two-pass simulation flow works.                 |
+| [e2e/RESULTS](../e2e/RESULTS.md)                                     | The transaction hashes and observed credential arms from a real testnet run.                        |
+| [fuzzing](fuzzing.md)                                                | How the fuzz targets run continuously, and how a crash becomes a committed regression seed.         |
+| [soak](soak.md)                                                      | The reported batch signing soak run: what each round asserts, and how its tolerances were measured. |
+| [parity](parity.md)                                                  | What agreement across implementations does and does not establish.                                  |
+| [differential fuzzing](../testdata/differential/README.md)           | How random entries are checked across the Go, JS and Python implementations.                        |
+| [frozen divergences](../testdata/differential/regressions/README.md) | The regression corpus of cases the implementations once disagreed on.                               |
+| [Python parity](../testdata/parity-python/README.md)                 | How the vectors are recomputed with the Python `stellar-sdk`.                                       |
+| [Rust parity](../testdata/parity-rust/README.md)                     | How the vectors are recomputed with the `stellar-xdr` crate the host itself uses.                   |
 
 ## Sub-project docs
 

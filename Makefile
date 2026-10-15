@@ -30,7 +30,14 @@ LDFLAGS    := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.
 # the local smoke that proves a target starts and its seeds pass.
 FUZZTIME ?= 30s
 
-.PHONY: all help fmt vet test fuzz build server man md-check md-format vectors vectors-check demo-check diagrams diagrams-check e2e clean parity parity-rust differential wasm wasm-check wasm-budget ts-test
+# How long `make soak` signs batches. The scheduled `soak` job in
+# .github/workflows/fuzz.yml runs the same test for ten minutes; this default
+# is the local smoke that proves the loop starts and every round's assertions
+# hold. The race detector stays on either way: docs/soak.md explains why the
+# soak is not a replacement for it.
+SOAKTIME ?= 2m
+
+.PHONY: all help fmt vet test fuzz soak build server man md-check md-format vectors vectors-check demo-check diagrams diagrams-check e2e clean parity parity-rust differential wasm wasm-check wasm-budget ts-test
 
 # The default target runs exactly what a pull request has to pass before the
 # golden-vector drift check, which needs Node and the network.
@@ -43,6 +50,7 @@ help:
 	@echo "  make vet           go vet ./..."
 	@echo "  make test          go test ./..."
 	@echo "  make fuzz          run every fuzz target for \$$(FUZZTIME) each (default 30s)"
+	@echo "  make soak          soak the batch signing path for \$$(SOAKTIME) (default 2m, race detector on)"
 	@echo "  make md-check      fail if any Markdown file is not prettier-clean"
 	@echo "  make md-format     format every Markdown file in place"
 	@echo "  make build         build the CLI to $(BIN)"
@@ -88,6 +96,19 @@ fuzz:
 	$(GO) test -run '^$$' -fuzz FuzzPayload -fuzztime $(FUZZTIME) .
 	$(GO) test -run '^$$' -fuzz FuzzDecodeAuthorizationEntry -fuzztime $(FUZZTIME) .
 	$(GO) test -run '^$$' -fuzz FuzzCopyRoundTrip -fuzztime $(FUZZTIME) ./internal/xdrcopy
+
+# The long-running counterpart to the race detector: soak_test.go's
+# TestSoakBatchSigning signs batches of the golden vectors from several
+# goroutines, round after round, and after every round asserts the bytes still
+# match the vectors and that goroutines and live heap returned to the baseline
+# taken after the warm-up. It is behind the soak build tag, so no other target
+# compiles it, and it is deliberately not a replacement for `go test -race`
+# or TestCopyConcurrentReuse, only the same properties watched for much longer.
+# The scheduled job in .github/workflows/fuzz.yml runs it for 10 minutes; the
+# reported run and the measured tolerances are in docs/soak.md.
+# Override the budget per run: `make soak SOAKTIME=10m`.
+soak:
+	$(GO) test -race -tags soak -run TestSoakBatchSigning -soak-duration $(SOAKTIME) -timeout 30m .
 
 # Markdown is normalised so a prose diff stays about content rather than about
 # re-wrapping. The formatter, its version and its config are committed
