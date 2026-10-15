@@ -149,6 +149,44 @@ SEED=SABC... ./soroauth sign \
   jq -r '"\(.credential_type) \(.address) expires=\(.valid_until_ledger)"'
 ```
 
+### Batch mode — many entries in one run
+
+`inspect`, `verify` and `sign` take `--entries <file|->`, and `diff` takes
+`--before-entries`/`--after-entries`, so a list of entries costs one process
+instead of one process per line. The input is one base64 authorization entry per
+line (`-` reads stdin; blank lines are skipped). An envelope is never a batch
+line, because one envelope carries several entries — select them first.
+
+Every result is labelled with its 1-based position, and one bad line never ends
+the run: `entry N:` on stdout for a result, `entry N: <why>` on stderr for a
+failure, and the exit code is the first failure's. With `--json` the report is a
+single array — `{"entry": N, "result": ...}` or `{"entry": N, "error": "..."}` —
+so it composes with `jq`:
+
+```sh
+# Inspect a list; one labelled report per entry
+./soroauth inspect --entries entries.b64
+
+# Verify a whole batch, then list only the entries that did not verify
+./soroauth verify --entries entries.b64 --network testnet --json |
+  jq -r '.[] | select(.result.verified != true) | .entry'
+
+# Sign a batch; the signed entries come back in input order
+SEED=SABC... ./soroauth sign --entries entries.b64 \
+  --valid-until 1234567 --network testnet --secret-env SEED --json |
+  jq -r '.[].result.signed_entry' > signed.b64
+
+# What changed across a batch? The two files are compared in order
+./soroauth diff --before-entries before.b64 --after-entries after.b64
+```
+
+`sign` is all-or-nothing, the same rule the library's `AuthorizeAll` enforces:
+if any line cannot be signed, no signed output is written at all — the report is
+only the failures — because a half-signed batch must never read as a complete
+one. `diff` pairs the Nth non-blank lines of its two files and refuses files
+whose entry counts differ. No batch path echoes an entry into output or logs: a
+caller sees the position, never the bytes.
+
 ### Tree — render a delegate tree
 
 `inspect` reports an entry's structure as JSON; `tree` renders the same
