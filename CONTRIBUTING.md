@@ -96,6 +96,7 @@ rather than across several documents. Run `make help` for the list.
 | `make fmt`           | fails if `gofmt -l .` reports anything                                                                |
 | `make vet`           | `go vet ./...`                                                                                        |
 | `make test`          | `go test ./...`                                                                                       |
+| `make coverage`      | measures test coverage and enforces the per-package floors in `testdata/coverage/floors.json`         |
 | `make build`         | builds the CLI to `bin/soroauth`                                                                      |
 | `make vectors`       | `cd testdata/gen && npm ci && node gen.mjs && node gen-passkey.mjs`                                   |
 | `make vectors-check` | regenerates the vectors and fails if the committed files changed                                      |
@@ -654,22 +655,65 @@ asserting over.
 ## Coverage reporting (CI)
 
 The `coverage` job in `.github/workflows/ci-go.yml` measures test coverage,
-enforces a floor of **60%**, and publishes the report via Codecov. It runs on
-push to `main` and on demand, not on pull requests: pull requests carry only the
-three checks the branch ruleset requires.
+checks it against the committed per-package floors in
+`testdata/coverage/floors.json`, and publishes the report via Codecov. It runs
+on push to `main` and on demand, not on pull requests: pull requests carry only
+the three checks the branch ruleset requires.
 
-- Run locally to check your coverage before pushing:
-  ```sh
-  go test -coverprofile=coverage.out -covermode=atomic ./...
-  go tool cover -func=coverage.out | awk '/total/{print $3}'
-  ```
-- The floor is 60%, and it is a floor set below a measured total rather than an
-  aspiration. The 80% it replaced never passed: every push to `main` while it
-  was in place reported around 62% and failed. Raise it as tests are added;
-  never lower it without a fresh measurement named in the commit body. The
-  number in the job (`floor=60`) is the authority; this document follows it.
-- The report is visible in the CI logs and on Codecov without digging through
-  artifacts.
+This replaced one repository-wide floor of 60%. A single floor lets a
+well-covered package subsidise a thin one: the signing path was averaged
+together with the CLI and the examples, so a real regression in the former could
+hide behind the latter. Each package now carries its own floor, set from the
+measurement recorded next to it — a floor nobody can meet gets raised away —
+with a one-line reason each. **The signing path (the root package and
+`internal/xdrcopy`) carries floors strictly above the 60% repository-wide floor
+this scheme replaced**, so a regression in the path that produces signatures
+cannot hide behind a repository average; `scripts/checkcov` enforces that
+minimum as policy.
+
+Packages with no tests by design are **excluded by name**, with a reason each,
+never given a floor of zero: the examples are documentation exercised by the
+golden and e2e runs, and `cmd/gencorpus`, `scripts/checkbench` and
+`scripts/frozengen` are development tools CI runs itself. If an excluded package
+gains tests, the checker fails until the table says what to do.
+
+`scripts/checkcov` fails naming the package and both numbers when a package
+drops below its floor, when a package has neither a floor nor an exclusion, and
+when the table and the tree disagree — a floor for a package that has been
+renamed away, or one raised above the measurement it was set from. It also
+filters `node_modules/` out of the profile: the root `npm ci` installs
+`node_modules/flatted/golang`, which a local run would otherwise see and CI
+never measures.
+
+Coverage is not correctness: it says which lines ran, not that the result is
+right. The mutation-testing work planned over the signing path
+([docs/WAVE10_BACKLOG.md](docs/WAVE10_BACKLOG.md), "test: mutation testing over
+the signing path") is the stronger check; these floors are a tripwire for
+regressions, not evidence of correctness.
+
+Reproduce the job with one command:
+
+```sh
+make coverage
+```
+
+which is:
+
+```sh
+go test -coverprofile=coverage.out -covermode=atomic ./...
+go list -f '{{.ImportPath}}' ./... > packages.txt
+go run ./scripts/checkcov coverage.out testdata/coverage/floors.json packages.txt
+```
+
+`make coverage` derives the toolchain from the `toolchain` line in `go.mod` and
+runs each command under it, because statement counts move between Go minor
+versions — go1.27 counts the `server` package about 4.5 points lower than
+go1.25.4 — and the floors were measured with the pinned toolchain. CI does the
+same.
+
+When a floor fails, `go tool cover -func=coverage.out` shows which functions
+moved, and the fix is the tests, not the floor. Changing a floor needs a fresh
+measurement named in the commit body; never lower one to make CI green.
 
 ## Property-based tests
 
