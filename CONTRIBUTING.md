@@ -457,6 +457,41 @@ itself: #294 changed only `ci-adapters.yml`, matched nothing in that workflow's
 own filter, and landed on `main` with its new job never having run once. If you
 add a workflow with a `paths:` filter, include its own path.
 
+### Release attestations and signatures
+
+Every release artifact is attested and signed, and the way to check that is a
+script rather than prose, so it can run in CI:
+
+- `scripts/verify-release.sh` verifies a downloaded release: every binary
+  against its `.sigstore.json` bundle (cosign, keyless) and its build provenance
+  attestation (`gh attestation verify`), every attached `.spdx.json` SBOM
+  against its SBOM attestation, and the container image digest the release
+  names. `--tamper-demo` flips one byte in a verified binary and requires
+  **both** paths to reject the copy, because a check nobody has seen reject
+  something is not evidence.
+- The `verify-release` job in `.github/workflows/release.yml` runs the script
+  against the release it just published, so a release whose assets do not verify
+  stays red instead of being announced.
+- `.github/workflows/verify-release.yml` re-runs it weekly against the newest
+  release that carries bundles (releases from before the scheme are skipped with
+  a message, not failed). Its `self_test` dispatch input builds a throwaway
+  binary from any ref and runs the same script plus the tamper demo on the run's
+  own OIDC identity — that is the evidence to attach to a pull request that
+  touches this scheme:
+
+  ```sh
+  gh workflow run verify-release.yml --repo <owner>/soroauth-go \
+    --ref <branch> -f self_test=true
+  ```
+
+Signing is keyless: the certificate comes from the workflow's GitHub OIDC
+identity, so no key exists in CI to leak or rotate. The flip side is that an
+action added to a job that can mint an OIDC token in these workflows runs with
+that identity and writes attestations under it, which is one more reason every
+new action must be SHA-pinned as described above — and why the verification
+commands in the README and in `scripts/verify-release.sh` pin the _identity_
+(this repository's workflow at a tag), not a key.
+
 ## Golden vectors
 
 `testdata/vectors/*.json` are generated, committed artefacts. They are the
