@@ -100,6 +100,7 @@ rather than across several documents. Run `make help` for the list.
 | `make vet`           | `go vet ./...`                                                                                        |
 | `make test`          | `go test ./...`                                                                                       |
 | `make coverage`      | measures test coverage and enforces the per-package floors in `testdata/coverage/floors.json`         |
+| `make soak`          | runs the long-running batch signing soak (race detector on, `SOAKTIME`, default 2m)                   |
 | `make build`         | builds the CLI to `bin/soroauth`                                                                      |
 | `make vectors`       | `cd testdata/gen && npm ci && node gen.mjs && node gen-passkey.mjs`                                   |
 | `make vectors-check` | regenerates the vectors and fails if the committed files changed                                      |
@@ -872,6 +873,32 @@ To reproduce:
 The differential harness in `testdata/differential/` is a different kind of
 fuzzing — random entries checked across the Go, JS and Python implementations —
 and is documented in its own README.
+
+### Soak testing
+
+`TestSoakBatchSigning` in `soak_test.go` is the long version of the batch
+signing test. It lives behind the `soak` build tag, so `go test ./...` never
+compiles it, and it signs batches of the committed golden vectors from several
+goroutines, round after round, for a caller-chosen duration. After every round
+it asserts that every signed entry is byte-identical to the vector's recorded
+`signed_entry_xdr`, that the goroutine count is back to the baseline taken after
+a warm-up round, and that live heap (`HeapAlloc`, after a `runtime.GC`) is
+within the documented headroom of that baseline. The byte equality is what
+catches a pooled `internal/xdrcopy` buffer handed to two callers; the memory
+assertions catch a leak that only shows up over hours.
+
+```sh
+make soak                # 2m local smoke, race detector on
+make soak SOAKTIME=10m   # the nightly budget
+```
+
+It is **not** a replacement for `go test -race` or for
+`TestCopyConcurrentReuse`: those prove correctness under contention for the
+duration of a short run, while the soak watches the steady state for minutes and
+hours. The `soak` job in `.github/workflows/fuzz.yml` runs the ten-minute
+version on the same nightly schedule as the fuzz targets. The reported run, the
+machine it came from and the measurements the tolerances were set from are in
+[docs/soak.md](docs/soak.md).
 
 ### Capturing regressions
 
