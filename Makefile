@@ -10,6 +10,12 @@ GO   ?= go
 NPM  ?= npm
 NODE ?= node
 
+# The toolchain go.mod pins. Coverage statement counts move between Go minor
+# versions (go1.27 counts the server package ~4.5 points lower than go1.25.4),
+# so `make coverage` runs its measurement under the pinned toolchain to agree
+# with the numbers recorded in testdata/coverage/floors.json.
+COVER_TOOLCHAIN := $(shell awk '/^toolchain /{print $$2}' go.mod)
+
 # The binary `make build` writes, relative to the repository root.
 BIN_DIR := bin
 BIN     := $(BIN_DIR)/soroauth
@@ -30,7 +36,7 @@ LDFLAGS    := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.
 # the local smoke that proves a target starts and its seeds pass.
 FUZZTIME ?= 30s
 
-.PHONY: all help fmt vet test fuzz build server man md-check md-format vectors vectors-check demo-check diagrams diagrams-check e2e clean parity parity-rust differential wasm wasm-check wasm-budget ts-test
+.PHONY: all help fmt vet test coverage fuzz build server man md-check md-format vectors vectors-check demo-check diagrams diagrams-check e2e clean parity parity-rust differential wasm wasm-check wasm-budget ts-test
 
 # The default target runs exactly what a pull request has to pass before the
 # golden-vector drift check, which needs Node and the network.
@@ -42,6 +48,7 @@ help:
 	@echo "  make fmt           fail if any Go file is not gofmt-clean"
 	@echo "  make vet           go vet ./..."
 	@echo "  make test          go test ./..."
+	@echo "  make coverage      measure coverage and enforce the per-package floors"
 	@echo "  make fuzz          run every fuzz target for \$$(FUZZTIME) each (default 30s)"
 	@echo "  make md-check      fail if any Markdown file is not prettier-clean"
 	@echo "  make md-format     format every Markdown file in place"
@@ -75,6 +82,19 @@ fmt:
 
 vet:
 	$(GO) vet ./...
+
+# Per-package coverage floors (testdata/coverage/floors.json). One global floor
+# let a well-covered package subsidise a thin one: the signing path was
+# averaged together with the CLI and the examples, so a regression in the path
+# that produces signatures could hide behind the rest. scripts/checkcov
+# compares each package's statement coverage against its own floor, and the
+# signing-path floors stay strictly above the 60% global floor this replaced.
+# Coverage is not correctness: it says which lines ran, not that the result is
+# right; the mutation-testing work is the stronger check.
+coverage:
+	GOTOOLCHAIN=$(COVER_TOOLCHAIN) $(GO) test -coverprofile=coverage.out -covermode=atomic ./...
+	GOTOOLCHAIN=$(COVER_TOOLCHAIN) $(GO) list -f '{{.ImportPath}}' ./... > packages.txt
+	GOTOOLCHAIN=$(COVER_TOOLCHAIN) $(GO) run ./scripts/checkcov coverage.out testdata/coverage/floors.json packages.txt
 
 # A local smoke over every fuzz target: each one must start, run its seed
 # corpus and fuzz for FUZZTIME without finding a crash. The continuous
