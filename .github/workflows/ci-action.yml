@@ -1,0 +1,104 @@
+# The composite action's own integration test: it must pass on a good entry and
+# fail on a bad one.
+#
+# The action runs the CLI from a container image, so this workflow builds the
+# image from the checkout (the same Dockerfile the release publishes) and points
+# the action at it. There is no published digest to pin to in a pull request, so
+# the image is built locally for the test rather than pulled.
+name: ci / action
+
+on:
+  # Advisory checks do not run on pull requests. Only the two jobs the branch
+  # ruleset requires do, so a contributor sees two checks and not a wall of
+  # them. This runs when the change reaches main, and can be run by hand from
+  # the Actions tab at any time.
+  push:
+    branches: [main]
+    paths:
+      - "integrations/action/**"
+      # The action runs the image this Dockerfile builds, so a change to the
+      # CLI it packages can break the action even though the action's own
+      # files did not move.
+      - "Dockerfile"
+      - "cmd/**"
+      - "*.go"
+      - "go.mod"
+      - "go.sum"
+      # The golden entries the test drives the action with.
+      - "testdata/vectors/**"
+      # A workflow's own definition is in its paths, so an edit to this file
+      # re-runs it. Without this line a change to this workflow cannot
+      # validate itself.
+      - ".github/workflows/ci-action.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  action:
+    name: the action passes a good entry and fails a bad one
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # The action never installs Go; it runs the CLI from the image. Building
+      # the image here is what lets the test run against this checkout instead
+      # of a released digest.
+      - name: build the CLI image the action runs
+        run: docker build -t soroauth-action:ci .
+      # The action's inputs are the base64 entries themselves, so the two
+      # vectors are lifted out of the committed golden file rather than being
+      # inlined into this workflow: a hand-copied entry would drift from the
+      # vector that proves it.
+      - name: read the signed and unsigned golden entries
+        id: vectors
+        run: |
+          signed="$(jq -r .signed_entry_xdr testdata/vectors/v2_single_testnet.json)"
+          unsigned="$(jq -r .unsigned_entry_xdr testdata/vectors/v2_single_testnet.json)"
+          {
+            echo "signed=$signed"
+            echo "unsigned=$unsigned"
+          } >> "$GITHUB_OUTPUT"
+      # A fully signed v2 entry must pass, including the expected-arm check.
+      - name: a good entry passes
+        uses: ./integrations/action
+        with:
+          entry: ${{ steps.vectors.outputs.signed }}
+          network: testnet
+          expected-arm: address_v2
+          image: soroauth-action:ci
+      # The same entry with its signature stripped must fail. continue-on-error
+      # lets the run continue to the assertion below; without it a failure here
+      # would end the job before proving the failure was the action's.
+      - name: a bad entry fails
+        id: bad
+        continue-on-error: true
+        uses: ./integrations/action
+        with:
+          entry: ${{ steps.vectors.outputs.unsigned }}
+          network: testnet
+          image: soroauth-action:ci
+      # The whole point of the test: the bad entry must not have passed. If the
+      # action exited zero here, the previous step's outcome is "success" and
+      # this step fails the run.
+      - name: the bad entry really failed
+        if: steps.bad.outcome != 'failure'
+        run: |
+          echo "::error::the action passed an unsigned entry that must fail"
+          exit 1
+      # A wrong expected-arm must fail too, independently of the signature: it
+      # is the other half of what the action checks.
+      - name: a wrong expected arm fails
+        id: wrongarm
+        continue-on-error: true
+        uses: ./integrations/action
+        with:
+          entry: ${{ steps.vectors.outputs.signed }}
+          network: testnet
+          expected-arm: source_account
+          image: soroauth-action:ci
+      - name: the wrong arm really failed
+        if: steps.wrongarm.outcome != 'failure'
+        run: |
+          echo "::error::the action passed an entry whose arm did not match expected-arm"
+          exit 1

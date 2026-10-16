@@ -1,0 +1,61 @@
+name: 'soroauth verify'
+description: 'Verify Soroban authorization entries and surface findings as workflow annotations.'
+author: 'soroauth'
+branding:
+  icon: 'shield'
+  color: 'purple'
+
+# No input accepts a secret. Authorization entries are public data: they carry
+# signatures and never a seed. The only key material the CLI ever reads comes
+# from an environment variable to `soroauth sign`, which this action never
+# calls and deliberately does not expose. A secret must never be passed here.
+inputs:
+  entry:
+    description: >
+      A single base64 authorization entry or transaction envelope. Mutually
+      exclusive with entry-file. Public data, never a secret.
+    required: false
+  entry-file:
+    description: >
+      A path or glob to a file of base64 entries, one per line, blank lines
+      skipped. Mutually exclusive with entry. Public data, never a secret.
+    required: false
+  network:
+    description: >
+      testnet, futurenet, public, or a literal network passphrase. Passed to
+      both `soroauth inspect` and `soroauth verify`.
+    required: true
+  expected-arm:
+    description: >
+      Optional. The credential arm every entry must report: source_account,
+      address, address_v2, or address_with_delegates. A mismatch is a failure.
+    required: false
+    default: ''
+  allow-unsigned:
+    description: >
+      Optional. Accept unsigned nodes. Under CAP-71-01 a delegates entry may
+      legitimately leave its top-level node Void, so this is the same switch as
+      the CLI's --allow-unsigned and defaults to false.
+    required: false
+    default: 'false'
+  image:
+    description: >
+      The container image providing the soroauth CLI. Defaults to the published
+      CLI image; pin it by digest for full reproducibility. The action never
+      installs Go.
+    required: false
+    default: 'ghcr.io/soroauth/soroauth-go:latest'
+
+runs:
+  using: composite
+  steps:
+    - id: verify
+      shell: bash
+      env:
+        SOROAUTH_INPUT_ENTRY: ${{ inputs.entry }}
+        SOROAUTH_INPUT_ENTRY_FILE: ${{ inputs.entry-file }}
+        SOROAUTH_INPUT_NETWORK: ${{ inputs.network }}
+        SOROAUTH_INPUT_EXPECTED_ARM: ${{ inputs.expected-arm }}
+        SOROAUTH_INPUT_ALLOW_UNSIGNED: ${{ inputs.allow-unsigned }}
+        SOROAUTH_INPUT_IMAGE: ${{ inputs.image }}
+      run: bash "${{ github.action_path }}/verify.sh"
