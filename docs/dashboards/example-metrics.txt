@@ -1,0 +1,30 @@
+# Captured from a real run of the service's /metrics endpoint by
+# `GEN_SCRAPE=1 go test ./server -run TestGenerateExampleScrape`.
+# The run served one signed address_v2 entry and one malformed request.
+# Lines beginning with # are Prometheus comment syntax, valid in a scrape.
+# HELP soroauth_http_request_duration_seconds HTTP request latency in seconds, by route.
+# TYPE soroauth_http_request_duration_seconds histogram
+soroauth_http_request_duration_seconds_bucket{route="/verify",le="0.005"} 2
+soroauth_http_request_duration_seconds_bucket{route="/verify",le="0.01"} 2
+soroauth_http_request_duration_seconds_bucket{route="/verify",le="0.025"} 2
+soroauth_http_request_duration_seconds_bucket{route="/verify",le="0.05"} 2
+soroauth_http_request_duration_seconds_bucket{route="/verify",le="0.1"} 2
+soroauth_http_request_duration_seconds_bucket{route="/verify",le="0.25"} 2
+soroauth_http_request_duration_seconds_bucket{route="/verify",le="0.5"} 2
+soroauth_http_request_duration_seconds_bucket{route="/verify",le="1"} 2
+soroauth_http_request_duration_seconds_bucket{route="/verify",le="2.5"} 2
+soroauth_http_request_duration_seconds_bucket{route="/verify",le="5"} 2
+soroauth_http_request_duration_seconds_bucket{route="/verify",le="10"} 2
+soroauth_http_request_duration_seconds_bucket{route="/verify",le="+Inf"} 2
+soroauth_http_request_duration_seconds_sum{route="/verify"} 0.000459051
+soroauth_http_request_duration_seconds_count{route="/verify"} 2
+# HELP soroauth_http_requests_total HTTP requests handled, by method, route and response status.
+# TYPE soroauth_http_requests_total counter
+soroauth_http_requests_total{method="POST",route="/verify",status="200"} 1
+soroauth_http_requests_total{method="POST",route="/verify",status="400"} 1
+# HELP soroauth_verify_refusals_total Verification and request refusals, by reason.
+# TYPE soroauth_verify_refusals_total counter
+soroauth_verify_refusals_total{reason="bad_request"} 1
+# HELP soroauth_verify_verdicts_total Credential-node verification verdicts, by credential type and verdict.
+# TYPE soroauth_verify_verdicts_total counter
+soroauth_verify_verdicts_total{credential_type="address_v2",verdict="verified"} 1
