@@ -398,3 +398,11 @@ month
 months
 year
 years
+
+# Verification service, OpenAPI and metrics
+# (slowloris is the slow-header attack the READ_HEADER_TIMEOUT bounds; oapi and
+# codegen name oapi-codegen, the OpenAPI client generator.)
+slowloris
+oapi
+codegen
+openapi

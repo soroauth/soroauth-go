@@ -1,0 +1,226 @@
+openapi: 3.0.3
+info:
+  title: soroauth verification service
+  description: |
+    The contract served by `server/` (see `docs/verification-service.md`): offline
+    verification of Soroban authorization entries, with the same verdicts and the
+    same JSON shape as `soroauth verify --json`.
+
+    A verification that completes is HTTP 200 whatever the verdicts say — a body
+    reporting `invalid` is the answer, not a transport failure. Only a request the
+    service cannot verify is an error with an `ErrorResponse` body and no report.
+
+    The spec is asserted against the running service by the generated-client
+    conformance check in `server/openapi/`; a divergence fails CI. The openapi
+    document is the source of truth for the HTTP surface, and the conformance
+    check is generated from it rather than written in parallel.
+  version: 1.0.0
+  license:
+    name: Apache-2.0
+    url: https://github.com/soroauth/soroauth-go/blob/main/LICENSE
+servers:
+  # A relative server keeps the document host-agnostic: the conformance check
+  # starts the service on an ephemeral loopback port, and a relative server lets
+  # kin-openapi's router match it without a host constraint. Clients pass the
+  # base URL explicitly.
+  - url: /
+    description: The base URL the service is deployed at. A non-loopback bind requires AUTH_TOKEN.
+paths:
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Liveness and version
+      description: |
+        Reports service liveness for load balancers. It needs no authentication
+        so a health check does not have to hold the bearer token.
+      responses:
+        "200":
+          description: The service is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+        "405":
+          description: The endpoint is GET-only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /verify:
+    post:
+      operationId: verify
+      summary: Verify one entry or every entry in an envelope
+      description: |
+        Rebuilds the signing payload from the entry itself and checks the
+        signatures already on it. The verdicts are the CLI's: `verified`,
+        `unsigned`, `invalid`, `cannot_check`, one per credential node.
+
+        A single authorization entry answers with an `EntryReport` object; a
+        transaction envelope answers with an array of `EntryReport`, each carrying
+        the one-based `operation_index` and `entry_index` it came from.
+
+        `cannot_check` is a distinct verdict, not a `false`: a custom account's
+        `__check_auth` defines whether its signature is valid and only the
+        contract can decide, so the service reports that it cannot check rather
+        than flattening it to a boolean.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyRequest"
+      responses:
+        "200":
+          description: |
+            Verification completed. Read the verdicts: an object for one entry, an
+            array for an envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyResult"
+        "400":
+          description: |
+            Malformed JSON, a missing field, an undecodable entry, an engine
+            error, or a `valid_until_ledger` assertion the entry contradicts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid bearer token, when AUTH_TOKEN is configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: The endpoint is POST-only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: The request body is past the configured size limit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: An unexpected internal error; the handler panicked and was recovered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: |
+            The service is at its concurrent-request bound. Retry, honouring the
+            `Retry-After` header.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      additionalProperties: false
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          example: ok
+        version:
+          type: string
+          example: v0.1.0
+    VerifyRequest:
+      type: object
+      additionalProperties: false
+      required: [entry, network]
+      properties:
+        entry:
+          type: string
+          description: |
+            Base64 XDR of an authorization entry or a transaction envelope. It is
+            public data: it carries signatures, never a secret seed.
+        network:
+          type: string
+          description: |
+            `testnet`, `futurenet`, `public`, or a literal network passphrase.
+        valid_until_ledger:
+          type: integer
+          format: uint32
+          description: |
+            Optional. An assertion about the expiration the entry carries, not an
+            input: the payload is always rebuilt from the entry's own stored
+            expiration, and a disagreement is a 400.
+    VerifyResult:
+      description: |
+        One entry's report, or an array of them when the input was an envelope.
+      oneOf:
+        - $ref: "#/components/schemas/EntryReport"
+        - type: array
+          items:
+            $ref: "#/components/schemas/EntryReport"
+    EntryReport:
+      type: object
+      additionalProperties: false
+      required: [credential_type, address_bound, verified, nodes]
+      properties:
+        operation_index:
+          type: integer
+          description: One-based operation index, present only for an envelope entry.
+        entry_index:
+          type: integer
+          description: One-based authorization-entry index, present only for an envelope entry.
+        credential_type:
+          type: string
+          enum: [source_account, address, address_v2, address_with_delegates]
+        address_bound:
+          type: boolean
+          description: True for the arms whose payload binds the address into the signed bytes.
+        address:
+          type: string
+          description: The entry's address, for the three address arms.
+        valid_until_ledger:
+          type: integer
+          format: uint32
+        verified:
+          type: boolean
+          description: |
+            True only when every credential node verified. A node that is
+            unsigned, invalid or cannot_check makes it false: verification fails
+            closed.
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/NodeVerdict"
+        note:
+          type: string
+          description: A caveat about the whole report, such as a source-account entry having nothing to check.
+    NodeVerdict:
+      type: object
+      additionalProperties: false
+      required: [address, verdict]
+      properties:
+        address:
+          type: string
+          description: The G… or C… strkey of the node this verdict is about.
+        verdict:
+          type: string
+          enum: [verified, unsigned, invalid, cannot_check]
+          description: |
+            `cannot_check` is a distinct value, never `verified`.
+        reason:
+          type: string
+          description: Plain-language explanation when the verdict is not a bare pass.
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string

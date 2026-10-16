@@ -1,0 +1,69 @@
+# The verification service's OpenAPI spec: the generated client stays in sync
+# with it, and the running service is validated against it.
+#
+# `server/openapi/` is a module of its own (see its README), so its tests are
+# not part of the root module's `go test ./...`. This workflow is where they run.
+name: ci / openapi
+
+on:
+  # Advisory checks do not run on pull requests. Only the two jobs the branch
+  # ruleset requires do, so a contributor sees two checks and not a wall of
+  # them. This runs when the change reaches main, and can be run by hand from
+  # the Actions tab at any time.
+  push:
+    branches: [main]
+    paths:
+      - "server/openapi.yaml"
+      - "server/openapi/**"
+      # The conformance check builds and drives the real server, so a change to
+      # the service can break the spec without the spec moving.
+      - "server/**"
+      - "*.go"
+      - "go.mod"
+      - "go.sum"
+      # The golden entry the conformance check verifies through the service.
+      - "testdata/vectors/**"
+      # A workflow's own definition is in its paths, so an edit to this file
+      # re-runs it. Without this line a change to this workflow cannot
+      # validate itself.
+      - ".github/workflows/ci-openapi.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  openapi:
+    name: the service matches the committed spec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      # The generated client is committed, so regenerating it must be a no-op:
+      # a hand edit to client/ or a spec change without a regeneration fails
+      # here rather than drifting silently from the document.
+      - name: generated client is in sync
+        working-directory: server/openapi
+        run: |
+          ./generate.sh
+          git diff --exit-code -- client/
+      - name: gofmt
+        working-directory: server/openapi
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "these files are not gofmt clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+      # This is the conformance test, not a linter on the YAML: it starts the
+      # real service and validates every response against the spec, exercising
+      # the generated client in the process.
+      - name: vet and test
+        working-directory: server/openapi
+        run: |
+          go vet ./...
+          go test -race ./...

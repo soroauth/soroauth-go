@@ -43,7 +43,7 @@ FUZZTIME ?= 30s
 # soak is not a replacement for it.
 SOAKTIME ?= 2m
 
-.PHONY: all help fmt vet test coverage fuzz soak build server man md-check md-format vectors vectors-check demo-check diagrams diagrams-check e2e clean parity parity-rust differential wasm wasm-check wasm-budget ts-test jvm-test jvm-native rust-test grpc-test grpc-check freighter-check
+.PHONY: all help fmt vet test coverage fuzz soak build server man md-check md-format vectors vectors-check demo-check diagrams diagrams-check e2e clean parity parity-rust differential wasm wasm-check wasm-budget ts-test jvm-test jvm-native rust-test grpc-test grpc-check freighter-check openapi-test openapi-check action-test
 
 # The default target runs exactly what a pull request has to pass before the
 # golden-vector drift check, which needs Node and the network.
@@ -81,6 +81,9 @@ help:
 	@echo "  make rust-test     test the Rust crate with its pins locked"
 	@echo "  make grpc-test     test the gRPC service module"
 	@echo "  make grpc-check    lint the proto and fail if the generated code drifted"
+	@echo "  make openapi-test  run the OpenAPI conformance check against the service"
+	@echo "  make openapi-check fail if the generated client drifted, then run the conformance check"
+	@echo "  make action-test   build the CLI image and test the composite action (needs docker and jq)"
 	@echo "  make freighter-check  check the Freighter example's logic without a browser"
 	@echo "  make clean         remove $(BIN_DIR)/ and build output"
 
@@ -322,6 +325,52 @@ grpc-check:
 # no browser and no wallet extension.
 freighter-check:
 	$(NODE) examples/wallet-freighter/app.test.mjs
+
+# The verification service's OpenAPI spec and conformance check
+# (server/openapi/README.md). The check builds and drives the real service and
+# validates every response against the committed document, so it is a module of
+# its own and runs in its directory rather than under the root ./....
+openapi-test:
+	cd server/openapi && $(GO) test -race ./...
+
+# The spec sync gate the gRPC module also has: regenerating the client must be
+# a no-op, and then the running service must match the document. This is what
+# CI runs; openapi-test is the same check without the regeneration diff.
+openapi-check:
+	cd server/openapi && ./generate.sh && git diff --exit-code -- client/
+	cd server/openapi && $(GO) vet ./... && $(GO) test -race ./...
+
+# The composite action (integrations/action): its own integration test, the
+# same one .github/workflows/ci-action.yml runs. It builds the CLI image the
+# action runs, then proves the action passes a signed entry, fails an unsigned
+# one, and fails a wrong expected arm. Needs docker to run the CLI and jq to
+# lift the two vectors out of the committed golden file.
+action-test:
+	@command -v docker >/dev/null 2>&1 || { echo "docker is required for action-test"; exit 1; }
+	@command -v jq >/dev/null 2>&1 || { echo "jq is required for action-test"; exit 1; }
+	docker build -t soroauth-action:ci .
+	@set -e; \
+	signed="$$(jq -r .signed_entry_xdr testdata/vectors/v2_single_testnet.json)"; \
+	unsigned="$$(jq -r .unsigned_entry_xdr testdata/vectors/v2_single_testnet.json)"; \
+	echo "--- a good entry passes ---"; \
+	SOROAUTH_INPUT_ENTRY="$$signed" SOROAUTH_INPUT_NETWORK=testnet \
+		SOROAUTH_INPUT_EXPECTED_ARM=address_v2 SOROAUTH_INPUT_IMAGE=soroauth-action:ci \
+		bash integrations/action/verify.sh; \
+	echo "--- a bad entry fails ---"; \
+	if SOROAUTH_INPUT_ENTRY="$$unsigned" SOROAUTH_INPUT_NETWORK=testnet \
+		SOROAUTH_INPUT_IMAGE=soroauth-action:ci \
+		bash integrations/action/verify.sh; then \
+		echo "the action passed an unsigned entry that must fail"; \
+		exit 1; \
+	fi; \
+	echo "--- a wrong expected arm fails ---"; \
+	if SOROAUTH_INPUT_ENTRY="$$signed" SOROAUTH_INPUT_NETWORK=testnet \
+		SOROAUTH_INPUT_EXPECTED_ARM=source_account SOROAUTH_INPUT_IMAGE=soroauth-action:ci \
+		bash integrations/action/verify.sh; then \
+		echo "the action passed an entry whose arm did not match expected-arm"; \
+		exit 1; \
+	fi; \
+	echo "action-test: ok"
 
 # Builds the module and measures it against the 3 MiB ceiling, failing if it is
 # over. The core is downloaded by a browser, so its size is a property worth
