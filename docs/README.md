@@ -21,19 +21,20 @@ navigation.
 
 ## Guides
 
-| Document                                        | Answers                                                                                                            |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| [labels](labels.md)                             | What each complexity and area label means, who applies it, and who has the final say on complexity.                |
-| [signers](signers.md)                           | Which signer to use for a given threat model, and what evidence backs each one.                                    |
-| [passkeys](passkeys.md)                         | How to sign for a WebAuthn / passkey smart wallet, end to end.                                                     |
-| [migrating](migrating.md)                       | How to replace hand-rolled auth-entry signing with soroauth and verify it produced identical bytes.                |
-| [multi-party-signing](multi-party-signing.md)   | How three parties sign one delegate tree in sequence, and why the expiration cannot change once anyone has signed. |
-| [verification-limits](verification-limits.md)   | What `soroauth verify` can and cannot establish offline.                                                           |
-| [verification-service](verification-service.md) | How to run the HTTP verification service, and what it will and will not do.                                        |
-| [sdk-support](sdk-support.md)                   | Which `go-stellar-sdk` versions are supported and how the pin moves.                                               |
-| [browser](browser.md)                           | How to use soroauth from a browser page: installing and loading the wasm module, and the passkey flow.             |
-| [fixture-quickstart](fixture-quickstart.md)     | How to run the e2e fixture contracts against a local Stellar quickstart container.                                 |
-| [reproducibility](reproducibility.md)           | How to reproduce the released CLI binaries byte-for-byte from a tagged source checkout.                            |
+| Document                                              | Answers                                                                                                            |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| [labels](labels.md)                                   | What each complexity and area label means, who applies it, and who has the final say on complexity.                |
+| [root package assessment](root-package-assessment.md) | Whether the root package's current seams justify subpackages, with the cross-file dependency evidence.             |
+| [signers](signers.md)                                 | Which signer to use for a given threat model, and what evidence backs each one.                                    |
+| [passkeys](passkeys.md)                               | How to sign for a WebAuthn / passkey smart wallet, end to end.                                                     |
+| [migrating](migrating.md)                             | How to replace hand-rolled auth-entry signing with soroauth and verify it produced identical bytes.                |
+| [multi-party-signing](multi-party-signing.md)         | How three parties sign one delegate tree in sequence, and why the expiration cannot change once anyone has signed. |
+| [verification-limits](verification-limits.md)         | What `soroauth verify` can and cannot establish offline.                                                           |
+| [verification-service](verification-service.md)       | How to run the HTTP verification service, and what it will and will not do.                                        |
+| [sdk-support](sdk-support.md)                         | Which `go-stellar-sdk` versions are supported and how the pin moves.                                               |
+| [browser](browser.md)                                 | How to use soroauth from a browser page: installing and loading the wasm module, and the passkey flow.             |
+| [fixture-quickstart](fixture-quickstart.md)           | How to run the e2e fixture contracts against a local Stellar quickstart container.                                 |
+| [reproducibility](reproducibility.md)                 | How to reproduce the released CLI binaries byte-for-byte from a tagged source checkout.                            |
 
 ## Reference
 

@@ -34,8 +34,8 @@ Dynamic address completion only parses base64 XDR in memory; it never executes
 entry contents or runs a signer. --secret-env is completed by flag name only:
 the shells never see or complete a variable's value.
 
-With --json, prints a JSON object with fields "shell" and "script"; on error, a
-JSON object with field "error" and exits non-zero.
+With --json, prints a JSON object with fields "shell" and "script"; on error,
+prints the versioned machine-readable error schema documented in README.md.
 
 exit codes:
   0  success

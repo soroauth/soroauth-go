@@ -18,6 +18,32 @@ permissions:
   attestations: write
 
 jobs:
+  release-preflight:
+    name: release preflight
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: testdata/gen/package-lock.json
+      - name: verify the committed vectors reproduce
+        run: make vectors-check
+      - name: check release metadata and every workflow on the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: go run ./scripts/releasepreflight
+
   golden-drift:
     name: golden vectors are reproducible
     runs-on: ubuntu-latest
@@ -47,7 +73,7 @@ jobs:
 
   build:
     name: build binaries
-    needs: golden-drift
+    needs: [golden-drift, release-preflight]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -138,7 +164,7 @@ jobs:
 
   image:
     name: build and publish container image
-    needs: golden-drift
+    needs: [golden-drift, release-preflight]
     runs-on: ubuntu-latest
     outputs:
       # The digest of what was actually pushed, e.g. sha256:abc…. The release
@@ -156,7 +182,7 @@ jobs:
       - name: derive image tags
         id: tags
         run: |
-          # ${GITHUB_REF_NAME} is the pushed tag, e.g. v0.1.0. The image gets
+          # ${GITHUB_REF_NAME} is the pushed tag, e.g. vX.Y.Z. The image gets
           # that exact tag plus `latest`, so a pull without a tag always gets
           # the newest release rather than needing the version pinned twice.
           echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
@@ -197,7 +223,7 @@ jobs:
   # that they ran on the branch: a tag can point at any commit.
   wasm-parity:
     name: parity suites before publish
-    needs: golden-drift
+    needs: [golden-drift, release-preflight]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -230,7 +256,7 @@ jobs:
 
   npm:
     name: publish @soroauth/wasm
-    needs: wasm-parity
+    needs: [release-preflight, wasm-parity]
     runs-on: ubuntu-latest
     environment: npm
     steps:

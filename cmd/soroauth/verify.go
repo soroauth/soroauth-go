@@ -150,7 +150,7 @@ func runVerify(args []string, stdout, stderr io.Writer, getenv func(string) stri
 	jsonFlag := flags.Bool("json", false, "output as JSON")
 
 	if err := flags.Parse(args); err != nil {
-		return newErrorf(ExitUsageError, "%w", err)
+		return writeJSONError(stdout, *jsonFlag, newErrorf(ExitUsageError, "%w", err))
 	}
 
 	set := visitedFlags(flags)

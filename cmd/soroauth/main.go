@@ -376,12 +376,11 @@ func (e *jsonErrorHandled) Unwrap() error { return e.error }
 // main() knows not to print to stderr again.
 func writeJSONError(stdout io.Writer, jsonFlag bool, err error) error {
 	if jsonFlag {
-		type jsonError struct {
-			Error string `json:"error"`
-		}
 		enc := json.NewEncoder(stdout)
 		enc.SetEscapeHTML(false)
-		_ = enc.Encode(jsonError{Error: err.Error()})
+		if encodeErr := enc.Encode(newJSONErrorOutput(err)); encodeErr != nil {
+			return newErrorf(ExitGeneralError, "encoding the JSON error: %w", encodeErr)
+		}
 		return &jsonErrorHandled{err}
 	}
 	return err
