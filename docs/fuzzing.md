@@ -8,6 +8,11 @@ for much longer: nightly, on every push to `main`, and on demand. That split is
 deliberate: a pull request stays fast, and the deep search happens where its
 time budget does not block a review.
 
+## What each target asserts
+
+The repository currently ships these fuzz targets, and each one is asserting a
+specific invariant rather than only "never panic":
+
 ## The targets
 
 | Target                         | Package            | Property it asserts                                                                                                                                                           |
