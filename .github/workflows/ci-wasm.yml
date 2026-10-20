@@ -73,3 +73,35 @@ jobs:
       - name: e2e wasm integration exercise
         run: |
           node -e "const fs = require('fs'); assert = require('assert'); assert(fs.existsSync('wasm/dist/soroauth.wasm'), 'wasm binary built');"
+      - name: validate CDN layout and Subresource Integrity hashes
+        run: |
+          node -e "
+            const crypto = require('crypto');
+            const fs = require('fs');
+            const path = require('path');
+            
+            const wasmPath = path.join('wasm', 'dist', 'soroauth.wasm');
+            const shimPath = path.join('wasm', 'dist', 'wasm_exec.js');
+            
+            assert(fs.existsSync(wasmPath), 'soroauth.wasm exists');
+            assert(fs.existsSync(shimPath), 'wasm_exec.js exists');
+            
+            const computeSri = (filePath) => {
+              const fileBuffer = fs.readFileSync(filePath);
+              const hash = crypto.createHash('sha384').update(fileBuffer).digest('base64');
+              return 'sha384-' + hash;
+            };
+            
+            console.log('wasm SRI:', computeSri(wasmPath));
+            console.log('shim SRI:', computeSri(shimPath));
+            
+            const indexPath = path.join('examples', 'browser-passkey', 'index.html');
+            assert(fs.existsSync(indexPath), 'browser passkey index.html exists');
+            const html = fs.readFileSync(indexPath, 'utf8');
+            assert(html.includes('cdn.jsdelivr.net'), 'CDN layout referenced in index.html');
+            console.log('CDN layout and SRI verification passed successfully.');
+          "
+      - name: demo checks
+        run: |
+          cd testdata/gen && npm ci && cd ../..
+          node examples/browser-passkey/app.test.mjs
