@@ -15,7 +15,7 @@ the section that explains it.
       [Picking up an issue](#picking-up-an-issue).
 - [ ] **2. Clone and run the suite before changing anything**, so you know a
       later failure is yours: `git clone … && cd soroauth-go && go test ./...`.
-      Go 1.25.0 or later is the only requirement for the library and CLI — see
+      Go 1.26.0 or later is the only requirement for the library and CLI — see
       [Setup](#setup).
 - [ ] **3. Branch.** Name it after the work, not the issue number alone:
       `docs/161-onboarding-checklist`, `feat/entry-diff`.
@@ -63,7 +63,7 @@ cd soroauth-go
 go test ./...
 ```
 
-That is the whole setup for the library and CLI. Go 1.25.0 or later.
+That is the whole setup for the library and CLI. Go 1.26.0 or later.
 
 The pinned `github.com/stellar/go-stellar-sdk` version and the policy for moving
 it live in [docs/sdk-support.md](docs/sdk-support.md).

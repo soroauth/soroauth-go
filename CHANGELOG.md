@@ -8,6 +8,21 @@ this project adheres to
 
 ## [Unreleased]
 
+### Changed
+
+- **The minimum Go version is now 1.26.0** (was 1.25.0). `go.mod`, every
+  `adapters/*/go.mod`, the README and CONTRIBUTING name the same version, and
+  the `toolchain` line is restored so builds resolve one compiler.
+
+  The move was forced, not chosen: `github.com/prometheus/client_golang` v1.25.0
+  declares `go 1.26.0`, and a module cannot require less than its dependencies.
+  It arrived as a Dependabot bump that also deleted the `toolchain` line, so the
+  floor moved with no document saying so and four workflows went red on `main` —
+  `ci-adapters` (all three adapters), `ci-go`, `ci-image` and `ci-node`.
+
+  Consumers on Go 1.25 must upgrade. `docs/sdk-support.md` now carries the
+  policy for moving the floor.
+
 - Signer work. `signertest.Run` is an importable conformance suite for the
   `Signer` contract (stable address, honoured context without signing, an
   untouched preimage, no partial value on failure, and determinism only when the
