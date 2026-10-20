@@ -10,6 +10,47 @@ import (
 	"github.com/soroauth/soroauth-go/internal/xdrcopy"
 )
 
+// SignerCapability represents a set of capabilities a signer can declare.
+type SignerCapability int
+
+// CapabilityDeterministic indicates a signer produces deterministic signatures.
+const (
+	CapabilityDeterministic SignerCapability = 1 << iota
+	// CapabilityInteractive indicates a signer requires user interaction.
+	CapabilityInteractive
+	// CapabilityRemote indicates a signer operates remotely over a network.
+	CapabilityRemote
+	// CapabilityBatchedPresence indicates a signer supports batched presence.
+	CapabilityBatchedPresence
+)
+
+// SignerCapabilities is an optional interface letting a signer declare
+// whether it is deterministic, interactive, remote, or supports batched presence.
+type SignerCapabilities interface {
+	IsDeterministic() bool
+	IsInteractive() bool
+	IsRemote() bool
+	SupportsBatchedPresence() bool
+}
+
+// GetSignerCapabilities inspects a Signer, returning its declared capabilities
+// or conservative defaults (interactive = true, deterministic = false,
+// remote = false, batched presence = false) if it does not implement
+// SignerCapabilities.
+func GetSignerCapabilities(s Signer) SignerCapabilities {
+	if caps, ok := s.(SignerCapabilities); ok {
+		return caps
+	}
+	return defaultSignerCapabilities{}
+}
+
+type defaultSignerCapabilities struct{}
+
+func (defaultSignerCapabilities) IsDeterministic() bool         { return false }
+func (defaultSignerCapabilities) IsInteractive() bool           { return true }
+func (defaultSignerCapabilities) IsRemote() bool                { return false }
+func (defaultSignerCapabilities) SupportsBatchedPresence() bool { return false }
+
 // Delegate describes one delegated signer to attach to an entry.
 //
 // A delegate is an address the account has authorized to sign on its behalf.

@@ -474,6 +474,26 @@ func TestWithDelegatesDoesNotMutateItsInput(t *testing.T) {
 	}
 }
 
+func TestShippedSignersDeclareCapabilities(t *testing.T) {
+	kp := testKeypair(t, "soroauth-signer-cap")
+	signers := []Signer{
+		NewEd25519Signer(kp),
+		func() Signer {
+			s, _ := NewAccountMultiSigner(kp.Address(), kp)
+			return s
+		}(),
+		NewPasskeySignerFromAssertion(kp.Address(), nil, nil),
+		SignerFunc(kp.Address(), nil),
+	}
+
+	for _, s := range signers {
+		caps := GetSignerCapabilities(s)
+		if caps == nil {
+			t.Errorf("signer %T returned nil capabilities", s)
+		}
+	}
+}
+
 func TestValidateDelegateOrder(t *testing.T) {
 	entry := entryForArm(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 42)
 	d1 := testKeypair(t, "soroauth-delegate-1").Address()
