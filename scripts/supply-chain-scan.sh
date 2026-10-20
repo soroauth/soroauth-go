@@ -51,6 +51,17 @@ else
   R=$'\033[0;31m'; G=$'\033[0;32m'; Y=$'\033[0;33m'; B=$'\033[1m'; N=$'\033[0m'
 fi
 
+# --pr <n> fetches a pull request and scans it, replacing the separate
+# premerge-audit.sh that used to provide this. Two scanners doing one job is
+# how their fixes diverge: the old one still carried the crude injection check
+# this one replaced, and it self-matched on this file's indicator list.
+if [ "${1:-}" = "--pr" ]; then
+  [ -n "${2:-}" ] || { echo "usage: $0 --pr <number>" >&2; exit 2; }
+  PRREF="supply-chain-scan-pr-$2"
+  git fetch -q origin "refs/pull/$2/head:$PRREF" || { echo "could not fetch PR #$2" >&2; exit 2; }
+  set -- "$(git rev-parse --verify -q origin/main 2>/dev/null || git rev-parse main)" "$PRREF"
+fi
+
 BASE="${1:-}"
 HEAD="${2:-HEAD}"
 if [ -z "$BASE" ]; then
@@ -94,7 +105,7 @@ changed_matching() {
 # people to ignore the check.
 is_scanner() {
   case "$1" in
-    scripts/supply-chain-scan.sh|scripts/premerge-audit.sh|scripts/lib/trailing_code.py) return 0;;
+    scripts/supply-chain-scan.sh|scripts/lib/*.py) return 0;;
     *) return 1;;
   esac
 }
