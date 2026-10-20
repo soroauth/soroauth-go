@@ -39,6 +39,8 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup.sh
           sh /tmp/rustup.sh -y --profile minimal
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh rust bindings/rust/Cargo.lock
       - name: golden replay with byte equality
         working-directory: bindings/rust
         run: cargo test --locked

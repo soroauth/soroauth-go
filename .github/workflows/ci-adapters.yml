@@ -42,6 +42,8 @@ jobs:
           go-version-file: adapters/walletsdk/go.mod
           check-latest: true
           cache-dependency-path: adapters/walletsdk/go.sum
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go adapters/walletsdk
       - name: gofmt
         working-directory: adapters/walletsdk
         run: |
@@ -75,6 +77,8 @@ jobs:
           go-version-file: adapters/gcpkms/go.mod
           check-latest: true
           cache-dependency-path: adapters/gcpkms/go.sum
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go adapters/gcpkms
       - name: gofmt
         working-directory: adapters/gcpkms
         run: |
@@ -106,6 +110,8 @@ jobs:
           go-version-file: adapters/awskms/go.mod
           check-latest: true
           cache-dependency-path: adapters/awskms/go.sum
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go adapters/awskms
       - name: gofmt
         working-directory: adapters/awskms
         run: |

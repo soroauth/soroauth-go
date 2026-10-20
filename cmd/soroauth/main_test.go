@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -93,6 +94,72 @@ func TestRunHelp(t *testing.T) {
 	if !strings.Contains(stdout, "usage:") {
 		t.Errorf("help did not print the usage text: %q", stdout)
 	}
+}
+
+func TestSubcommandErrorsNeverPrintEnvironmentSecret(t *testing.T) {
+	if len(cliSubcommands) == 0 {
+		t.Fatal("no CLI subcommands registered; secret-leak coverage would pass vacuously")
+	}
+	secret := vectorKeypair(t, "soroauth-issue-447-distinctive-secret").Seed()
+	env := map[string]string{"SOROAUTH_TEST_SECRET": secret}
+	names := make([]string, 0, len(cliSubcommands))
+	for name := range cliSubcommands {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	assertSecretAbsent := func(t *testing.T, stdout, stderr string, err error) {
+		t.Helper()
+		for label, output := range map[string]string{
+			"stdout": stdout,
+			"stderr": stderr,
+			"error":  errorText(err),
+		} {
+			if strings.Contains(output, secret) {
+				t.Errorf("%s leaked the test seed", label)
+			}
+		}
+	}
+
+	t.Run("usage errors across dispatcher", func(t *testing.T) {
+		for _, name := range names {
+			t.Run(name, func(t *testing.T) {
+				stdout, stderr, err := runCLIEnv(t, env, name, "--soroauth-test-unknown-flag")
+				if err == nil {
+					t.Fatal("invalid flag unexpectedly succeeded")
+				}
+				assertSecretAbsent(t, stdout, stderr, err)
+			})
+		}
+	})
+
+	t.Run("sign decode error", func(t *testing.T) {
+		stdout, stderr, err := runCLIEnv(t, map[string]string{"SEED": secret},
+			"sign", "--entry", "not-base64", "--valid-until", "1234567",
+			"--network", "testnet", "--secret-env", "SEED")
+		if err == nil {
+			t.Fatal("malformed entry unexpectedly succeeded")
+		}
+		assertSecretAbsent(t, stdout, stderr, err)
+	})
+
+	t.Run("signing refusal", func(t *testing.T) {
+		v := loadVector(t, "v2_single_testnet")
+		stdout, stderr, err := runCLIEnv(t, map[string]string{"SEED": secret},
+			"sign", "--entry", v.UnsignedEntryXDR, "--valid-until", "1234567",
+			"--network", "testnet", "--secret-env", "SEED")
+		if err == nil {
+			t.Fatal("signing with a non-matching signer unexpectedly succeeded")
+		}
+		assertSecretAbsent(t, stdout, stderr, err)
+	})
+}
+
+func errorText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 // TestDecodeEntryRejectsOversizedInput proves the CLI uses the library's

@@ -137,39 +137,14 @@ func runWithStdin(args []string, stdout, stderr io.Writer, getenv func(string) s
 		return newErrorf(ExitUsageError, "no command given")
 	}
 
-	switch args[0] {
-	case "payload":
-		return runPayloadWithStdin(args[1:], stdout, stderr, getenv, stdin)
-	case "sign":
-		return runSignWithStdin(args[1:], stdout, stderr, getenv, stdin)
-	case "simulate":
-		return runSimulate(args[1:], stdout, stderr, getenv, stdin)
-	case "submit":
-		return runSubmit(args[1:], stdout, stderr, getenv, stdin)
-	case "delegates":
-		return runDelegatesWithStdin(args[1:], stdout, stderr, getenv, stdin)
-	case "inspect":
-		return runInspect(args[1:], stdout, stderr, getenv, stdin)
-	case "diff":
-		return runDiff(args[1:], stdout, stderr, getenv, stdin)
-	case "verify":
-		return runVerify(args[1:], stdout, stderr, getenv, stdin)
-	case "tree":
-		return runTree(args[1:], stdout, stderr, getenv)
-	case "tui":
-		return runTUI(args[1:], stdout, stderr, getenv)
-	case "doctor":
-		return runDoctor(args[1:], stdout, stderr, getenv)
-	case "cross-compile":
-		return runCrossCompile(args[1:], stdout, stderr)
-	case "completions":
-		return runCompletions(args[1:], stdout, stderr)
-	case "__complete-addresses":
+	if args[0] == "__complete-addresses" {
 		return runCompleteAddresses(args[1:], stdout)
-	case "man":
-		return runMan(args[1:], stdout, stderr)
-	case "wasm-budget":
-		return runWASMBudget(args[1:], stdout, stderr)
+	}
+	if command, ok := cliSubcommands[args[0]]; ok {
+		return command(args[1:], stdout, stderr, getenv, stdin)
+	}
+
+	switch args[0] {
 	case "--version", "-version":
 		return runVersion(stdout)
 	case "help", "-h", "--help":
@@ -179,6 +154,43 @@ func runWithStdin(args []string, stdout, stderr io.Writer, getenv func(string) s
 		fmt.Fprint(stderr, usage)
 		return newErrorf(ExitUsageError, "unknown command %q", args[0])
 	}
+}
+
+type cliSubcommand func([]string, io.Writer, io.Writer, func(string) string, io.Reader) error
+
+// cliSubcommands is the dispatcher registry for user-facing commands. Keeping
+// dispatch and test enumeration on the same registry ensures every new command
+// inherits the CLI's secret-leak regression test.
+var cliSubcommands = map[string]cliSubcommand{
+	"payload":   runPayloadWithStdin,
+	"sign":      runSignWithStdin,
+	"simulate":  runSimulate,
+	"submit":    runSubmit,
+	"delegates": runDelegatesWithStdin,
+	"inspect":   runInspect,
+	"diff":      runDiff,
+	"verify":    runVerify,
+	"tree": func(args []string, stdout, stderr io.Writer, getenv func(string) string, _ io.Reader) error {
+		return runTree(args, stdout, stderr, getenv)
+	},
+	"tui": func(args []string, stdout, stderr io.Writer, getenv func(string) string, _ io.Reader) error {
+		return runTUI(args, stdout, stderr, getenv)
+	},
+	"doctor": func(args []string, stdout, stderr io.Writer, getenv func(string) string, _ io.Reader) error {
+		return runDoctor(args, stdout, stderr, getenv)
+	},
+	"cross-compile": func(args []string, stdout, stderr io.Writer, _ func(string) string, _ io.Reader) error {
+		return runCrossCompile(args, stdout, stderr)
+	},
+	"completions": func(args []string, stdout, stderr io.Writer, _ func(string) string, _ io.Reader) error {
+		return runCompletions(args, stdout, stderr)
+	},
+	"man": func(args []string, stdout, stderr io.Writer, _ func(string) string, _ io.Reader) error {
+		return runMan(args, stdout, stderr)
+	},
+	"wasm-budget": func(args []string, stdout, stderr io.Writer, _ func(string) string, _ io.Reader) error {
+		return runWASMBudget(args, stdout, stderr)
+	},
 }
 
 // resolveNetwork turns the --network flag into a passphrase. The three named

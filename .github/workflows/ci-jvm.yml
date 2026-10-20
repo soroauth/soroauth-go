@@ -43,6 +43,8 @@ jobs:
         with:
           distribution: temurin
           java-version: "22"
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go . java
       # The native library is build output, never committed: each runner
       # builds its own platform's library, so the FFM binding is exercised
       # against a fresh binary on Linux and on macOS alike.

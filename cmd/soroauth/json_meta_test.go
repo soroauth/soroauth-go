@@ -203,11 +203,50 @@ func dispatcherCommandNames(t *testing.T) map[string]bool {
 		t.Fatalf("parsing main.go: %v", err)
 	}
 	names := make(map[string]bool)
+	// User-facing commands are dispatched from the cliSubcommands registry
+	// rather than a switch, so the audit reads its keys. Enumerating the same
+	// registry dispatch reads is what keeps a new command from silently
+	// skipping this test.
+	for _, decl := range file.Decls {
+		value, ok := decl.(*ast.GenDecl)
+		if !ok || value.Tok != token.VAR {
+			continue
+		}
+		for _, specification := range value.Specs {
+			single, ok := specification.(*ast.ValueSpec)
+			if !ok || len(single.Names) != 1 || single.Names[0].Name != "cliSubcommands" {
+				continue
+			}
+			for _, expression := range single.Values {
+				literal, ok := expression.(*ast.CompositeLit)
+				if !ok {
+					continue
+				}
+				for _, element := range literal.Elts {
+					key, ok := element.(*ast.KeyValueExpr)
+					if !ok {
+						continue
+					}
+					name, ok := key.Key.(*ast.BasicLit)
+					if !ok || name.Kind != token.STRING {
+						continue
+					}
+					unquoted, err := strconv.Unquote(name.Value)
+					if err == nil {
+						names[unquoted] = true
+					}
+				}
+			}
+		}
+	}
 	for _, decl := range file.Decls {
 		function, ok := decl.(*ast.FuncDecl)
 		if !ok || function.Name.Name != "runWithStdin" {
 			continue
 		}
+		// The switch left inside runWithStdin only carries the dispatcher-only
+		// cases (--version, help); those are still audited so a flag that
+		// behaves like a command cannot drift out of the test's sight.
 		ast.Inspect(function.Body, func(node ast.Node) bool {
 			switchNode, ok := node.(*ast.SwitchStmt)
 			if !ok {

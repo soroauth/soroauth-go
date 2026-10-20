@@ -48,6 +48,8 @@ jobs:
           # run on the newest patch of the toolchain go.mod names.
           go-version-file: go.mod
           check-latest: true
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
 
       # Moving the requirement without committing it. The job's checkout is
       # throwaway, so the go.mod it edits is never pushed anywhere, and

@@ -27,18 +27,33 @@ updates:
     directory: "/adapters/awskms"
     schedule:
       interval: "weekly"
+    # Group each adapter's dependencies into one update PR per module. These
+    # modules use large cloud SDKs, and splitting one SDK release into a wave
+    # of near-identical PRs has previously let auto-merging break main.
+    groups:
+      adapter-dependencies:
+        patterns:
+          - "*"
     commit-message:
       prefix: "chore"
   - package-ecosystem: "gomod"
     directory: "/adapters/gcpkms"
     schedule:
       interval: "weekly"
+    groups:
+      adapter-dependencies:
+        patterns:
+          - "*"
     commit-message:
       prefix: "chore"
   - package-ecosystem: "gomod"
     directory: "/adapters/walletsdk"
     schedule:
       interval: "weekly"
+    groups:
+      adapter-dependencies:
+        patterns:
+          - "*"
     commit-message:
       prefix: "chore"
 

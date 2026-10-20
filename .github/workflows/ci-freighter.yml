@@ -34,6 +34,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22"
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh node examples/wallet-freighter/package.json
       # No browser and no wallet extension exist here, so this runs
       # everything about the example that does not need them: the
       # error classification, the wrong-network detection, and the

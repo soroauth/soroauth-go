@@ -43,6 +43,8 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: package-lock.json
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh node package-lock.json
 
       # Install cspell from npm. We use a package.json only for the lockfile;
       # the actual tool is installed globally via npx in the step below.

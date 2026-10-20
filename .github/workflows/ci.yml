@@ -27,6 +27,8 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: package-lock.json
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go . node package-lock.json
       - name: gofmt
         run: |
           unformatted="$(gofmt -l .)"
@@ -104,6 +106,9 @@ jobs:
           cache: npm
           cache-dependency-path: testdata/gen/package-lock.json
 
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh node testdata/gen/package-lock.json
+
       # npm ci installs exactly the committed lockfile and fails if
       # package.json and the lockfile disagree, so the reference build cannot
       # drift without this step noticing.
@@ -169,6 +174,8 @@ jobs:
         run: |
           rustc --version
           cargo --version
+      - name: record tool versions
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/record-tool-versions.sh" rust e2e/contracts/Cargo.lock
       - name: cache cargo
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:

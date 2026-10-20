@@ -160,6 +160,8 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
       - name: build a throwaway binary
         run: |
           set -euo pipefail

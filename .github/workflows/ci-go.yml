@@ -40,6 +40,8 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
       # Per-package floors from testdata/coverage/floors.json, not one global
       # floor. A single floor let a well-covered package subsidise a thin one:
       # the signing path was averaged together with the CLI and the examples,
@@ -86,6 +88,8 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
       # One job building every release target, rather than a matrix. A matrix
       # reports one check per target, which turned a contributor's pull request
       # into ten checks for six jobs and buried the two that actually gate the
@@ -127,6 +131,8 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
       - name: fuzz ValidateDelegateOrder
         run: go test -run='^$' -fuzz=FuzzValidateDelegateOrder -fuzztime=30s .
       - name: fuzz Inspect
@@ -156,6 +162,8 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
       # ns/op is deliberately not gated: wall-clock on a shared runner is too
       # noisy to be evidence. allocs/op and B/op are deterministic and are
       # compared against testdata/bench/budgets.json.

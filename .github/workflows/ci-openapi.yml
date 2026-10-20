@@ -42,6 +42,8 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go server/openapi
       # The generated client is committed, so regenerating it must be a no-op:
       # a hand edit to client/ or a spec change without a regeneration fails
       # here rather than drifting silently from the document.

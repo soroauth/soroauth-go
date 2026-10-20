@@ -70,6 +70,8 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: testdata/gen/package-lock.json
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh node testdata/gen/package-lock.json
       # npm ci installs exactly the committed lockfile and fails if
       # package.json and the lockfile disagree, so the reference build cannot
       # drift without this step noticing.
@@ -102,6 +104,7 @@ jobs:
         run: |
           python3 -m venv .venv-parity
           . .venv-parity/bin/activate
+          bash .github/scripts/record-tool-versions.sh python testdata/parity-python/requirements.txt
           pip install -r testdata/parity-python/requirements.txt
           python3 testdata/parity-python/parity.py
           python3 testdata/parity-python/test_parity.py
@@ -119,6 +122,7 @@ jobs:
         # --locked makes the committed Cargo.lock authoritative: the job fails
         # rather than silently re-resolving to a different stellar-xdr.
         run: |
+          bash "$GITHUB_WORKSPACE/.github/scripts/record-tool-versions.sh" rust testdata/parity-rust/Cargo.lock
           cargo test --locked
           cargo run --locked --bin parity
 
@@ -141,6 +145,8 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: testdata/differential/package-lock.json
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go . node testdata/differential/package-lock.json
 
       # The corpus is generated and committed, so regenerating it must change
       # nothing. A diff means either a case was hand-edited or the recording
@@ -177,6 +183,7 @@ jobs:
           python3 -m venv .venv-parity
           . .venv-parity/bin/activate
           pip install -r testdata/parity-python/requirements.txt
+          bash .github/scripts/record-tool-versions.sh python testdata/parity-python/requirements.txt
 
       - name: python recomputes every case
         run: |

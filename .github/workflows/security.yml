@@ -46,8 +46,10 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
 
-      - name: initialize codeql
+      - name: initialize CodeQL
         uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
         with:
           languages: go

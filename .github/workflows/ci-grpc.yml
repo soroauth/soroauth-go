@@ -38,6 +38,8 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
       # buf and the generation plugins are pinned, so the schema tooling
       # is a named build like everything else it checks.
       - name: install buf

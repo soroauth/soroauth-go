@@ -64,7 +64,13 @@ type vector struct {
 func loadVectors(t testing.TB) []vector {
 	t.Helper()
 
-	paths, err := filepath.Glob(filepath.Join("testdata", "vectors", "*.json"))
+	return loadVectorsFrom(t, filepath.Join("testdata", "vectors"))
+}
+
+func loadVectorsFrom(t testing.TB, directory string) []vector {
+	t.Helper()
+
+	paths, err := filepath.Glob(filepath.Join(directory, "*.json"))
 	if err != nil {
 		t.Fatalf("globbing the vector directory: %v", err)
 	}
@@ -328,6 +334,110 @@ func TestGoldenVectorsCoverTheRequiredCases(t *testing.T) {
 			t.Errorf("required golden vector %q is missing", name)
 		}
 	}
+}
+
+func TestGoldenVectorsCoverEveryCredentialArm(t *testing.T) {
+	counts := map[xdr.SorobanCredentialsType]int{
+		xdr.SorobanCredentialsTypeSorobanCredentialsSourceAccount:        0,
+		xdr.SorobanCredentialsTypeSorobanCredentialsAddress:              0,
+		xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2:            0,
+		xdr.SorobanCredentialsTypeSorobanCredentialsAddressWithDelegates: 0,
+	}
+	names := map[xdr.SorobanCredentialsType]string{
+		xdr.SorobanCredentialsTypeSorobanCredentialsSourceAccount:        "source_account",
+		xdr.SorobanCredentialsTypeSorobanCredentialsAddress:              "address",
+		xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2:            "address_v2",
+		xdr.SorobanCredentialsTypeSorobanCredentialsAddressWithDelegates: "address_with_delegates",
+	}
+
+	for _, v := range loadVectors(t) {
+		var entry xdr.SorobanAuthorizationEntry
+		if err := xdr.SafeUnmarshalBase64(v.UnsignedEntryXDR, &entry); err != nil {
+			t.Fatalf("decoding vector %q to classify its credential arm: %v", v.Name, err)
+		}
+		if _, ok := counts[entry.Credentials.Type]; !ok {
+			t.Fatalf("vector %q has unsupported credential arm %s", v.Name, entry.Credentials.Type)
+		}
+		counts[entry.Credentials.Type]++
+	}
+
+	for _, arm := range []xdr.SorobanCredentialsType{
+		xdr.SorobanCredentialsTypeSorobanCredentialsSourceAccount,
+		xdr.SorobanCredentialsTypeSorobanCredentialsAddress,
+		xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2,
+		xdr.SorobanCredentialsTypeSorobanCredentialsAddressWithDelegates,
+	} {
+		t.Logf("credential arm %s: %d vectors", names[arm], counts[arm])
+	}
+	for _, missing := range missingCredentialArms(counts) {
+		t.Errorf("no golden vectors cover credential arm %s", missing)
+	}
+}
+
+func missingCredentialArms(counts map[xdr.SorobanCredentialsType]int) []string {
+	arms := []struct {
+		arm  xdr.SorobanCredentialsType
+		name string
+	}{
+		{xdr.SorobanCredentialsTypeSorobanCredentialsSourceAccount, "source_account"},
+		{xdr.SorobanCredentialsTypeSorobanCredentialsAddress, "address"},
+		{xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, "address_v2"},
+		{xdr.SorobanCredentialsTypeSorobanCredentialsAddressWithDelegates, "address_with_delegates"},
+	}
+	var missing []string
+	for _, arm := range arms {
+		if counts[arm.arm] == 0 {
+			missing = append(missing, arm.name)
+		}
+	}
+	return missing
+}
+
+func TestGoldenVectorCoverageDetectsRemovedCredentialArm(t *testing.T) {
+	sourcePaths, err := filepath.Glob(filepath.Join("testdata", "vectors", "*.json"))
+	if err != nil {
+		t.Fatalf("globbing source vectors: %v", err)
+	}
+	directory := t.TempDir()
+	removed := 0
+	for _, path := range sourcePaths {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("reading %s: %v", path, err)
+		}
+		var v vector
+		if err := json.Unmarshal(raw, &v); err != nil {
+			t.Fatalf("decoding %s: %v", path, err)
+		}
+		var entry xdr.SorobanAuthorizationEntry
+		if err := xdr.SafeUnmarshalBase64(v.UnsignedEntryXDR, &entry); err != nil {
+			t.Fatalf("decoding vector %q: %v", v.Name, err)
+		}
+		if entry.Credentials.Type == xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2 {
+			removed++
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(directory, filepath.Base(path)), raw, 0o600); err != nil {
+			t.Fatalf("copying %s to the missing-arm fixture: %v", path, err)
+		}
+	}
+	if removed == 0 {
+		t.Fatal("no address_v2 vectors were available to remove in the regression fixture")
+	}
+
+	counts := make(map[xdr.SorobanCredentialsType]int)
+	for _, v := range loadVectorsFrom(t, directory) {
+		var entry xdr.SorobanAuthorizationEntry
+		if err := xdr.SafeUnmarshalBase64(v.UnsignedEntryXDR, &entry); err != nil {
+			t.Fatalf("decoding vector %q: %v", v.Name, err)
+		}
+		counts[entry.Credentials.Type]++
+	}
+	missing := missingCredentialArms(counts)
+	if len(missing) != 1 || missing[0] != "address_v2" {
+		t.Fatalf("missingCredentialArms() = %v, want [address_v2]", missing)
+	}
+	t.Logf("removing %d address_v2 vectors exposes missing coverage for %s", removed, missing[0])
 }
 
 // TestGoldenPayloadsAreDistinct checks the separations §5.9 calls for, using

@@ -75,6 +75,8 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
 
       # The fuzzer keeps its interesting-inputs cache under GOCACHE/fuzz.
       # Restoring it means each run mutates from where the last one left
@@ -181,6 +183,8 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
 
       # -timeout must stay above -soak-duration: Go's default test timeout is
       # 10m, and without a larger one a ten-minute soak would be killed just

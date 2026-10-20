@@ -41,6 +41,8 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: wasm/ts/package-lock.json
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go . node wasm/ts/package-lock.json
       # The core builds only for js/wasm, so `go build ./...` on the host skips
       # it. This job is the only place it is compiled, which is why the build is
       # a step of its own rather than folded into `go test`.

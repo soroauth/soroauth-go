@@ -37,6 +37,8 @@ jobs:
         run: |
           curl -sSfL https://raw.githubusercontent.com/stellar/stellar-cli/main/install.sh | sh
           stellar --version
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go . node testdata/gen/package-lock.json rust e2e/contracts/Cargo.lock stellar
 
       - name: build the modular-account fixture
         working-directory: e2e/contracts
@@ -87,6 +89,8 @@ jobs:
         run: |
           curl -sSfL https://raw.githubusercontent.com/stellar/stellar-cli/main/install.sh | sh
           stellar --version
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go . rust e2e/contracts/Cargo.lock stellar
 
       - name: run e2e scenarios against a local quickstart
         run: make e2e-local
