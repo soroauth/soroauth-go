@@ -5,9 +5,10 @@ and for a signature `ScVal`; the real difference between implementations is
 where the private key lives, what trust boundary the signer crosses, and what
 evidence the repository has for that path.
 
-This repository ships several signer modes. They are all built on the same
-signing API, but they do not carry the same threat model or the same level of
-evidence.
+This repository ships several signer modes. It currently includes the root
+signing API plus three adapter modules (`adapters/awskms`, `adapters/gcpkms`,
+and `adapters/walletsdk`), and they are all built on the same signing API, but
+they do not carry the same threat model or the same level of evidence.
 
 ## Short answer
 
