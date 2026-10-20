@@ -171,6 +171,11 @@ func NewEd25519Signer(kp *keypair.Full) Signer {
 	return &ed25519Signer{kp: kp}
 }
 
+func (s *ed25519Signer) IsDeterministic() bool         { return true }
+func (s *ed25519Signer) IsInteractive() bool           { return false }
+func (s *ed25519Signer) IsRemote() bool                { return false }
+func (s *ed25519Signer) SupportsBatchedPresence() bool { return false }
+
 func (s *ed25519Signer) Address() string {
 	if s.kp == nil {
 		return ""
@@ -283,6 +288,11 @@ func newAccountMultiSigner(account string, kps ...ed25519Keypair) (Signer, error
 
 	return &accountMultiSigner{account: account, keys: keys}, nil
 }
+
+func (s *accountMultiSigner) IsDeterministic() bool         { return true }
+func (s *accountMultiSigner) IsInteractive() bool           { return false }
+func (s *accountMultiSigner) IsRemote() bool                { return false }
+func (s *accountMultiSigner) SupportsBatchedPresence() bool { return false }
 
 func (s *accountMultiSigner) Address() string { return s.account }
 
@@ -469,6 +479,11 @@ func NewPasskeySignerFromAssertion(
 	}
 }
 
+func (s *passkeyAssertionSigner) IsDeterministic() bool         { return false }
+func (s *passkeyAssertionSigner) IsInteractive() bool           { return true }
+func (s *passkeyAssertionSigner) IsRemote() bool                { return false }
+func (s *passkeyAssertionSigner) SupportsBatchedPresence() bool { return false }
+
 func (s *passkeyAssertionSigner) Address() string { return s.address }
 
 func (s *passkeyAssertionSigner) Sign(ctx context.Context, _ xdr.HashIdPreimage, payload [32]byte) (xdr.ScVal, error) {
@@ -584,6 +599,31 @@ type retriedSigner struct {
 	cfg   RetryConfig
 }
 
+func (s *retriedSigner) IsDeterministic() bool {
+	if c, ok := s.inner.(SignerCapabilities); ok {
+		return c.IsDeterministic()
+	}
+	return false
+}
+func (s *retriedSigner) IsInteractive() bool {
+	if c, ok := s.inner.(SignerCapabilities); ok {
+		return c.IsInteractive()
+	}
+	return true
+}
+func (s *retriedSigner) IsRemote() bool {
+	if c, ok := s.inner.(SignerCapabilities); ok {
+		return c.IsRemote()
+	}
+	return false
+}
+func (s *retriedSigner) SupportsBatchedPresence() bool {
+	if c, ok := s.inner.(SignerCapabilities); ok {
+		return c.SupportsBatchedPresence()
+	}
+	return false
+}
+
 func (s *retriedSigner) Address() string {
 	return s.inner.Address()
 }
@@ -685,6 +725,11 @@ func (s *retriedSigner) Sign(ctx context.Context, preimage xdr.HashIdPreimage, p
 func SignerFunc(address string, fn func(ctx context.Context, preimage xdr.HashIdPreimage, payload [32]byte) (xdr.ScVal, error)) Signer {
 	return &signerFunc{address: address, fn: fn}
 }
+
+func (s *signerFunc) IsDeterministic() bool         { return false }
+func (s *signerFunc) IsInteractive() bool           { return true }
+func (s *signerFunc) IsRemote() bool                { return false }
+func (s *signerFunc) SupportsBatchedPresence() bool { return false }
 
 func (s *signerFunc) Address() string { return s.address }
 
