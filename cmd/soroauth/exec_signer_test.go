@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,11 +22,22 @@ import (
 
 // writeHelperScript writes an executable shell script to a temporary directory
 // and returns its path.
+//
+// The shebang names the shell by its resolved absolute path rather than going
+// through /usr/bin/env. A Nix build sandbox has no /usr/bin at all, so an
+// `#!/usr/bin/env sh` shebang is unrunnable there and every exec-signer test
+// fails with "exited non-zero: starting ... no such file or directory" — which
+// is what kept ci-packaging red. LookPath finds the shell wherever it actually
+// is, inside a sandbox or out of one.
 func writeHelperScript(t *testing.T, body string) string {
 	t.Helper()
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skipf("no sh on PATH, so an exec-signer helper cannot run here: %v", err)
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "signer-helper.sh")
-	script := "#!/usr/bin/env sh\nset -eu\n" + body + "\n"
+	script := "#!" + shell + "\nset -eu\n" + body + "\n"
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatalf("writing helper script: %v", err)
 	}
