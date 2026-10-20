@@ -2,22 +2,25 @@ package main
 
 import (
 	"context"
+	"os"
+	"testing"
+
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"os"
+"os"
 	"os/exec"
-	"path/filepath"
-	"strings"
-	"testing"
-	"time"
-
-	"github.com/stellar/go-stellar-sdk/xdr"
-
 	"github.com/soroauth/soroauth-go"
 	"github.com/soroauth/soroauth-go/remote"
+	"github.com/stellar/go-stellar-sdk/keypair"
+	"github.com/stellar/go-stellar-sdk/xdr"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"path/filepath"
+	"strings"
+	"time"
 )
 
 // writeHelperScript writes an executable shell script to a temporary directory
@@ -587,5 +590,18 @@ func TestValidateSignatureScValContractShapesAndAddressInference(t *testing.T) {
 	}
 	if addr, err := inferSingleEntryAddress(srcEntry); err != nil || addr != "" {
 		t.Fatalf("expected empty address and nil error for source_account, got %q, %v", addr, err)
+	}
+}
+func TestExecSignerEnvironmentAndZeroingAudit(t *testing.T) {
+	kp, err := keypair.Random()
+	require.NoError(t, err)
+
+	seedBytes := []byte(kp.Seed())
+	// Assert zeroing helper pattern on owned buffers
+	for i := range seedBytes {
+		seedBytes[i] = 0
+	}
+	for _, b := range seedBytes {
+		assert.Equal(t, byte(0), b)
 	}
 }

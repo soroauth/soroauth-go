@@ -89,4 +89,10 @@ These live next to the code they describe.
 | Document                                                     | Answers                                                                  |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------ |
 | [pull request template](../.github/pull_request_template.md) | What every pull request must state, including the wire-format checklist. |
+| [Memory Audit](memory-audit.md)                              | Audit report identifying where key material and secrets are held in memory.|
 | [CLAUDE.md](../CLAUDE.md)                                    | The original build specification for this project, kept for reference.   |
+
+- [`signers.md`](signers.md): Signer interfaces, threat models, evidence, and caveats.
+- [`memory-audit.md`](memory-audit.md): Audit of key material handling, zeroing guarantees, and Go runtime limits.
+- [`faq.md`](faq.md): Frequently asked questions.
+- [`security-analysis.md`](security-analysis.md): Security considerations and analysis.
