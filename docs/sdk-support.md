@@ -62,6 +62,32 @@ An SDK bump is a commit like any other, and it carries the same evidence:
   moves soroauth's own version accordingly, since this project adheres to
   Semantic Versioning (see `CHANGELOG.md`).
 
+## The Go floor
+
+`go.mod` requires **Go 1.26.0**. There is deliberately no `toolchain` line: Go
+removes one that merely repeats the `go` directive, so it can only say something
+once a patch release above the floor exists. The previous pairing was
+`go 1.25.0` with `toolchain go1.25.4` — a patch above the floor — and the
+equivalent should be added again when 1.26.x ships.
+
+The floor moves only when a dependency forces it, never for taste. It last moved
+on 2026-10-20, when `github.com/prometheus/client_golang` v1.25.0 — pulled in by
+the metrics hooks — declared `go 1.26.0` in its own `go.mod`. A module cannot
+require less than its dependencies, so the floor moved with it:
+
+    $ grep '^go ' $(go env GOMODCACHE)/github.com/prometheus/client_golang@v1.25.0/go.mod
+    go 1.26.0
+
+That bump arrived as a Dependabot pull request, which is how the floor moved
+without any document saying so, and `ci-adapters`, `ci-go`, `ci-image` and
+`ci-node` went red on main. All three adapter modules, the README and
+CONTRIBUTING now name the same version.
+
+When the floor moves again, move it everywhere in one commit: `go.mod`, every
+`adapters/*/go.mod`, the README's install line, CONTRIBUTING's setup section,
+this page, and `CHANGELOG.md`. A floor that is only true in `go.mod` is a floor
+nobody can act on.
+
 ## For consumers
 
 `go get` resolves the SDK to at least v0.7.3 through Go's version selection,

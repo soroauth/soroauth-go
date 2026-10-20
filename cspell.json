@@ -36,6 +36,7 @@
     "GOBIN",
     "GOCACHE",
     "GOFLAGS",
+    "GOMODCACHE",
     "GOTOOLCHAIN",
     "GTOP",
     "Generalise",
