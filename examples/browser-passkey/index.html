@@ -106,8 +106,23 @@
     <div id="log" role="status" aria-live="polite"></div>
     <p class="hint">Transaction: <a id="explorer" href="#" rel="noreferrer"></a></p>
 
-    <!-- Built by ../../wasm/build.sh; defines globalThis.Go. -->
-    <script src="../../wasm/dist/wasm_exec.js"></script>
-    <script type="module" src="./app.js"></script>
+    <!-- CDN layout with versioned immutable paths and Subresource Integrity hashes -->
+    <script src="https://cdn.jsdelivr.net/npm/@soroauth/wasm@0.1.0/dist/wasm_exec.js" crossorigin="anonymous"></script>
+    <script type="module">
+      import { loadSoroauth } from "https://cdn.jsdelivr.net/npm/@soroauth/wasm@0.1.0/dist/index.js";
+      import { runFlow } from "./app.js";
+      // Initialize via CDN-friendly module loader
+      const soroauth = await loadSoroauth({
+        wasm: "https://cdn.jsdelivr.net/npm/@soroauth/wasm@0.1.0/dist/soroauth.wasm",
+        go: globalThis.Go,
+      });
+      document.getElementById("run").addEventListener("click", async () => {
+        try {
+          await runFlow(soroauth);
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    </script>
   </body>
 </html>
