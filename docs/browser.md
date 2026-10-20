@@ -55,6 +55,33 @@ the exact tags. `loadSoroauth` also accepts raw bytes instead of a URL, plus
 `fetchImpl`, `timeoutMs`, and `globalObject` overrides — all documented there,
 not repeated here.
 
+## CDN Layout & Subresource Integrity
+
+For bundler-free deployments, artifacts are published to a CDN-friendly layout
+with versioned, immutable paths. Pinning an explicit version instead of using a
+mutable `latest` alias avoids supply-chain risks.
+
+```html
+<!-- Load the exact runtime shim version -->
+<script
+  src="https://cdn.jsdelivr.net/npm/@soroauth/wasm@0.1.0/dist/wasm_exec.js"
+  integrity="sha384-…"
+  crossorigin="anonymous"
+></script>
+<script type="module">
+  import { loadSoroauth } from "https://cdn.jsdelivr.net/npm/@soroauth/wasm@0.1.0/dist/index.js";
+  const soroauth = await loadSoroauth({
+    wasm: "https://cdn.jsdelivr.net/npm/@soroauth/wasm@0.1.0/dist/soroauth.wasm",
+    go: globalThis.Go,
+  });
+  globalThis.soroauth = soroauth;
+</script>
+```
+
+Always verify and publish Subresource Integrity (SRI) hashes alongside each
+release artifact so pages can enforce strict cryptographic pinning of the loaded
+WASM and JS glue.
+
 Every failure is a thrown `SoroauthError` carrying the module's own message;
 there are no numeric error codes.
 

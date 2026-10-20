@@ -38,6 +38,7 @@ credential arms: legacy `SOROBAN_CREDENTIALS_ADDRESS`, CAP-71
 - [Proven on testnet](#proven-on-testnet)
 - [FAQ](#faq)
 - [Status](#status)
+- [What soroauth deliberately does not do](#what-soroauth-deliberately-does-not-do)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -1227,6 +1228,27 @@ The questions this design invites — why there is no default write to the
 top-level node, why `AuthorizeAll` succeeds with a delegate node unsigned, why
 the expiration ledger is inclusive, whether the legacy arm is deprecated — are
 answered with their sources in [docs/faq.md](docs/faq.md).
+
+## What soroauth deliberately does not do
+
+soroauth is a signing and inspection library for Soroban authorization entries.
+It is intentionally narrow:
+
+- It does not build or assemble a full Stellar transaction. For transaction
+  construction, resource estimation, and submission orchestration, use the Go
+  SDK's `txnbuild` and `rpcclient` packages instead.
+- It does not manage keys, wallets, or secret storage. That boundary is owned by
+  the signer implementation or by a KMS / Vault / wallet integration built
+  around it.
+- It does not interpret a contract call and tell you what the invocation means.
+  A separate project,
+  [soroauth-explain](https://github.com/soroauth/soroauth-explain), is the place
+  for a human-readable explanation of an invocation.
+- It does not claim to be audited or production-proven. The current status is
+  explicitly documented in [SECURITY.md](SECURITY.md) and the release notes.
+
+This is a deliberate boundary: soroauth signs the protocol-defined bytes and
+reports the structure; it does not replace the rest of the Stellar toolchain.
 
 ## Status
 
