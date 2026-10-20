@@ -172,7 +172,23 @@ tailwindcss-typography-style
 tailwindcss-style-modify
 tailwindcss-animate-style
 EOF
-m="$(git grep -nFf "$IOC" "$REF" -- 2>/dev/null | head -5)"
+# Scoped to the files this ref changes, like every other check, and with this
+# script excluded. Scanning the whole ref would match the indicator list below
+# against itself the moment this script is on the base branch, and an audit
+# that always fails is an audit everyone learns to ignore.
+m=""
+if [ -n "$CHANGED" ]; then
+  SCAN="$(printf '%s\n' "$CHANGED" | grep -v '^scripts/premerge-audit\.sh$' || true)"
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    git cat-file -e "$REF:$f" 2>/dev/null || continue
+    h="$(git show "$REF:$f" 2>/dev/null | grep -nFf "$IOC" | head -2)"
+    [ -n "$h" ] && m="$m$f: $h
+"
+  done <<EOF
+$SCAN
+EOF
+fi
 rm -f "$IOC"
 if [ -n "$m" ]; then fail "PolinRider indicator present:"; printf '         %s\n' "$m"; else pass "no known indicator strings"; fi
 
