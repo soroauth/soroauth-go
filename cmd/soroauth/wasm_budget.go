@@ -92,6 +92,7 @@ exit codes:
 // build is over budget or under it.
 func runWASMBudget(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("wasm-budget", flag.ContinueOnError)
+	registerVerbosityFlags(fs)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
 		fmt.Fprint(stderr, wasmBudgetUsage)

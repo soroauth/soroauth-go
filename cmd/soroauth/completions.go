@@ -272,6 +272,7 @@ type completionsOutput struct {
 
 func runCompletions(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("completions", flag.ContinueOnError)
+	registerVerbosityFlags(flags)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
 		fmt.Fprint(stderr, completionsUsage)
@@ -674,4 +675,17 @@ func zshQuote(s string) string {
 // aborts the load of the whole completion file at that line.
 func fishQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `\'`) + "'"
+}
+
+// init makes the shared verbosity flags part of every completion spec. The
+// flags are registered by registerVerbosityFlags in each subcommand, so the
+// spec and the real FlagSet cannot drift.
+func init() {
+	verbosityFlags := []flagSpec{
+		{Name: "quiet", Description: quietFlagUsage, TakesValue: false},
+		{Name: "verbose", Description: verboseFlagUsage, TakesValue: false},
+	}
+	for i := range commandSpecs {
+		commandSpecs[i].Flags = append(commandSpecs[i].Flags, verbosityFlags...)
+	}
 }

@@ -86,6 +86,12 @@ and exits non-zero.
 In batch mode each signed entry is labelled with its 1-based input position:
 without --json each is preceded by an "entry N:" line, and with --json the
 report is one array of {"entry": N, "result": {"signed_entry": "..."}}.
+
+--network accepts testnet, futurenet, public, rpc (fetch from RPC endpoint),
+or a literal network passphrase. When rpc is given, the passphrase is fetched
+from the configured RPC endpoint (--rpc-url or $SOROAUTH_RPC_URL) and printed
+so the caller sees which network they are signing for. A fetch failure is
+an error, never a fall-through to a default network.
 `
 
 type signOutput struct {
@@ -100,6 +106,7 @@ func runSign(args []string, stdout, stderr io.Writer, getenv func(string) string
 
 func runSignWithStdin(args []string, stdout, stderr io.Writer, getenv func(string) string, stdin io.Reader) error {
 	flags := flag.NewFlagSet("sign", flag.ContinueOnError)
+	registerVerbosityFlags(flags)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
 		fmt.Fprint(stderr, signUsage)
@@ -152,11 +159,11 @@ func runSignWithStdin(args []string, stdout, stderr io.Writer, getenv func(strin
 	}
 
 	resolvedNet := resolveNetworkValue(set, *networkFlag, getenv, cfg).Value
-	passphrase, err := resolveNetwork(resolvedNet)
+	resolvedRPC := resolveRPCURLValue(set, *rpcURL, getenv, cfg, "").Value
+	passphrase, err := resolveNetwork(context.Background(), resolvedNet, resolvedRPC, stderr, getenv, fetchNetworkPassphrase)
 	if err != nil {
 		return writeJSONError(stdout, jsonMode, err)
 	}
-	resolvedRPC := resolveRPCURLValue(set, *rpcURL, getenv, cfg, "").Value
 	expiration, err := resolveValidUntil(context.Background(), uint64(*validUntil), *validFor, resolvedRPC, fetchLatestLedger)
 	if err != nil {
 		return writeJSONError(stdout, jsonMode, err)
@@ -224,6 +231,11 @@ func runSignWithStdin(args []string, stdout, stderr io.Writer, getenv func(strin
 		if err != nil {
 			return writeJSONError(stdout, jsonMode, newErrorf(ExitGeneralError, "encoding the signed envelope: %w", err))
 		}
+		if flagVerbose(flags) {
+			entries, _ := soroauth.EnvelopeEntries(signed)
+			fmt.Fprintf(stderr, "soroauth: sign: envelope: signer=%s expiration=%d credential_entries=%d\n",
+				signer.Address(), expiration, len(entries))
+		}
 		if jsonMode {
 			enc := json.NewEncoder(stdout)
 			enc.SetEscapeHTML(false)
@@ -250,6 +262,19 @@ func runSignWithStdin(args []string, stdout, stderr io.Writer, getenv func(strin
 		signer, expiration, passphrase, opts...)
 	if err != nil {
 		return writeJSONError(stdout, jsonMode, newErrorf(exitCodeForSigningError(err), "%w", err))
+	}
+	if flagVerbose(flags) {
+		target := signer.Address()
+		if *forAddress != "" {
+			target = *forAddress
+		}
+		info, inspectErr := soroauth.Inspect(signed)
+		arm := "unknown"
+		if inspectErr == nil {
+			arm = info.CredentialType
+		}
+		fmt.Fprintf(stderr, "soroauth: sign: entry: signer=%s target=%s arm=%s expiration=%d\n",
+			signer.Address(), target, arm, expiration)
 	}
 
 	encoded, err := encodeEntry(signed)

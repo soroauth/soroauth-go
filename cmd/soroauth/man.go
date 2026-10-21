@@ -52,6 +52,7 @@ type manOutput struct {
 
 func runMan(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("man", flag.ContinueOnError)
+	registerVerbosityFlags(flags)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
 		fmt.Fprint(stderr, manUsage)

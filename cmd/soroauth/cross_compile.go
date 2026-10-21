@@ -33,6 +33,7 @@ type crossCompileResult struct {
 // runCrossCompile builds soroauth for all configured targets.
 func runCrossCompile(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("cross-compile", flag.ContinueOnError)
+	registerVerbosityFlags(flags)
 	flags.SetOutput(stderr)
 	jsonFlag := flags.Bool("json", false, "emit results as JSON (one object per line)")
 	targetsFlag := flags.String("targets", "", "comma-separated GOOS/GOARCH pairs (default: all)")

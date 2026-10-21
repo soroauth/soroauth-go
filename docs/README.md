@@ -42,6 +42,7 @@ navigation.
 | Document                                      | Answers                                                                                                   |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | [analyzer-heuristics](analyzer-heuristics.md) | What each risk-analyzer heuristic catches and what it misses.                                             |
+| [canonical-json](canonical-json.md)           | The versioned JSON representation of an authorization entry, and what the decoder refuses.                |
 | [glossary](glossary.md)                       | What credential arm, preimage, payload, nonce and delegate ordering mean, with the CAP that defines each. |
 | [security-analysis](security-analysis.md)     | How CodeQL and dependency review run in CI, and how static-analysis findings are triaged.                 |
 | [FIXTURES](FIXTURES.md)                       | What each e2e fixture contract exercises, and why none is a product.                                      |
@@ -59,6 +60,7 @@ navigation.
 | [fuzzing](fuzzing.md)                                                    | How the fuzz targets run continuously, and how a crash becomes a committed regression seed.         |
 | [soak](soak.md)                                                          | The reported batch signing soak run: what each round asserts, and how its tolerances were measured. |
 | [parity](parity.md)                                                      | What agreement across implementations does and does not establish.                                  |
+| [rpc-fixtures](rpc-fixtures.md)                                          | How real RPC request/response pairs are recorded, scrubbed and replayed offline.                    |
 | [differential fuzzing](../testdata/differential/README.md)               | How random entries are checked across the Go, JS and Python implementations.                        |
 | [frozen divergences](../testdata/differential/regressions/README.md)     | The regression corpus of cases the implementations once disagreed on.                               |
 | [frozen vectors](../testdata/frozen/README.md)                           | The cross-version frozen vector set that must never be regenerated.                                 |
