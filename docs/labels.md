@@ -6,16 +6,16 @@ needs and is what its points are counted from, and an **area** label, which says
 which part of the tree the change lands in. A third family names the kind of
 change, and one program label marks an issue as part of a Stellar Wave.
 
-The values below are the ones the repository's own issue tooling creates and
-accepts, so they are the source of truth rather than a description written after
-the fact: `scripts/wave9_issues.py` (`LABELS`, lines 29-39) and
+The values below are the ones the repository's own issue tooling creates
+and accepts, so they are the source of truth rather than a description written after
+the fact: `scripts/wave_issues.py` (Waves 9 and 10) and
 `scripts/create-issues.sh` (the `create_label` calls, lines 68-76).
 
 ## Complexity
 
 Complexity is a rough guide to how much protocol or codebase knowledge an issue
 needs, not how long it takes. It is also the value the points come from:
-`scripts/wave9_issues.py` maps `high` to 200 points, `medium` to 150 and
+`scripts/wave_issues.py` maps `high` to 200 points, `medium` to 150 and
 `trivial` to 100 (line 27).
 
 | Label                | Points | Means                                                                                              |
@@ -96,7 +96,7 @@ need the signing path is worse than no label at all.
 
 - The **maintainer** creates the labels and sets the complexity and area labels
   when an issue is written or triaged. The two label families are created and
-  attached by `scripts/create-issues.sh` and `scripts/wave9_issues.py`, and by
+  attached by `scripts/create-issues.sh` and `scripts/wave_issues.py`, and by
   hand for issues that do not come from the backlog.
 - The **`good first issue` label** is applied by the maintainer during a
   labelling pass over the backlog, not by the contributor. It is set from the

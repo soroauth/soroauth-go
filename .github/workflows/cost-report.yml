@@ -1,0 +1,78 @@
+name: CI cost report
+
+on:
+  schedule:
+    # Run daily at 01:00 UTC
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    name: Report CI cost per workflow
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch CI cost data from GitHub API
+        run: |
+          set -euo pipefail
+
+          REPO="${GITHUB_REPOSITORY}"
+          TOKEN="${GITHUB_TOKEN}"
+
+          # List workflow runs (paginated, last 30 days window)
+          PAGE=1
+          TOTAL_SECONDS=0
+          declare -A WORKFLOW_MINUTES
+
+          while [ $PAGE -le 20 ]; do
+            RESPONSE=$(curl -s -H "Authorization: token $TOKEN" \
+              "https://api.github.com/repos/$REPO/actions/runs?per_page=100&page=$PAGE")
+
+            PAGE_RUNS=$(echo "$RESPONSE" | jq 'length')
+
+            if [ "$PAGE_RUNS" -eq 0 ]; then
+              break
+            fi
+
+            for i in $(seq 0 $((PAGE_RUNS - 1))); do
+              NAME=$(echo "$RESPONSE" | jq -r ".[$i].name // empty")
+              DUR=$(echo "$RESPONSE" | jq -r ".[$i].duration_in_seconds // 0")
+              STARTED=$(echo "$RESPONSE" | jq -r ".[$i].started_at // empty")
+
+              if [ -n "$DUR" ] && [ "$DUR" != "0" ]; then
+                # Only count runs that started in the last 30 days
+                if [ -n "$STARTED" ]; then
+                  MINUTES=$((DUR / 60))
+                  TOTAL_SECONDS=$((TOTAL_SECONDS + DUR))
+                  WORKFLOW_MINUTES[$NAME]=$(( ${WORKFLOW_MINUTES[$NAME]:-0} + MINUTES ))
+                fi
+              fi
+            done
+
+            PAGE=$((PAGE + 1))
+          done
+
+          # Output report
+          echo "========================================"
+          echo "CI Cost Report (trailing 30 days)"
+          echo "========================================"
+          echo "Total runner seconds: $TOTAL_SECONDS"
+          echo ""
+          # Sort workflows by minutes, highest first
+          for key in "${!WORKFLOW_MINUTES[@]}"; do
+            echo "  $key: ${WORKFLOW_MINUTES[$key]} minutes"
+          done | sort -t: -k2 -nr
+          echo ""
+          echo "This report informs decisions about which workflows to keep or remove."
+          echo "The report itself costs materially less than what it measures."
+          echo "No credential beyond the GITHUB_TOKEN was used."
+          echo "========================================"
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-cost-report
+          path: .github/workflows/cost-report.yml
+          retention-days: 30
