@@ -182,6 +182,13 @@ static napi_value LoadLibrary(napi_env env, napi_callback_info info) {
 }
 
 static napi_value Version(napi_env env, napi_callback_info info) {
+  // Version takes no JavaScript arguments, so it never calls napi_get_cb_info
+  // and `info` is genuinely unused. The signature is fixed by N-API, so the
+  // parameter cannot be dropped; this is the usual way to say so. Without it
+  // clang fails the build under -Werror,-Wunused-parameter, which is why the
+  // macOS node-binding jobs were red while the Linux ones passed.
+  (void)info;
+
   napi_value failure = require_library(env);
   if (failure != NULL) return failure;
   return finish(env, p_version());
