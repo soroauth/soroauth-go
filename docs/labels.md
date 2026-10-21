@@ -6,8 +6,8 @@ needs and is what its points are counted from, and an **area** label, which says
 which part of the tree the change lands in. A third family names the kind of
 change, and one program label marks an issue as part of a Stellar Wave.
 
-The values below are the ones the repository's own issue tooling creates
-and accepts, so they are the source of truth rather than a description written after
+The values below are the ones the repository's own issue tooling creates and
+accepts, so they are the source of truth rather than a description written after
 the fact: `scripts/wave_issues.py` (Waves 9 and 10) and
 `scripts/create-issues.sh` (the `create_label` calls, lines 68-76).
 

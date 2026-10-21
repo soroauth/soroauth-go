@@ -73,22 +73,22 @@ navigation.
 
 These live next to the code they describe.
 
-| Document                                                            | Answers                                                                       |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| [wasm](../wasm/README.md)                                           | What the js/wasm signing core exposes and how it is built.                    |
-| [wasm/ts](../wasm/ts/README.md)                                     | How to use the `@soroauth/wasm` TypeScript wrapper.                           |
-| [bindings/jvm](../bindings/jvm/README.md)                           | How to call soroauth from Java 22+ via Panama FFM.                            |
-| [bindings/rust](../bindings/rust/README.md)                         | How to use the Rust `soroauth` crate.                                         |
-| [examples](../examples/README.md)                                   | Overview of the runnable example programs in this repository.                 |
-| [examples/browser-passkey](../examples/browser-passkey/README.md)   | How to run the browser demo that signs with a passkey and submits to testnet. |
-| [examples/remote-signer](../examples/remote-signer/README.md)       | How to run the reference HTTP signing server and its client together.         |
-| [examples/wallet-freighter](../examples/wallet-freighter/README.md) | How to inspect and verify an entry before signing with Freighter.             |
-| [integrations/action](../integrations/action/README.md)             | How to verify Soroban authorization entries in GitHub Actions workflows.      |
-| [integrations/grpc](../integrations/grpc/README.md)                 | How to run and call the gRPC verification service.                            |
-| [server/openapi](../server/openapi/README.md)                       | The OpenAPI 3.0 specification and conformance check for `soroauth-server`.    |
-| [WAVE9_ARCHIVE](WAVE9_ARCHIVE.md)                                  | Archive of the Wave 9 issue backlog, recording which items shipped and which did not. |
-| [performance-characteristics](performance-characteristics.md)          | Measured costs of main operations, per-operation/per-arm budgets, and delegate tree scaling. |
-| [threat-model](threat-model.md)                                      | Trust boundaries: caller, signer, RPC endpoint, entry source, network.           |
+| Document                                                            | Answers                                                                                      |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| [wasm](../wasm/README.md)                                           | What the js/wasm signing core exposes and how it is built.                                   |
+| [wasm/ts](../wasm/ts/README.md)                                     | How to use the `@soroauth/wasm` TypeScript wrapper.                                          |
+| [bindings/jvm](../bindings/jvm/README.md)                           | How to call soroauth from Java 22+ via Panama FFM.                                           |
+| [bindings/rust](../bindings/rust/README.md)                         | How to use the Rust `soroauth` crate.                                                        |
+| [examples](../examples/README.md)                                   | Overview of the runnable example programs in this repository.                                |
+| [examples/browser-passkey](../examples/browser-passkey/README.md)   | How to run the browser demo that signs with a passkey and submits to testnet.                |
+| [examples/remote-signer](../examples/remote-signer/README.md)       | How to run the reference HTTP signing server and its client together.                        |
+| [examples/wallet-freighter](../examples/wallet-freighter/README.md) | How to inspect and verify an entry before signing with Freighter.                            |
+| [integrations/action](../integrations/action/README.md)             | How to verify Soroban authorization entries in GitHub Actions workflows.                     |
+| [integrations/grpc](../integrations/grpc/README.md)                 | How to run and call the gRPC verification service.                                           |
+| [server/openapi](../server/openapi/README.md)                       | The OpenAPI 3.0 specification and conformance check for `soroauth-server`.                   |
+| [WAVE9_ARCHIVE](WAVE9_ARCHIVE.md)                                   | Archive of the Wave 9 issue backlog, recording which items shipped and which did not.        |
+| [performance-characteristics](performance-characteristics.md)       | Measured costs of main operations, per-operation/per-arm budgets, and delegate tree scaling. |
+| [threat-model](threat-model.md)                                     | Trust boundaries: caller, signer, RPC endpoint, entry source, network.                       |
 
 ## Repository meta
 
