@@ -91,9 +91,9 @@ jobs:
   # three; four workflows were red when the Go floor moved.
   #
   # This reports main's current state on every pull request, so inherited
-  # breakage is visible at the one moment someone is looking. It is deliberately
-  # NOT a required check: the pull request that fixes a red main would otherwise
-  # be blocked by the very failure it repairs.
+  # breakage is visible at the one moment someone is looking. It warns and
+  # always succeeds: see the note at the end of the step for why failing was
+  # the wrong call.
   main-health:
     name: main health
     runs-on: ubuntu-latest
@@ -140,8 +140,14 @@ jobs:
               echo "If this pull request is the fix, say so in the description."
             } >> "$GITHUB_STEP_SUMMARY"
             echo "$red workflow(s) failing on main"
-            exit 1
           fi
+          # Deliberately exits 0 even when main is red. The job reports; it
+          # does not judge this pull request, which has not caused and cannot
+          # fix the breakage. Failing here put a red X on every open pull
+          # request simultaneously, which is how a signal becomes noise people
+          # click past -- and it was self-sustaining, because this job's own
+          # failure made security.yml one of the red workflows it reports.
+          # The annotations and the job summary above are the signal.
 
   # The Go query suite. `init` installs the CodeQL database and the Go
   # extractor, `go build` feeds it the packages, and `analyze` uploads the

@@ -1,6 +1,6 @@
 module github.com/soroauth/soroauth-go/adapters/walletsdk
 
-go 1.26.0
+go 1.26.3
 
 require (
 	github.com/okx/go-wallet-sdk v0.0.0-20260523030746-12fec6b06163
