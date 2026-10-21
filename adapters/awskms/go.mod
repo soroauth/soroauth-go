@@ -1,6 +1,6 @@
 module github.com/soroauth/soroauth-go/adapters/awskms
 
-go 1.26.0
+go 1.26.3
 
 require (
 	github.com/aws/aws-sdk-go-v2/service/kms v1.61.4

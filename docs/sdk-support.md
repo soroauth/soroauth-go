@@ -64,7 +64,7 @@ An SDK bump is a commit like any other, and it carries the same evidence:
 
 ## The Go floor
 
-`go.mod` requires **Go 1.26.0**. There is deliberately no `toolchain` line: Go
+`go.mod` requires **Go 1.26.3**. There is deliberately no `toolchain` line: Go
 removes one that merely repeats the `go` directive, so it can only say something
 once a patch release above the floor exists. The previous pairing was
 `go 1.25.0` with `toolchain go1.25.4` — a patch above the floor — and the
@@ -82,6 +82,14 @@ That bump arrived as a Dependabot pull request, which is how the floor moved
 without any document saying so, and `ci-adapters`, `ci-go`, `ci-image` and
 `ci-node` went red on main. All three adapter modules, the README and
 CONTRIBUTING now name the same version.
+
+It moved twice in two days: to 1.26.0 for `client_golang`, then to 1.26.3 when
+the FROST threshold-signer dependencies landed in 22197c4. Both times the
+adapters were left behind and `ci / adapters` went red, because the version
+lives in five files and nothing coupled them.
+`TestAdapterModulesMatchTheRootGoFloor` and `TestDocumentedGoFloorMatchesGoMod`
+in `internal/doccheck` now do that coupling: an adapter or a README that
+disagrees with `go.mod` fails the build rather than CI on main.
 
 When the floor moves again, move it everywhere in one commit: `go.mod`, every
 `adapters/*/go.mod`, the README's install line, CONTRIBUTING's setup section,

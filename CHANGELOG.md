@@ -10,7 +10,7 @@ this project adheres to
 
 ### Changed
 
-- **The minimum Go version is now 1.26.0** (was 1.25.0). `go.mod`, every
+- **The minimum Go version is now 1.26.3** (was 1.25.0). `go.mod`, every
   `adapters/*/go.mod`, the README and CONTRIBUTING name the same version, and
   the `toolchain` line is restored so builds resolve one compiler.
 
@@ -20,8 +20,14 @@ this project adheres to
   floor moved with no document saying so and four workflows went red on `main` —
   `ci-adapters` (all three adapters), `ci-go`, `ci-image` and `ci-node`.
 
-  Consumers on Go 1.25 must upgrade. `docs/sdk-support.md` now carries the
-  policy for moving the floor.
+  It then moved again, from 1.26.0 to 1.26.3, when the FROST threshold-signer
+  dependencies landed. Both times the adapter modules were left behind and
+  `ci / adapters` went red; `internal/doccheck` now fails the build when an
+  adapter or the README disagrees with `go.mod`, so the next move cannot be
+  partial.
+
+  Consumers on Go 1.25 must upgrade. `docs/sdk-support.md` carries the policy
+  for moving the floor.
 
 - Signer work. `signertest.Run` is an importable conformance suite for the
   `Signer` contract (stable address, honoured context without signing, an
