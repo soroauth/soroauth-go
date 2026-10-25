@@ -362,9 +362,10 @@ this project adheres to
   from the shebang one fixed in #494, and was only reachable once that was out
   of the way. (#494, #517)
 
-- `adapters/gcpkms` and `adapters/walletsdk` were untidy, and four entries in
-  `testdata/coverage/floors.json` named floors that CI never met. Both are now
-  consistent with what the tree actually builds and measures. (#517)
+- `adapters/awskms`, `adapters/gcpkms` and `adapters/walletsdk` were untidy, and
+  four entries in `testdata/coverage/floors.json` named floors that CI never
+  met. Both are now consistent with what the tree actually builds and measures.
+  (#517)
 
 ### Added
 
