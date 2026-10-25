@@ -36,12 +36,12 @@ this project adheres to
   defaults. (#388)
 
 - **The minimum Go version is now 1.26.3** (was 1.25.0). `go.mod`, every
-  `adapters/*/go.mod`, the README and CONTRIBUTING name the same version,
-  and no `toolchain` line is present. `go mod tidy` removes a `toolchain` line
-  that equals the `go` directive and keeps one that names a higher version, so
-  with both at 1.26.3 the `go` directive alone selects the compiler. An earlier
-  entry here claimed the line was "restored"; it was not, and could not be
-  while the two versions match. (#517)
+  `adapters/*/go.mod`, the README and CONTRIBUTING name the same version, and no
+  `toolchain` line is present. `go mod tidy` removes a `toolchain` line that
+  equals the `go` directive and keeps one that names a higher version, so with
+  both at 1.26.3 the `go` directive alone selects the compiler. An earlier entry
+  here claimed the line was "restored"; it was not, and could not be while the
+  two versions match. (#517)
 
   The move was forced, not chosen: `github.com/prometheus/client_golang` v1.25.0
   declares `go 1.26.0`, and a module cannot require less than its dependencies.
@@ -325,15 +325,15 @@ this project adheres to
   and it summed a `duration_in_seconds` field that endpoint does not return. It
   now passes `github.token` as `GH_TOKEN`, lists runs with `gh run list --json`,
   and derives each run's wall-clock minutes from `startedAt`/`updatedAt`. The
-  summary says plainly that this is elapsed time, not billed runner minutes.
-  Its artifact step also uploaded `.github/workflows/cost-report.yml` — the
-  workflow file, not any report — and was the one action in the repository
-  pinned to a mutable tag rather than a commit SHA. It now uploads `report.tsv`
-  and is pinned like the rest. (#508)
+  summary says plainly that this is elapsed time, not billed runner minutes. Its
+  artifact step also uploaded `.github/workflows/cost-report.yml` — the workflow
+  file, not any report — and was the one action in the repository pinned to a
+  mutable tag rather than a commit SHA. It now uploads `report.tsv` and is
+  pinned like the rest. (#508)
 
 - The **reproducible** workflow's "record tool versions" step ran
-  `.github/scripts/record-tool-versions.sh` from a checkout of the *released
-  tag*, where that script does not exist, so it exited 127 on every release
+  `.github/scripts/record-tool-versions.sh` from a checkout of the _released
+  tag_, where that script does not exist, so it exited 127 on every release
   there is. The step is now guarded and records the versions inline when the
   script is absent. (#475)
 
