@@ -85,9 +85,15 @@
           # which the test needs; bashInteractive is the nixpkgs bash compiled
           # with it. It is put first on PATH for the check so the test finds
           # that bash rather than the stdenv one.
-          nativeCheckInputs = [ pkgs.bashInteractive ];
+          # coreutils is here for a second reason: the exec-signer tests write a
+          # helper script that pipes its input through `cat`, and the sandbox's
+          # PATH does not carry coreutils by default. Without it every one of
+          # those tests fails with exit 127 from inside the helper -- a
+          # different failure from the shebang one fixed in #494, and only
+          # reachable once that was out of the way.
+          nativeCheckInputs = [ pkgs.bashInteractive pkgs.coreutils ];
           preCheck = ''
-            export PATH="${lib.makeBinPath [ pkgs.bashInteractive ]}:$PATH"
+            export PATH="${lib.makeBinPath [ pkgs.bashInteractive pkgs.coreutils ]}:$PATH"
           '';
 
           # Hash of the vendored dependency tree. It changes only when go.mod
