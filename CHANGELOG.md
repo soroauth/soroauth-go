@@ -326,7 +326,10 @@ this project adheres to
   now passes `github.token` as `GH_TOKEN`, lists runs with `gh run list --json`,
   and derives each run's wall-clock minutes from `startedAt`/`updatedAt`. The
   summary says plainly that this is elapsed time, not billed runner minutes.
-  (#508)
+  Its artifact step also uploaded `.github/workflows/cost-report.yml` — the
+  workflow file, not any report — and was the one action in the repository
+  pinned to a mutable tag rather than a commit SHA. It now uploads `report.tsv`
+  and is pinned like the rest. (#508)
 
 - The **reproducible** workflow's "record tool versions" step ran
   `.github/scripts/record-tool-versions.sh` from a checkout of the *released

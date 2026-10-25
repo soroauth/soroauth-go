@@ -78,9 +78,14 @@ jobs:
           cat report.tsv
           echo "total minutes: ${total}"
 
+      # Pinned to a commit SHA like every other action in this repo: a mutable
+      # tag lets the action's content change under us.
       - name: Upload report artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-cost-report
-          path: .github/workflows/cost-report.yml
+          # The report the previous step wrote. This said
+          # `.github/workflows/cost-report.yml`, so the artifact held the
+          # workflow file rather than any report.
+          path: report.tsv
           retention-days: 30
