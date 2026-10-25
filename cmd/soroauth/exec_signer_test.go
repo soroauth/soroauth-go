@@ -2,22 +2,21 @@ package main
 
 import (
 	"context"
+	"os"
+	"testing"
+
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"os"
+	"github.com/soroauth/soroauth-go"
+	"github.com/soroauth/soroauth-go/remote"
+	"github.com/stellar/go-stellar-sdk/xdr"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"testing"
 	"time"
-
-	"github.com/stellar/go-stellar-sdk/xdr"
-
-	"github.com/soroauth/soroauth-go"
-	"github.com/soroauth/soroauth-go/remote"
 )
 
 // writeHelperScript writes an executable shell script to a temporary directory

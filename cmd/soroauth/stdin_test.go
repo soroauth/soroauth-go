@@ -1,11 +1,12 @@
 package main
 
 import (
+	"testing"
+
 	"bytes"
 	"encoding/json"
 	"os"
 	"strings"
-	"testing"
 )
 
 func runCLIStdin(t *testing.T, env map[string]string, stdinContent string, args ...string) (stdout, stderr string, err error) {

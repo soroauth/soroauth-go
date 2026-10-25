@@ -10,6 +10,13 @@ this project adheres to
 
 ### Added
 
+- Audit where key material is held, in `docs/signers.md`. The finding is that
+  nothing in the library is zeroed, and for the CLI's `--secret-env` path
+  nothing can be: `os.Getenv` returns an immutable string, so there is no
+  library-owned buffer to overwrite, and the bytes remain in the process
+  environment block regardless. `TestNoKeyMaterialZeroingIsClaimed` keeps the
+  audit and the code in step. (#417)
+
 - Add ten README recipes with compile-checked source snippets, a contributor
   guide, a security policy, and an issue backlog. (#408, #409, #410, #411)
 

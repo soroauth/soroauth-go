@@ -1,47 +1,32 @@
-# Choosing a signer
+# Signers
 
-The signer is the security boundary. `soroauth.Signer` only asks for an address
-and for a signature `ScVal`; the real difference between implementations is
-where the private key lives, what trust boundary the signer crosses, and what
-evidence the repository has for that path.
+`soroauth` defines a single interface for producing signatures:
 
 This repository ships several signer modes. It currently includes the root
 signing API plus three adapter modules (`adapters/awskms`, `adapters/gcpkms`,
 and `adapters/walletsdk`), and they are all built on the same signing API, but
 they do not carry the same threat model or the same level of evidence.
 
+````
+
+## Choosing a signer
+
+| Signer                  | Threat model it addresses | Evidence and caveats | Recommendation |
+|-------------------------|---------------------------|----------------------|----------------|
+| `NewEd25519Signer`      | Local private key signing for classic accounts | Golden vectors and live testnet scenarios prove wire format and signature validity | Standard local signer for development and secure environments |
+| `NewAccountMultiSigner` | Multi-signature classic accounts | Unit-tested and live testnet scenario C proves a 2-of-2 threshold works | Use for multi-party classic accounts |
+| `NewPasskeySigner`      | Passkey / WebAuthn contract authentication | Unit tests and passkey vector checks prove the built-in shape | Use for passkey wallet contracts |
+| `NewLedgerSigner`       | Hardware-backed ed25519 signing via Ledger | Unit tests cover the APDU protocol; **no live transaction proof in this repo** | Use for hardware wallet integration |
+
 ## Short answer
 
-- Use `NewEd25519Signer` for a single in-process key in tests, local tools, or a
-  service that already owns the key.
-- Use `NewAccountMultiSigner` for a classic Stellar account that requires
-  multiple independent keys.
-- Use `NewPasskeySigner` / `NewPasskeySignerFromAssertion` for a browser or
-  WebAuthn-backed wallet contract whose signature shape is defined by that
-  contract.
-- Use `NewLedgerSigner`, `NewVaultSigner`, or the KMS adapters when the key must
-  live outside the process.
-- Use `remote.NewSigner` only behind authenticated, encrypted transport; the
-  shipped example is intentionally a local reference, not production network
-  security.
-- Use `SignerFunc` only when a custom account's `__check_auth` requires a custom
-  `ScVal` and you have reviewed that contract's layout.
+For standard local usage, `NewEd25519Signer` wrapping a `keypair.Full` is the primary entry point. Note that `remote.NewSigner`'s shipped example is intentionally a local reference, not production network security.
 
-## The shipped signer set
+## Memory Hygiene & Key Material
 
-| Signer                                               | Threat model it addresses                                                                     | Evidence and caveats                                                                                                    | Recommendation                                                                                                |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `NewEd25519Signer`                                   | In-process private key exposure; key compromise via process memory or local filesystem access | Golden vectors and live testnet scenarios prove the classic account shape and the signing flow on real networks         | Best for a single key in a trusted process; still not a substitute for a security review                      |
-| `NewAccountMultiSigner`                              | Single-key compromise on a classic account; threshold-style account policy                    | Unit-tested and live testnet scenario C proves a 2-of-2 threshold works                                                 | Good fit for classic accounts that require several independent keys                                           |
-| `NewPasskeySigner` / `NewPasskeySignerFromAssertion` | Browser- or authenticator-backed user signing; phishing and challenge-binding issues          | Unit tests and passkey vector checks prove the built-in shape and challenge checks; live passkey scenario exists in e2e | Good for wallet UX and user-presence flows, but the contract must define and verify the exact signature shape |
-| `NewLedgerSigner`                                    | Host compromise or malware on the workstation; key stays in hardware                          | Unit tests cover the APDU protocol and signing checks; no live transaction proof in this repo                           | Good hardware-custody option when your operational flow is reviewed                                           |
-| `NewVaultSigner`                                     | Private key exposure in a local process; keys live in Vault transit                           | Unit tests cover config validation, key lookup, payload mismatch and signature verification                             | Good for managed secret custody with Vault policy and rotation controls                                       |
-| `adapters/awskms`                                    | Key material never leaves AWS KMS; app is a signer only                                       | Unit-tested adapter; no live e2e proof in this repo                                                                     | Good for AWS-hosted keys when your IAM, KMS policy, and key rotation are reviewed                             |
-| `adapters/gcpkms`                                    | Key material never leaves Google Cloud KMS; app is a signer only                              | Unit-tested adapter; no live e2e proof in this repo                                                                     | Good for GCP-hosted keys when your KMS policy and operational controls are reviewed                           |
-| `remote.NewSigner`                                   | App/server separation; remote signing service handles private key material                    | Reference example and protocol tests exist; the shipped HTTP server is not production hardened                          | Only use behind authenticated TLS and an authority model you control                                          |
-| `SignerFunc`                                         | Custom account signature rules; future or non-standard signers                                | No built-in verification; the caller owns the signature format                                                          | Only use when you have reviewed the contract and defined the exact `ScVal` format                             |
+Key material (seeds, private keys, secret environment variables) held in memory presents exposure risks via memory dumps, swapping, and garbage collection.
 
-## Evidence and the production bar
+### Key Material Audit
 
 This repository does not claim that any signer is audited. The library as a
 whole remains `unaudited`. The ones with real live proof in this repo are the
@@ -152,7 +137,7 @@ message shapes as `remote/protocol.go`:
 
 ```json
 {"version":1,"address":"G...","preimage":"<base64 HashIdPreimage>","payload":"<64-char hex sha256>"}
-```
+````
 
 The helper writes `{"signature":"<base64 XDR ScVal>"}` (or `{"error":"..."}`) to
 `stdout`. Because the full `HashIdPreimage` is passed alongside the 32-byte
@@ -193,3 +178,57 @@ The library as a whole is v0.1.0 and **unaudited**. That is not a recommendation
 to avoid them; it is a reminder that the difference between a signer type and a
 safe production deployment is the operating model around the key, not just the
 Go implementation.
+
+## Memory hygiene and key material
+
+An audit of where key material lives in this library, and what can honestly be
+done about it. The short answer is that Go gives less here than it first
+appears, and for the most exposed path it gives nothing at all.
+
+### Where key material is held
+
+1. **`NewEd25519Signer` and `keypair.Full`.** The seed and private key live
+   inside the SDK's `keypair.Full`. This library does not own those internals
+   and cannot zero them.
+
+2. **`AccountMultiSigner`.** Holds a slice of keypairs. Same position as above
+   for each element, and the slice header itself carries no key bytes.
+
+3. **The CLI's `--secret-env` read path.** This is the one worth stating
+   precisely, because it is the most exposed and the easiest to describe
+   wrongly:
+
+   ```go
+   seed := getenv(secretEnv)      // cmd/soroauth/sign.go
+   parsed, err := keypair.Parse(seed)
+   ```
+
+   `os.Getenv` returns a **Go string**, which is immutable. There is no
+   library-owned mutable buffer on this path to overwrite, so zeroing it is not
+   something this library declines to do — it is not expressible without
+   `unsafe`, and would not help if it were: the same bytes remain in the process
+   environment block for the lifetime of the process, where any code in the
+   process and anything that can read `/proc/<pid>/environ` can still see them.
+
+4. **The adapter modules.** AWS KMS, GCP KMS and the wallet SDK never hold a
+   private key in this process at all. That is the real mitigation, and it is a
+   property of where the key lives rather than of anything this library does
+   with memory.
+
+### What Go can and cannot guarantee
+
+- **Nothing is zeroed today.** No code path in this library overwrites key
+  material after use, and the sections above say why for each one.
+- **The garbage collector may copy a value before any zeroing runs**, so even
+  where a mutable buffer exists, zeroing removes one copy rather than all of
+  them.
+- **Swap and core dumps** capture whatever is resident, which zeroing does not
+  reach.
+
+### What this means in practice
+
+Treat process memory as readable by anything that can read the process. If that
+is not acceptable for your threat model, the answer is not memory hygiene inside
+this library — it is keeping the key outside the process, which is what the KMS,
+Vault, Ledger and passkey signers are for. `docs/signers.md`'s table above says
+which of those have live proof in this repository.

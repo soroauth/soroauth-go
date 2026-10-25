@@ -1,13 +1,13 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/json"
-	"strings"
 	"testing"
 
+	"crypto/sha256"
+	"encoding/json"
 	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/xdr"
+	"strings"
 )
 
 // vectorKeypair derives a vector's public test keypair from its label; see
