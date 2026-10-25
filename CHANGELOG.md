@@ -36,8 +36,12 @@ this project adheres to
   defaults. (#388)
 
 - **The minimum Go version is now 1.26.3** (was 1.25.0). `go.mod`, every
-  `adapters/*/go.mod`, the README and CONTRIBUTING name the same version, and
-  the `toolchain` line is restored so builds resolve one compiler.
+  `adapters/*/go.mod`, the README and CONTRIBUTING name the same version,
+  and no `toolchain` line is present. `go mod tidy` removes a `toolchain` line
+  that equals the `go` directive and keeps one that names a higher version, so
+  with both at 1.26.3 the `go` directive alone selects the compiler. An earlier
+  entry here claimed the line was "restored"; it was not, and could not be
+  while the two versions match. (#517)
 
   The move was forced, not chosen: `github.com/prometheus/client_golang` v1.25.0
   declares `go 1.26.0`, and a module cannot require less than its dependencies.
@@ -310,6 +314,36 @@ this project adheres to
   than only on who signed. Test fixture code, not a product: no policies beyond
   the one limit, no upgradability, not for mainnet. Two e2e scenarios drive it
   against a live host, one within the limit and one over it. (#72)
+
+### Fixed
+
+- The daily **CI cost report** never produced a report. The step read
+  `${GITHUB_TOKEN}` under `set -u`, which is unset by default, so it failed on
+  its first line every run; it also read the REST response
+  `{total_count, workflow_runs: [...]}` as an array, so `jq length` returned 2
+  (the key count) and the loop read a number and an array as if they were runs,
+  and it summed a `duration_in_seconds` field that endpoint does not return. It
+  now passes `github.token` as `GH_TOKEN`, lists runs with `gh run list --json`,
+  and derives each run's wall-clock minutes from `startedAt`/`updatedAt`. The
+  summary says plainly that this is elapsed time, not billed runner minutes.
+  (#508)
+
+- The **reproducible** workflow's "record tool versions" step ran
+  `.github/scripts/record-tool-versions.sh` from a checkout of the *released
+  tag*, where that script does not exist, so it exited 127 on every release
+  there is. The step is now guarded and records the versions inline when the
+  script is absent. (#475)
+
+- The **Nix flake check** failed every exec-signer test with exit 127. The
+  helper script those tests write pipes its input through `cat`, and the build
+  sandbox carries no coreutils on `PATH`. `coreutils` is now in
+  `nativeCheckInputs` and on the check's `PATH`. This is a different failure
+  from the shebang one fixed in #494, and was only reachable once that was out
+  of the way. (#494, #517)
+
+- `adapters/gcpkms` and `adapters/walletsdk` were untidy, and four entries in
+  `testdata/coverage/floors.json` named floors that CI never met. Both are now
+  consistent with what the tree actually builds and measures. (#517)
 
 ### Added
 
