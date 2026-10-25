@@ -324,6 +324,17 @@ this project adheres to
 
 ### Fixed
 
+- **`scripts/gen-formula.sh` lost its executable bit**, which broke
+  `ci / packaging`'s homebrew jobs on both runners with exit 126 and would have
+  broken the next release. #480 changed the file's mode from `100755` to
+  `100644` with no change to its contents — the blob hash is identical either
+  side — and the two callers that run it directly,
+  `.github/workflows/ci-packaging.yml` and `.github/workflows/release.yml`, then
+  failed with `scripts/gen-formula.sh: Permission denied`. The bit is restored.
+  (`.github/scripts/record-tool-versions.sh` is also mode `100644`, but every
+  one of its call sites invokes it as `bash <script>`, so its mode does not
+  matter.) (#480)
+
 - The daily **CI cost report** never produced a report. The step read
   `${GITHUB_TOKEN}` under `set -u`, which is unset by default, so it failed on
   its first line every run; it also read the REST response
