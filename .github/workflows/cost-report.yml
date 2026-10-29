@@ -8,6 +8,9 @@ on:
 
 permissions:
   contents: read
+  # Listing workflow runs needs this. Without it the API returns 403 and the
+  # report is silently empty rather than wrong-but-plausible.
+  actions: read
 
 jobs:
   report:
@@ -15,64 +18,74 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fetch CI cost data from GitHub API
+        env:
+          # The token is not an environment variable by default; the previous
+          # version read ${GITHUB_TOKEN} under `set -u` and failed on the first
+          # line every time it ran.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          REPO="${GITHUB_REPOSITORY}"
-          TOKEN="${GITHUB_TOKEN}"
+          since="$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          echo "counting runs started since ${since}"
 
-          # List workflow runs (paginated, last 30 days window)
-          PAGE=1
-          TOTAL_SECONDS=0
-          declare -A WORKFLOW_MINUTES
+          # gh paginates and gives the fields directly. The previous version
+          # called the REST endpoint with curl and then read the response as if
+          # it were an array: `jq length` on {total_count, workflow_runs: [...]}
+          # returns 2, the number of keys, so the loop ran twice and read
+          # .[0]/.[1], which are a number and an array. It also read
+          # `duration_in_seconds`, which that endpoint does not return.
+          gh run list --repo "${GITHUB_REPOSITORY}" --limit 1000 \
+            --json workflowName,startedAt,updatedAt,conclusion \
+            > runs.json
 
-          while [ $PAGE -le 20 ]; do
-            RESPONSE=$(curl -s -H "Authorization: token $TOKEN" \
-              "https://api.github.com/repos/$REPO/actions/runs?per_page=100&page=$PAGE")
+          jq -r --arg since "$since" '
+            [ .[]
+              | select(.startedAt >= $since)
+              | select(.conclusion != null and .conclusion != "")
+              | { name: .workflowName,
+                  secs: (((.updatedAt | fromdateiso8601) - (.startedAt | fromdateiso8601))) }
+              | select(.secs >= 0)
+            ]
+            | group_by(.name)
+            | map({ name: .[0].name,
+                    runs: length,
+                    minutes: ((map(.secs) | add) / 60 | floor) })
+            | sort_by(-.minutes)
+            | .[]
+            | "\(.minutes)\t\(.runs)\t\(.name)"
+          ' runs.json > report.tsv
 
-            PAGE_RUNS=$(echo "$RESPONSE" | jq 'length')
+          total=$(awk -F'\t' '{s+=$1} END {print s+0}' report.tsv)
 
-            if [ "$PAGE_RUNS" -eq 0 ]; then
-              break
-            fi
+          {
+            echo "## CI cost report"
+            echo
+            echo "Wall-clock duration of completed runs started in the last 30 days."
+            echo "This is elapsed time per run, not billed runner minutes: a job on a"
+            echo "larger runner or a matrix fanning out costs more than this shows."
+            echo "It is for comparing workflows against each other, not for billing."
+            echo
+            echo "| workflow | runs | minutes |"
+            echo "| --- | ---: | ---: |"
+            while IFS=$'\t' read -r minutes runs name; do
+              printf '| `%s` | %s | %s |\n' "$name" "$runs" "$minutes"
+            done < report.tsv
+            echo
+            echo "**Total: ${total} minutes across $(wc -l < report.tsv | tr -d ' ') workflows.**"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-            for i in $(seq 0 $((PAGE_RUNS - 1))); do
-              NAME=$(echo "$RESPONSE" | jq -r ".[$i].name // empty")
-              DUR=$(echo "$RESPONSE" | jq -r ".[$i].duration_in_seconds // 0")
-              STARTED=$(echo "$RESPONSE" | jq -r ".[$i].started_at // empty")
+          cat report.tsv
+          echo "total minutes: ${total}"
 
-              if [ -n "$DUR" ] && [ "$DUR" != "0" ]; then
-                # Only count runs that started in the last 30 days
-                if [ -n "$STARTED" ]; then
-                  MINUTES=$((DUR / 60))
-                  TOTAL_SECONDS=$((TOTAL_SECONDS + DUR))
-                  WORKFLOW_MINUTES[$NAME]=$(( ${WORKFLOW_MINUTES[$NAME]:-0} + MINUTES ))
-                fi
-              fi
-            done
-
-            PAGE=$((PAGE + 1))
-          done
-
-          # Output report
-          echo "========================================"
-          echo "CI Cost Report (trailing 30 days)"
-          echo "========================================"
-          echo "Total runner seconds: $TOTAL_SECONDS"
-          echo ""
-          # Sort workflows by minutes, highest first
-          for key in "${!WORKFLOW_MINUTES[@]}"; do
-            echo "  $key: ${WORKFLOW_MINUTES[$key]} minutes"
-          done | sort -t: -k2 -nr
-          echo ""
-          echo "This report informs decisions about which workflows to keep or remove."
-          echo "The report itself costs materially less than what it measures."
-          echo "No credential beyond the GITHUB_TOKEN was used."
-          echo "========================================"
-
+      # Pinned to a commit SHA like every other action in this repo: a mutable
+      # tag lets the action's content change under us.
       - name: Upload report artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-cost-report
-          path: .github/workflows/cost-report.yml
+          # The report the previous step wrote. This said
+          # `.github/workflows/cost-report.yml`, so the artifact held the
+          # workflow file rather than any report.
+          path: report.tsv
           retention-days: 30

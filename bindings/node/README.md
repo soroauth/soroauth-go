@@ -78,6 +78,22 @@ The source build additionally needs `node-gyp`'s own Node floor (^22.22.2 ||
 Windows is not supported: the binding loads the Go shared library with `dlopen`
 and this repository builds `c-shared` only for Linux and macOS.
 
+### Known issue: macOS under `node:test`
+
+On macOS, running this package's own test suite under `node:test` crashes
+intermittently inside the Go runtime with `fatal error: morestack on g0` — about
+5 clean runs in 24 measured, on both Node 22 and 24. Linux is unaffected. The
+cause is Go's cgo entry reusing g0 stack bounds recorded on a different thread;
+see #518 for the full measurements and traces, and
+[golang/go#59294](https://github.com/golang/go/issues/59294) for the mechanism.
+
+The same calls made from an ordinary script, including from 200 frames deep
+inside promise continuations, were clean across 44 runs, so the binding itself
+looks sound and only the `node:test` harness has been observed to trigger it.
+That is evidence rather than a guarantee: if you hit this outside `node:test`,
+please add it to #518. `ci / node` is red on macOS for this reason and is not a
+required check.
+
 ## API
 
 Every call takes and returns base64 XDR strings; `load()` throws if the binding
