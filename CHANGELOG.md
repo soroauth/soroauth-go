@@ -10,6 +10,32 @@ this project adheres to
 
 ### Added
 
+- Add `make ci-local`, which runs everything CI runs, in CI's order, with the
+  commands CI uses. `scripts/cilocal` reads the `run:` steps out of
+  `.github/workflows/*.yml` and executes them as written under bash, from each
+  step's working directory and with the workflow, job and step `env`, and
+  provides `$GITHUB_PATH`, `$GITHUB_ENV`, `$GITHUB_OUTPUT` and
+  `$GITHUB_STEP_SUMMARY` so steps that hand state to later steps keep working.
+  The commands are read rather than copied, so a step added to an existing job
+  runs locally with no edit here.
+
+  What cannot be read from a workflow is classified in
+  `scripts/cilocal/manifest.json`: a job names the tools it `requires` (a
+  missing one skips the job and says which), a job a laptop cannot do carries
+  the reason it is skipped, and a step written against the Actions runtime gets
+  a local stand-in with a stated reason. Every skip is printed with its reason
+  and counted, and `make ci-local CI_LOCAL_FLAGS=-strict` turns any skip into a
+  failure, so a missing prerequisite is never silent.
+
+  `go test ./scripts/cilocal` is the drift check and runs as part of
+  `go test ./...`: it fails when a workflow, job or step is unclassified, when a
+  job uses a non-plumbing action with no classification, or when the manifest
+  names something that no longer exists. `make ci-local-check` runs only that
+  check, and the runner runs it first and refuses to run a subset on a mismatch.
+
+  Plain `make` stays `fmt`, `vet` and `test`: `ci-local` is the thorough target,
+  not a replacement for the fast loop. (#423)
+
 - Add an optional dev container (`.devcontainer`) with Go, Node, Rust and
   `stellar-cli` at the versions the repository pins, for VS Code Dev Containers
   and GitHub Codespaces. The versions are read from `go.mod`, the

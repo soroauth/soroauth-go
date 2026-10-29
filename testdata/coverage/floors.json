@@ -57,6 +57,11 @@
       "floor": 95.9,
       "reason": "the per-package coverage gate itself: a bug here would pass the regressions it exists to catch"
     },
+    "github.com/soroauth/soroauth-go/scripts/cilocal": {
+      "measured": 84.2,
+      "floor": 80.0,
+      "reason": "make ci-local and its drift check: a bug here lets a branch look green locally while CI is red, or stops catching a workflow job nobody classified. Measured 84.2 on windows/amd64 with go1.26.3; the floor sits 4 points lower because findBash has a Windows-only branch that a Linux run cannot execute"
+    },
     "github.com/soroauth/soroauth-go/scripts/docsite": {
       "measured": 88.78,
       "floor": 88.7,

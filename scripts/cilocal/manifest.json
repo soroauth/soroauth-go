@@ -1,0 +1,167 @@
+{
+  "note": "Classifies every job of every workflow in .github/workflows for `make ci-local` (scripts/cilocal). The runner reads the commands from the workflow files, so a step that is not listed here runs locally exactly as CI writes it. List a job under \"jobs\" the moment you add it to a workflow: `go test ./scripts/cilocal` fails (and so does CI) for any workflow, job, or step that cannot run as written and is not classified, and for any entry here that no longer matches a workflow. Per job: \"skip\" says why it cannot run on a developer machine; \"requires\" names tools whose absence skips the job with that reason; \"os\" limits it to hosts it can run on; \"steps\" classifies single steps by name with exactly one of \"skip\" (a check that did not run, counted and shown), \"command\" (a local stand-in, with \"why\"), \"covered\" (another step's command does this step's work) or \"bookkeeping\" (CI plumbing with no check in it). Actions that only set a runner up are listed under \"plumbing\"; any other action in a runnable job must be classified because an action cannot be executed locally. Never add a \"skip\" to make a failing check go away: a skip is for what a laptop cannot do.",
+  "workflows": [
+    "ci.yml",
+    "security.yml",
+    "spellcheck.yml",
+    "links.yml",
+    "ci-go.yml",
+    "ci-parity.yml",
+    "ci-wasm.yml",
+    "ci-adapters.yml",
+    "ci-rust.yml",
+    "ci-jvm.yml",
+    "ci-node.yml",
+    "ci-grpc.yml",
+    "ci-openapi.yml",
+    "ci-freighter.yml",
+    "ci-action.yml",
+    "ci-image.yml",
+    "ci-packaging.yml",
+    "ci-sdk-main.yml",
+    "ci-devcontainer.yml",
+    "e2e.yml",
+    "fuzz.yml",
+    "cost-report.yml",
+    "reproducible.yml",
+    "verify-release.yml",
+    "release.yml"
+  ],
+  "plumbing": [
+    "actions/checkout",
+    "actions/setup-go",
+    "actions/setup-node",
+    "actions/setup-java",
+    "actions/cache",
+    "actions/upload-artifact",
+    "actions/download-artifact",
+    "docker/setup-qemu-action",
+    "docker/setup-buildx-action",
+    "docker/login-action",
+    "DeterminateSystems/nix-installer-action",
+    "sigstore/cosign-installer"
+  ],
+  "jobs": {
+    "ci.yml/build": { "requires": ["go", "node", "npm", "npx", "make", "git"] },
+    "ci.yml/golden-drift": { "requires": ["node", "npm", "git"] },
+    "ci.yml/contracts": { "requires": ["cargo", "rustc"] },
+    "ci.yml/changelog": { "requires": ["go", "make", "git"] },
+
+    "security.yml/codeql": {
+      "requires": ["go"],
+      "steps": {
+        "initialize CodeQL": { "skip": "CodeQL's analysis only exists on GitHub's hosted runners; the build step below still runs" },
+        "analyze": { "skip": "CodeQL's analysis only exists on GitHub's hosted runners; the build step below still runs" }
+      }
+    },
+    "security.yml/dependency-review": { "skip": "needs the repository's GitHub dependency graph and the pull request's diff, which only exist on GitHub" },
+    "security.yml/supply-chain": {
+      "requires": ["git"],
+      "steps": {
+        "resolve the base revision": { "covered": "scan the changed files" },
+        "scan the changed files": {
+          "command": "git fetch -q origin main && ./scripts/supply-chain-scan.sh \"$(git merge-base origin/main HEAD)\" \"$(git rev-parse HEAD)\"",
+          "why": "CI diffs the pull request's base against GITHUB_SHA; locally the base is the merge base with origin/main and the head is HEAD"
+        },
+        "explain a failure in the job summary": { "bookkeeping": "writes a job summary when the scan above fails" }
+      }
+    },
+    "security.yml/main-health": { "skip": "reads the latest workflow runs on main through the GitHub API (needs gh and the repository's Actions history); it only warns" },
+
+    "spellcheck.yml/spellcheck": {
+      "requires": ["node", "npm", "npx"],
+      "steps": {
+        "suggest dictionary additions": { "bookkeeping": "writes a job summary when the spellcheck above fails" }
+      }
+    },
+
+    "links.yml/internal": {
+      "requires": ["go", "lychee"],
+      "steps": {
+        "check internal links": {
+          "command": "lychee --offline --include-fragments --no-progress --verbose './**/*.md' '_site/**/*.html'",
+          "why": "the workflow's lychee action runs exactly this lychee invocation (its fail: true makes a broken link fail the job, as lychee's exit status does here)"
+        }
+      }
+    },
+    "links.yml/external": { "skip": "runs only on the weekly schedule or by hand, needs the network, and only reports broken links" },
+
+    "ci-go.yml/coverage": {
+      "requires": ["go"],
+      "steps": {
+        "publish coverage": { "bookkeeping": "uploads coverage.out to Codecov; the floors are checked by the step before it" }
+      }
+    },
+    "ci-go.yml/cross-compile": { "requires": ["go"] },
+    "ci-go.yml/fuzz": { "requires": ["go"] },
+    "ci-go.yml/bench": { "requires": ["go"] },
+
+    "ci-parity.yml/js-drift": { "requires": ["node", "npm", "git"] },
+    "ci-parity.yml/python-parity": { "requires": ["python3"], "os": ["linux", "darwin"] },
+    "ci-parity.yml/rust-parity": { "requires": ["cargo"] },
+    "ci-parity.yml/differential": { "requires": ["go", "node", "npm", "python3", "git"], "os": ["linux", "darwin"] },
+
+    "ci-wasm.yml/wasm": { "requires": ["go", "node", "npm"], "os": ["linux", "darwin"] },
+
+    "ci-adapters.yml/adapter": { "requires": ["go"] },
+    "ci-adapters.yml/gcpkms": { "requires": ["go"] },
+    "ci-adapters.yml/awskms": { "requires": ["go"] },
+
+    "ci-rust.yml/rust": { "requires": ["cargo"] },
+    "ci-jvm.yml/jvm": { "requires": ["go", "mvn", "java", "gcc"], "os": ["linux", "darwin"] },
+    "ci-node.yml/node": { "requires": ["node", "npm"] },
+
+    "ci-grpc.yml/grpc": {
+      "requires": ["go", "buf"],
+      "os": ["linux", "darwin"],
+      "steps": {
+        "install buf": { "bookkeeping": "downloads a pinned Linux x86-64 buf into the runner; locally buf is a prerequisite of this job, listed under requires" }
+      }
+    },
+    "ci-openapi.yml/openapi": { "requires": ["go"], "os": ["linux", "darwin"] },
+    "ci-freighter.yml/freighter": { "requires": ["node"] },
+
+    "ci-action.yml/action": {
+      "requires": ["docker", "jq", "bash"],
+      "steps": {
+        "a good entry passes": {
+          "command": "make action-test",
+          "why": "action-test builds the same CLI image and drives integrations/action/verify.sh with the same three cases (a good entry, an unsigned entry, a wrong expected arm) that the next four steps run through the composite action"
+        },
+        "a bad entry fails": { "covered": "a good entry passes" },
+        "the bad entry really failed": { "covered": "a good entry passes" },
+        "a wrong expected arm fails": { "covered": "a good entry passes" },
+        "the wrong arm really failed": { "covered": "a good entry passes" }
+      }
+    },
+    "ci-image.yml/multi-arch": { "requires": ["docker", "jq", "python3"], "os": ["linux", "darwin"] },
+    "ci-packaging.yml/homebrew": { "requires": ["go", "brew"], "os": ["linux", "darwin"] },
+    "ci-packaging.yml/nix": { "requires": ["nix", "jq"], "os": ["linux", "darwin"] },
+
+    "ci-sdk-main.yml/sdk-main": { "skip": "runs `go get github.com/stellar/go-stellar-sdk@main`, which rewrites go.mod and go.sum; run those steps by hand in a throwaway checkout" },
+    "ci-devcontainer.yml/devcontainer": { "requires": ["npx", "docker"], "os": ["linux", "darwin"] },
+
+    "e2e.yml/e2e": { "skip": "scheduled or by hand: submits live transactions to Stellar testnet and files an issue on a regression; `make e2e` is the manual equivalent" },
+    "e2e.yml/e2e-local": { "skip": "by hand only: needs a local Stellar quickstart container and stellar-cli; `make e2e-local` is the manual equivalent" },
+    "fuzz.yml/fuzz": { "skip": "the nightly long run of the targets ci-go.yml/fuzz already runs for 30 seconds each; it files an issue on a finding" },
+    "fuzz.yml/soak": { "skip": "the scheduled ten-minute soak; `make soak` is the local smoke" },
+    "cost-report.yml/report": { "skip": "reads the repository's Actions usage through the GitHub API" },
+
+    "reproducible.yml/reproduce": { "skip": "rebuilds a published release and compares it with the checksums attached to that release" },
+    "verify-release.yml/verify": { "skip": "verifies the signatures and attestations of a published release with cosign and the GitHub API" },
+    "verify-release.yml/self-test": { "skip": "by hand only: keyless-signs a throwaway binary with the workflow's GitHub OIDC identity" },
+
+    "release.yml/release-preflight": { "skip": "release workflow: runs when a version tag is pushed" },
+    "release.yml/golden-drift": { "skip": "release workflow: runs when a version tag is pushed (ci.yml/golden-drift is the same check)" },
+    "release.yml/build": { "skip": "release workflow: builds and keyless-signs the release binaries when a version tag is pushed" },
+    "release.yml/image": { "skip": "release workflow: pushes and signs the container image when a version tag is pushed" },
+    "release.yml/image-smoke": { "skip": "release workflow: pulls the image it just published" },
+    "release.yml/packaging": { "skip": "release workflow: renders the Homebrew formula and flake for the release and commits them" },
+    "release.yml/wasm-parity": { "skip": "release workflow: runs when a version tag is pushed (ci-wasm.yml/wasm is the same check)" },
+    "release.yml/npm": { "skip": "release workflow: publishes the npm package with provenance" },
+    "release.yml/docs-site": { "skip": "release workflow: publishes the documentation site to gh-pages" },
+    "release.yml/release": { "skip": "release workflow: creates the GitHub release and attests its assets" },
+    "release.yml/verify-release": { "skip": "release workflow: verifies the release it just published" },
+    "release.yml/install-check": { "skip": "release workflow: installs the CLI from the Go module proxy after the tag is published" }
+  }
+}

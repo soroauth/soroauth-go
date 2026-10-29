@@ -119,6 +119,7 @@ rather than across several documents. Run `make help` for the list.
 | `make vet`           | `go vet ./...`                                                                                        |
 | `make test`          | `go test ./...`                                                                                       |
 | `make coverage`      | measures test coverage and enforces the per-package floors in `testdata/coverage/floors.json`         |
+| `make ci-local`      | runs everything CI runs, in CI's order, with CI's commands; skips are reported with their reason      |
 | `make soak`          | runs the long-running batch signing soak (race detector on, `SOAKTIME`, default 2m)                   |
 | `make build`         | builds the CLI to `bin/soroauth`                                                                      |
 | `make vectors`       | `cd testdata/gen && npm ci && node gen.mjs && node gen-passkey.mjs`                                   |
@@ -137,6 +138,22 @@ No target hides a failure. `make fmt` exits non-zero when a file needs
 formatting instead of printing a warning, `make vectors-check` exits non-zero
 when regeneration changes a committed vector, and `make e2e` refuses to run
 without `stellar-cli` rather than failing later with an obscure test error.
+
+`make` is the fast loop and stays that way. A branch can pass it and still fail
+on push, because CI also runs the vector drift check, the adapter modules, the
+parity suites, the wasm replay, prettier, cspell and the link check. Run
+`make ci-local` before pushing to run all of it, in CI's order, with CI's
+commands: it reads the `run:` steps out of `.github/workflows` and executes
+them, so a step added to a workflow runs there without editing the Makefile. It
+is slow and wants the optional toolchains. A job whose tool is missing, or that
+cannot run on a laptop (publishing a release, live testnet, anything needing
+secrets), is listed as skipped with the reason in the final summary and is never
+passed silently; `make ci-local CI_LOCAL_FLAGS=-strict` turns any skip into a
+failure, and `CI_LOCAL_FLAGS=-list` shows what would run. The CI steps are
+classified in `scripts/cilocal/manifest.json`, and `go test ./scripts/cilocal`
+(part of `make test` and of CI) fails when a workflow gains a job or step the
+manifest does not account for, so add a new job there when you add it to a
+workflow. `make ci-local-check` runs only that drift check.
 
 ## What a change needs
 

@@ -43,7 +43,7 @@ FUZZTIME ?= 30s
 # soak is not a replacement for it.
 SOAKTIME ?= 2m
 
-.PHONY: all help check-index fmt vet test coverage fuzz soak build server man site md-check md-format vectors vectors-check demo-check diagrams diagrams-check e2e clean parity parity-rust differential wasm wasm-check wasm-budget ts-test jvm-test jvm-native rust-test grpc-test grpc-check freighter-check openapi-test openapi-check action-test
+.PHONY: all help check-index ci-local ci-local-check fmt vet test coverage fuzz soak build server man site md-check md-format vectors vectors-check demo-check diagrams diagrams-check e2e clean parity parity-rust differential wasm wasm-check wasm-budget ts-test jvm-test jvm-native rust-test grpc-test grpc-check freighter-check openapi-test openapi-check action-test
 
 define CI_CHECK_INDEX
 Required: ci / vet and test
@@ -108,6 +108,8 @@ help:
 	@echo "  make fmt           fail if any Go file is not gofmt-clean"
 	@echo "  make vet           go vet ./..."
 	@echo "  make test          go test ./..."
+	@echo "  make ci-local      run everything CI runs, in CI's order (skips are listed with their reason; CI_LOCAL_FLAGS=-strict fails on them)"
+	@echo "  make ci-local-check  fail if a workflow job or step is not classified in scripts/cilocal/manifest.json"
 	@echo "  make coverage      measure coverage and enforce the per-package floors"
 	@echo "  make fuzz          run every fuzz target for \$$(FUZZTIME) each (default 30s)"
 	@echo "  make soak          soak the batch signing path for \$$(SOAKTIME) (default 2m, race detector on)"
@@ -161,6 +163,27 @@ vet:
 
 test:
 	$(GO) test ./...
+
+# The thorough counterpart to `make`: everything CI runs, in CI's order, with
+# the commands CI uses. scripts/cilocal reads the `run:` steps out of
+# .github/workflows and executes them, so a step added to a workflow runs here
+# without anyone editing this file. It is slow and wants the optional
+# toolchains (Node, Rust, Python, Docker, ...); plain `make` stays the fast
+# loop. A job whose tool is missing, or that cannot run on a laptop, is
+# reported as skipped with its reason in the final summary, never passed
+# silently. Pass CI_LOCAL_FLAGS to select or tighten the run, for example
+#   make ci-local CI_LOCAL_FLAGS=-strict         fail on any skip
+#   make ci-local CI_LOCAL_FLAGS='-only ci.yml'  one workflow
+#   make ci-local CI_LOCAL_FLAGS=-list           what would run, no execution
+# scripts/cilocal/manifest.json classifies every job; `go test ./scripts/cilocal`
+# (part of `make test` and of CI) fails when a workflow gains a job or step the
+# manifest does not account for, which is what keeps this target from drifting.
+ci-local:
+	$(GO) run ./scripts/cilocal $(CI_LOCAL_FLAGS)
+
+# Only the drift check, with no checks run: fast enough for a pre-commit hook.
+ci-local-check:
+	$(GO) run ./scripts/cilocal -check
 
 # Per-package coverage floors (testdata/coverage/floors.json). One global floor
 # let a well-covered package subsidise a thin one: the signing path was
