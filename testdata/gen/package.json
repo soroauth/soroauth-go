@@ -14,6 +14,6 @@
   },
   "dependencies": {
     "@stellar/stellar-sdk": "17.1.0",
-    "smart-account-kit": "0.8.0"
+    "smart-account-kit": "0.9.1"
   }
 }
