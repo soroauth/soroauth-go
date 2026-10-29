@@ -3,12 +3,14 @@ module github.com/soroauth/soroauth-go
 go 1.26.3
 
 require (
+	github.com/bytemare/frost v0.0.0-20260616005703-316cadd937fd
+	github.com/bytemare/secret-sharing v0.8.1-0.20260608010144-f8126702fd4d
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/leanovate/gopter v0.2.11
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3
-	github.com/stellar/go-stellar-sdk v0.7.3
+	github.com/stellar/go-stellar-sdk v0.8.0
 	github.com/stellar/go-xdr v0.0.0-20260806060815-dc590f17552a
 	github.com/stretchr/testify v1.12.1
 	go.yaml.in/yaml/v3 v3.0.5
@@ -20,10 +22,8 @@ require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytemare/ecc v0.10.0 // indirect
-	github.com/bytemare/frost v0.0.0-20260616005703-316cadd937fd // indirect
 	github.com/bytemare/hash v0.6.3 // indirect
 	github.com/bytemare/secp256k1 v0.5.0 // indirect
-	github.com/bytemare/secret-sharing v0.8.1-0.20260608010144-f8126702fd4d // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
