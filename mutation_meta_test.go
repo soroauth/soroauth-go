@@ -110,6 +110,12 @@ func TestEveryExportedEntryFunctionPreservesInput(t *testing.T) {
 		"Equal": func(entry xdr.SorobanAuthorizationEntry) {
 			_ = Equal(entry, entry)
 		},
+		"CheckBatchNonces": func(entry xdr.SorobanAuthorizationEntry) {
+			_ = CheckBatchNonces([]xdr.SorobanAuthorizationEntry{entry})
+		},
+		"EvaluateAccountPolicy": func(entry xdr.SorobanAuthorizationEntry) {
+			_ = EvaluateAccountPolicy(entry, RequiredSigner(address))
+		},
 	}
 
 	discovered := make(map[string]bool, len(functions))
