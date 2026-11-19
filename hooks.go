@@ -48,6 +48,10 @@ type HookEvent struct {
 	// SignedNodeCount is the number of nodes already signed
 	// (only for delegates-arm entries).
 	SignedNodeCount int
+	// KeyVersion is the version reported by the signer after signing, when
+	// the signer implements VersionedSigner. Empty when the signer does not
+	// implement VersionedSigner. Set only for HookPhasePostSign events.
+	KeyVersion string
 }
 
 // Hook receives lifecycle events during signing operations.

@@ -10,6 +10,24 @@ this project adheres to
 
 ### Added
 
+- Add `CheckBatchNonces`, which refuses a batch where one address reuses a
+  nonce. `AuthorizeAll` now runs it before any signer is called, so a hardware
+  wallet is never asked to approve a batch the host would reject on chain.
+  (#312)
+
+- Add offline account-policy evaluation: `EvaluateAccountPolicy` reports a
+  `PolicyEvalResult` with `PolicyViolation` entries for an entry against an
+  `AccountPolicy`, with `RequiredSigner` as a built-in policy. This answers
+  whether an entry as it stands satisfies a policy, which `AuthorizeAll`
+  deliberately cannot know. (#314)
+
+- Add the `VersionedSigner` interface, which reports the key version behind each
+  signature so a mid-batch key rotation is detected and refused rather than
+  producing a batch signed by two different keys. `Address` is unchanged by
+  rotation: it identifies the account, not the key material. (#328)
+
+- Cover authorization entries spread across a multi-operation transaction in the
+  envelope tests. (#311)
 - Add a structured audit record for every signing decision: `AuditRecord` and
   the `AuditSink` interface, attached with the `WithAudit` option. A record is
   written whether the decision was to sign or to refuse, and an audit write

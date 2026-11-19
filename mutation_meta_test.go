@@ -110,6 +110,12 @@ func TestEveryExportedEntryFunctionPreservesInput(t *testing.T) {
 		"Equal": func(entry xdr.SorobanAuthorizationEntry) {
 			_ = Equal(entry, entry)
 		},
+		"CheckBatchNonces": func(entry xdr.SorobanAuthorizationEntry) {
+			_ = CheckBatchNonces([]xdr.SorobanAuthorizationEntry{entry})
+		},
+		"EvaluateAccountPolicy": func(entry xdr.SorobanAuthorizationEntry) {
+			_ = EvaluateAccountPolicy(entry, RequiredSigner(address))
+		},
 		"StreamingSign": func(entry xdr.SorobanAuthorizationEntry) {
 			visitor := func(ctx context.Context, address string, preimage xdr.HashIdPreimage, payload [32]byte) (xdr.ScVal, error) {
 				return signer.Sign(ctx, preimage, payload)
