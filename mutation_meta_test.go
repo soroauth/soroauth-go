@@ -110,6 +110,9 @@ func TestEveryExportedEntryFunctionPreservesInput(t *testing.T) {
 		"Equal": func(entry xdr.SorobanAuthorizationEntry) {
 			_ = Equal(entry, entry)
 		},
+		"IsFullySigned": func(entry xdr.SorobanAuthorizationEntry) {
+			_, _ = IsFullySigned(entry)
+		},
 	}
 
 	discovered := make(map[string]bool, len(functions))
