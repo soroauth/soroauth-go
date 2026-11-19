@@ -108,7 +108,7 @@ jobs:
             binary_name=soroauth.exe
           fi
           build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          go build -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${build_date}" -o "${binary_name}" ./cmd/soroauth
+          go build -ldflags="-s -w -X github.com/soroauth/soroauth-go.Version=${VERSION} -X main.commit=${COMMIT} -X main.date=${build_date}" -o "${binary_name}" ./cmd/soroauth
           echo "binary=${binary_name}" >> "$GITHUB_OUTPUT"
       # The SBOM is scanned from the built binary, not from the source tree, so
       # it lists what this exact artifact contains. It is written next to the
@@ -497,7 +497,7 @@ jobs:
           COMMIT: ${{ github.sha }}
         run: |
           build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          go build -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${build_date}" -o /tmp/soroauth-man ./cmd/soroauth
+          go build -ldflags="-s -w -X github.com/soroauth/soroauth-go.Version=${VERSION} -X main.commit=${COMMIT} -X main.date=${build_date}" -o /tmp/soroauth-man ./cmd/soroauth
           /tmp/soroauth-man man --out soroauth.1
       - name: download all artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

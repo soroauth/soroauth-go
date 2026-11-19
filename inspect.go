@@ -258,6 +258,44 @@ func Inspect(entry xdr.SorobanAuthorizationEntry) (EntryInfo, error) {
 	return info, nil
 }
 
+// IsFullySigned reports whether every credential node in the entry that
+// requires a signature already carries one.
+//
+// A source-account entry never requires a signature — the transaction
+// envelope's own signature covers it — so it is reported as fully signed.
+// For all address arms, the top-level node and every delegate at every
+// nesting depth must carry a signature; an empty ScvVec counts as unsigned,
+// consistent with Inspect's own definition.
+//
+// IsFullySigned re-uses Inspect's report so the two cannot disagree: if Inspect
+// says a node is Signed, IsFullySigned counts it. It does not re-walk the XDR.
+func IsFullySigned(entry xdr.SorobanAuthorizationEntry) (bool, error) {
+	info, err := Inspect(entry)
+	if err != nil {
+		return false, err
+	}
+	if info.CredentialType == CredentialTypeSourceAccount {
+		return true, nil
+	}
+	if !info.TopLevelSigned {
+		return false, nil
+	}
+	return allNodesSigned(info.Delegates), nil
+}
+
+// allNodesSigned returns true when every NodeInfo at every depth is Signed.
+func allNodesSigned(nodes []NodeInfo) bool {
+	for _, n := range nodes {
+		if !n.Signed {
+			return false
+		}
+		if !allNodesSigned(n.Nested) {
+			return false
+		}
+	}
+	return true
+}
+
 // String renders the entry info for a terminal, verdict first.
 //
 // The first line answers the reader's immediate question: what credential arm

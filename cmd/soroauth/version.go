@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+
+	soroauth "github.com/soroauth/soroauth-go"
 )
 
 // Build metadata, injected at build time with
 //
-//	go build -ldflags "-X main.version=… -X main.commit=… -X main.date=…"
+//	go build -ldflags "-X github.com/soroauth/soroauth-go.Version=… -X main.commit=… -X main.date=…"
 //
 // The defaults describe a binary built by hand — `go build`, a `go install`
 // from a checkout, a contributor's local build — where there is no release to
@@ -18,8 +20,6 @@ import (
 // three (see .github/workflows/release.yml), and
 // TestReleaseWorkflowSetsBuildMetadata fails if it stops doing so.
 var (
-	// version is the release tag this binary was built from, e.g. v0.2.0.
-	version = "dev"
 	// commit is the git commit this binary was built from.
 	commit = "unknown"
 	// date is the build timestamp, RFC 3339 in UTC.
@@ -28,13 +28,15 @@ var (
 
 // versionText renders the build metadata that --version reports.
 //
+// The version comes from soroauth.Version (the library's exported var, stamped
+// at build time) so the CLI and the library cannot report different versions.
 // The Go toolchain version comes from runtime.Version() rather than from an
 // ldflags value: it is the one field the binary can read from its own runtime,
 // so it cannot be stale or mis-stamped, and it is exactly what a bug report
 // needs when a build fails on someone else's machine.
 func versionText() string {
 	return fmt.Sprintf("soroauth %s\ncommit: %s\nbuilt: %s\ngo: %s\n",
-		version, commit, date, runtime.Version())
+		soroauth.Version, commit, date, runtime.Version())
 }
 
 // runVersion writes the build metadata to stdout.

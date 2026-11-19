@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	soroauth "github.com/soroauth/soroauth-go"
 )
 
 // TestVersionFlagReportsBuildMetadata drives --version through the dispatcher
@@ -45,13 +47,13 @@ func TestVersionFlagReportsBuildMetadata(t *testing.T) {
 }
 
 // TestVersionTextRendersInjectedMetadata proves the ldflags-injected values are
-// the ones that reach the output. The release workflow writes main.version,
-// main.commit and main.date; this is the Go side of that contract.
+// the ones that reach the output. The release workflow writes
+// soroauth.Version, main.commit and main.date; this is the Go side of that contract.
 func TestVersionTextRendersInjectedMetadata(t *testing.T) {
-	originalVersion, originalCommit, originalDate := version, commit, date
-	defer func() { version, commit, date = originalVersion, originalCommit, originalDate }()
+	originalVersion, originalCommit, originalDate := soroauth.Version, commit, date
+	defer func() { soroauth.Version, commit, date = originalVersion, originalCommit, originalDate }()
 
-	version, commit, date = "v9.9.9", "abc1234", "2026-09-28T00:00:00Z"
+	soroauth.Version, commit, date = "v9.9.9", "abc1234", "2026-09-28T00:00:00Z"
 
 	got := versionText()
 	for _, want := range []string{"soroauth v9.9.9", "commit: abc1234", "built: 2026-09-28T00:00:00Z", "go: " + runtime.Version()} {
@@ -66,8 +68,8 @@ func TestVersionTextRendersInjectedMetadata(t *testing.T) {
 // what actually happened, which is that the binary was not built by the release
 // workflow.
 func TestVersionDefaultsAreSelfDescribing(t *testing.T) {
-	if version != "dev" {
-		t.Errorf("default version = %q, want %q", version, "dev")
+	if soroauth.Version != "dev" {
+		t.Errorf("default soroauth.Version = %q, want %q", soroauth.Version, "dev")
 	}
 	if commit != "unknown" {
 		t.Errorf("default commit = %q, want %q", commit, "unknown")
@@ -88,7 +90,7 @@ func TestReleaseWorkflowSetsBuildMetadata(t *testing.T) {
 		t.Fatalf("reading %s: %v", path, err)
 	}
 	workflow := string(raw)
-	for _, field := range []string{"-X main.version=", "-X main.commit=", "-X main.date="} {
+	for _, field := range []string{"-X github.com/soroauth/soroauth-go.Version=", "-X main.commit=", "-X main.date="} {
 		if !strings.Contains(workflow, field) {
 			t.Errorf("%s does not pass %q to the linker, so --version would report the default", path, field)
 		}
