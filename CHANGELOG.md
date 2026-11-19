@@ -28,6 +28,48 @@ this project adheres to
 
 - Cover authorization entries spread across a multi-operation transaction in the
   envelope tests. (#311)
+- Add a structured audit record for every signing decision: `AuditRecord` and
+  the `AuditSink` interface, attached with the `WithAudit` option. A record is
+  written whether the decision was to sign or to refuse, and an audit write
+  failure fails the call rather than being dropped. The record carries hashes
+  and metadata only — never a seed, key or signature value, which a test
+  asserts. (#319)
+
+- Add `StreamingSign`, which walks a delegate tree node by node through a
+  `NodeVisitor` instead of materialising the whole tree, so a very large tree
+  can be signed without holding every node in memory at once. (#315)
+
+- Add `WithRateLimit`, a signer wrapper with `RateLimitConfig` and
+  `RateLimitMode`, for remote signers behind a provider quota. (#329)
+
+### Fixed
+
+- Document the intermittent macOS crash in the Node binding under `node:test` in
+  `bindings/node/README.md`: Go's cgo entry reuses the g0 stack bounds recorded
+  on an earlier entry, so being re-entered on another thread trips
+  `morestack on g0`. Linux is unaffected, and ordinary synchronous use was not
+  reproduced as failing. (#518)
+- Add entry expiry and freshness helpers: `CheckExpiration` reports an
+  `EntryValidity` for an entry against a current ledger, and `IsExpired` and
+  `WithinMargin` answer the two questions callers were writing by hand. The
+  expiration ledger itself is still valid, matching the host, which rejects only
+  once the current ledger is past it. (#320)
+
+- Add `MergeEntries`, which combines independently signed copies of one
+  authorization entry and reports a `MergeConflict` rather than silently
+  preferring one copy, so two parties signing the same entry in parallel can
+  combine their results. (#321)
+
+- Add a pluggable signature-shape registry: `ShapeRegistry` with
+  `ShapeRegistration`, `ShapeMatcher` and `ShapeVerifier`, plus
+  `DefaultShapeRegistry` for the shapes the library already knows. A custom
+  account's signature shape can be registered without changing the library.
+  (#322)
+
+- The C ABI ships a committed, hand-written `bindings/c/libsoroauth.h` instead
+  of whatever cgo generated, with a test that fails when the header and the
+  exported functions disagree, so a signature change can no longer reach
+  consumers unnoticed. (#539)
 
 - Add `make ci-local`, which runs everything CI runs, in CI's order, with the
   commands CI uses. `scripts/cilocal` reads the `run:` steps out of

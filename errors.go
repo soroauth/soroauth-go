@@ -364,6 +364,21 @@ var (
 	// Address, the two entry indices and both versions are available through the
 	// wrapped SignerRotationError.
 	ErrSignerRotation = errors.New("signer key was rotated during this batch; resubmit with a fresh simulation")
+	// ErrMergePayloadMismatch is returned by MergeEntries when the entries
+	// to be merged have different signing payloads — that is, when at least
+	// one of the payload-affecting fields (arm, address, nonce, expiration
+	// ledger or root invocation) differs between two copies. Merging entries
+	// whose payloads disagree is refused because one of the signatures was
+	// made against a payload the merged entry no longer has, and would fail
+	// on-chain (see docs/multi-party-signing.md).
+	ErrMergePayloadMismatch = errors.New("entries have different signing payloads")
+
+	// ErrMergeSignatureConflict is returned by MergeEntries when two entries
+	// carry different non-void signatures for the same credential node.
+	// A merge that quietly picks a winner yields an entry that looks complete
+	// but fails on-chain, because the displaced signature was made against
+	// the same payload and cannot be recovered.
+	ErrMergeSignatureConflict = errors.New("entries have conflicting signatures for the same node")
 )
 
 // NoMatchingCredentialNodeError is returned when no credential node in the

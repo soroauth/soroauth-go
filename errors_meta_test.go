@@ -105,6 +105,8 @@ func TestSentinelValuesAndMessagesAreDistinct(t *testing.T) {
 		"ErrQuorumNotMet":                       ErrQuorumNotMet,
 		"ErrQuorumDisagreement":                 ErrQuorumDisagreement,
 		"ErrUnsupportedFunctionType":            ErrUnsupportedFunctionType,
+		"ErrMergePayloadMismatch":               ErrMergePayloadMismatch,
+		"ErrMergeSignatureConflict":             ErrMergeSignatureConflict,
 	}
 	if len(values) != len(sentinels) {
 		t.Fatalf("found %d sentinel declarations but %d actual values; update this check to cover every sentinel", len(sentinels), len(values))

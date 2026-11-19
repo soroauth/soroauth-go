@@ -17,6 +17,7 @@ type authorizeConfig struct {
 	allowResign          bool
 	allowResignAddresses []string
 	hook                 hookList
+	auditSink            AuditSink
 }
 
 // AuthorizeOption adjusts how AuthorizeEntry behaves.
@@ -406,6 +407,9 @@ func AuthorizeEntry(
 	signature, err := signer.Sign(ctx, preimage, payload)
 	if err != nil {
 		config.hook.emit(ctx, HookEvent{Phase: HookPhaseSign, CredentialType: credentialTypeName(entry.Credentials.Type), TargetAddress: target, ValidUntilLedger: validUntilLedger, Error: err})
+		if auditErr := emitAuditRecord(ctx, config.auditSink, entry, target, validUntilLedger, networkPassphrase, payload, auditNodeCount(entry), AuditDecisionRefused, err); auditErr != nil {
+			return xdr.SorobanAuthorizationEntry{}, fmt.Errorf("soroauth: authorize entry: audit: %w", auditErr)
+		}
 		return xdr.SorobanAuthorizationEntry{}, fmt.Errorf("soroauth: authorize entry: %w", err)
 	}
 
@@ -419,6 +423,10 @@ func AuthorizeEntry(
 	}
 
 	config.hook.emit(ctx, HookEvent{Phase: HookPhasePostSign, CredentialType: credentialTypeName(entry.Credentials.Type), TargetAddress: target, ValidUntilLedger: validUntilLedger})
+
+	if auditErr := emitAuditRecord(ctx, config.auditSink, entry, target, validUntilLedger, networkPassphrase, payload, auditNodeCount(entry), AuditDecisionSigned, nil); auditErr != nil {
+		return xdr.SorobanAuthorizationEntry{}, fmt.Errorf("soroauth: authorize entry: audit: %w", auditErr)
+	}
 
 	return signed, nil
 }

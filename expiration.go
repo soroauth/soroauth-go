@@ -3,6 +3,8 @@ package soroauth
 import (
 	"fmt"
 	"math"
+
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 // ExpirationAfter returns the expiration ledger that is ledgers ahead of
@@ -57,4 +59,94 @@ func ExpirationAfter(latestLedger, ledgers uint32) (uint32, error) {
 			latestLedger, ledgers, ErrInvalidExpiration)
 	}
 	return latestLedger + ledgers, nil
+}
+
+// EntryValidity is the result of CheckExpiration.
+type EntryValidity struct {
+	// Valid is whether the entry is accepted at currentLedger. The host's
+	// rule is inclusive: an entry is valid when currentLedger <= ExpirationLedger
+	// (verify_and_consume_nonce rejects with "signature has expired" only
+	// when ledger_seq > *live_until_ledger; rs-soroban-env
+	// soroban-env-host/src/auth.rs).
+	Valid bool `json:"valid"`
+
+	// RemainingLedgers is the number of ledgers the entry is still accepted
+	// in, including currentLedger itself when valid. It is zero when expired.
+	RemainingLedgers uint32 `json:"remaining_ledgers"`
+
+	// ExpirationLedger is the SignatureExpirationLedger stored on the entry.
+	// For the delegates arm, this is the top-level expiration, which governs
+	// every delegate node — every node signs the same payload, and that
+	// payload contains the expiration.
+	ExpirationLedger uint32 `json:"expiration_ledger"`
+}
+
+// CheckExpiration reports whether entry is still valid at currentLedger and
+// how many ledgers remain.
+//
+// The validity check implements the host's inclusive bound: the entry is valid
+// when currentLedger <= SignatureExpirationLedger. The remaining-ledger count
+// includes currentLedger itself — an entry whose expiration equals
+// currentLedger has 1 remaining ledger.
+//
+// For the delegates arm, the top-level expiration governs every node in the
+// tree: every delegate signs the same payload, and the expiration is part of
+// that payload. The returned ExpirationLedger is always the top-level value.
+//
+// Source-account entries carry no expiration — the transaction envelope's own
+// signature covers them — so CheckExpiration returns an error wrapping
+// ErrSourceAccountCredentials rather than a misleading validity report.
+//
+// This function does not cap the expiration against the network's
+// max_live_until_ledger, because that setting cannot be known offline.
+// Callers who need to enforce the network ceiling must read it from the
+// network and compare it themselves.
+func CheckExpiration(entry xdr.SorobanAuthorizationEntry, currentLedger uint32) (EntryValidity, error) {
+	creds, err := addressCredentials(entry.Credentials)
+	if err != nil {
+		return EntryValidity{}, fmt.Errorf("soroauth: check expiration: %w", err)
+	}
+	exp := uint32(creds.SignatureExpirationLedger)
+
+	valid := currentLedger <= exp
+	var remaining uint32
+	if valid {
+		remaining = exp - currentLedger + 1
+	}
+	return EntryValidity{
+		Valid:            valid,
+		RemainingLedgers: remaining,
+		ExpirationLedger: exp,
+	}, nil
+}
+
+// IsExpired reports whether entry has expired at currentLedger.
+//
+// It is a convenience wrapper around CheckExpiration for callers who only need
+// the boolean. Source-account entries return an error wrapping
+// ErrSourceAccountCredentials.
+func IsExpired(entry xdr.SorobanAuthorizationEntry, currentLedger uint32) (bool, error) {
+	v, err := CheckExpiration(entry, currentLedger)
+	if err != nil {
+		return false, err
+	}
+	return !v.Valid, nil
+}
+
+// WithinMargin reports whether entry has at least margin ledgers of validity
+// remaining at currentLedger.
+//
+// An expired entry always returns false regardless of margin. A margin of 0 is
+// equivalent to asking whether the entry is valid at all. A margin of 1 means
+// the entry must still be accepted in the current ledger. Source-account
+// entries return an error wrapping ErrSourceAccountCredentials.
+func WithinMargin(entry xdr.SorobanAuthorizationEntry, currentLedger, margin uint32) (bool, error) {
+	v, err := CheckExpiration(entry, currentLedger)
+	if err != nil {
+		return false, err
+	}
+	if !v.Valid {
+		return false, nil
+	}
+	return v.RemainingLedgers >= margin, nil
 }

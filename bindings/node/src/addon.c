@@ -26,6 +26,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 
 typedef char *(*fn_version)(void);
 typedef char *(*fn_preimage)(const char *, long long, const char *);
@@ -51,6 +52,29 @@ static fn_analyze p_analyze = NULL;
 static fn_render p_invocation_tree = NULL;
 static fn_render p_credential_tree = NULL;
 static fn_free p_free = NULL;
+
+/*
+ * go_mutex serialises every call into the Go shared library so that Go's cgo
+ * runtime is always entered from the same thread context. On macOS, node:test
+ * can call the addon from different worker threads across test boundaries; Go
+ * caches the M's g0 stack bounds from the first cgo entry on a thread, and a
+ * second entry from a different thread has sp outside those bounds, which
+ * triggers "fatal error: morestack on g0". A pthread mutex cannot pin the
+ * calling thread, but it prevents concurrent entries that would race for the
+ * same M, which is sufficient: Go's own M-per-thread cache handles the rest
+ * once entries are serialised.
+ *
+ * See golang/go#59294 (M-cache mechanism) and golang/go#31683 (same crash in
+ * Darwin c-shared).
+ */
+static pthread_mutex_t go_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/*
+ * LOCK/UNLOCK macros for the Go library mutex. Every call into the Go shared
+ * library (any p_* function pointer) must be wrapped in GO_LOCK / GO_UNLOCK.
+ */
+#define GO_LOCK()   pthread_mutex_lock(&go_mutex)
+#define GO_UNLOCK() pthread_mutex_unlock(&go_mutex)
 
 /* throw_type throws a TypeError and returns NULL, for use as `return throw_type(...)`. */
 static napi_value throw_type(napi_env env, const char *message) {
@@ -191,7 +215,10 @@ static napi_value Version(napi_env env, napi_callback_info info) {
 
   napi_value failure = require_library(env);
   if (failure != NULL) return failure;
-  return finish(env, p_version());
+  GO_LOCK();
+  char *out_v = p_version();
+  GO_UNLOCK();
+  return finish(env, out_v);
 }
 
 static napi_value Preimage(napi_env env, napi_callback_info info) {
@@ -208,7 +235,9 @@ static napi_value Preimage(napi_env env, napi_callback_info info) {
     free(network);
     return throw_type(env, "soroauth: preimage(entry, validUntilLedger, networkPassphrase) needs strings");
   }
+  GO_LOCK();
   char *out = p_preimage(entry, valid, network);
+  GO_UNLOCK();
   free(entry);
   free(network);
   return finish(env, out);
@@ -224,7 +253,9 @@ static napi_value Payload(napi_env env, napi_callback_info info) {
   if (preimage == NULL) {
     return throw_type(env, "soroauth: payload(preimageXdr) needs a string");
   }
+  GO_LOCK();
   char *out = p_payload(preimage);
+  GO_UNLOCK();
   free(preimage);
   return finish(env, out);
 }
@@ -247,7 +278,9 @@ static napi_value WriteSignature(napi_env env, napi_callback_info info) {
     free(signature);
     return throw_type(env, "soroauth: writeSignature(entry, validUntilLedger, networkPassphrase, forAddress, signatureScval) needs strings");
   }
+  GO_LOCK();
   char *out = p_write_signature(entry, valid, network, for_address, signature);
+  GO_UNLOCK();
   free(entry);
   free(network);
   free(for_address);
@@ -273,7 +306,9 @@ static napi_value AuthorizeWithSeed(napi_env env, napi_callback_info info) {
     free(for_address);
     return throw_type(env, "soroauth: authorizeWithSeed(entry, validUntilLedger, networkPassphrase, seedHex, forAddress) needs strings");
   }
+  GO_LOCK();
   char *out = p_authorize_seed(entry, valid, network, seed, for_address);
+  GO_UNLOCK();
   free(entry);
   free(network);
   free(seed);
@@ -299,7 +334,9 @@ static napi_value AuthorizeWithSeeds(napi_env env, napi_callback_info info) {
     free(for_address);
     return throw_type(env, "soroauth: authorizeWithSeeds(entry, validUntilLedger, networkPassphrase, seedsCsv, forAddress) needs strings");
   }
+  GO_LOCK();
   char *out = p_authorize_seeds(entry, valid, network, seeds, for_address);
+  GO_UNLOCK();
   free(entry);
   free(network);
   free(seeds);
@@ -317,7 +354,9 @@ static napi_value Inspect(napi_env env, napi_callback_info info) {
   if (entry == NULL) {
     return throw_type(env, "soroauth: inspect(entry) needs a string");
   }
+  GO_LOCK();
   char *out = p_inspect(entry);
+  GO_UNLOCK();
   free(entry);
   return finish(env, out);
 }
@@ -333,7 +372,9 @@ static napi_value Analyze(napi_env env, napi_callback_info info) {
   if (entry == NULL) {
     return throw_type(env, "soroauth: analyze(entry, currentLedger) needs a string entry");
   }
+  GO_LOCK();
   char *out = p_analyze(entry, ledger);
+  GO_UNLOCK();
   free(entry);
   return finish(env, out);
 }
@@ -348,7 +389,9 @@ static napi_value RenderInvocations(napi_env env, napi_callback_info info) {
   if (entry == NULL) {
     return throw_type(env, "soroauth: renderInvocations(entry) needs a string");
   }
+  GO_LOCK();
   char *out = p_invocation_tree(entry);
+  GO_UNLOCK();
   free(entry);
   return finish(env, out);
 }
@@ -363,7 +406,9 @@ static napi_value RenderTree(napi_env env, napi_callback_info info) {
   if (entry == NULL) {
     return throw_type(env, "soroauth: renderTree(entry) needs a string");
   }
+  GO_LOCK();
   char *out = p_credential_tree(entry);
+  GO_UNLOCK();
   free(entry);
   return finish(env, out);
 }

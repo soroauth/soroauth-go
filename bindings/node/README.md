@@ -119,6 +119,26 @@ reference implementation's recorded bytes. That replay is the gate: a binding
 that can disagree with the Go library is worse than none, and the only way to
 know it does not is to check the bytes.
 
+## Known limitations
+
+### macOS thread-safety under `node:test`
+
+The Go shared library's cgo runtime caches per-thread state (the M's g0 stack
+bounds) from the first cgo entry on a given thread. When `node:test` runs tests
+across worker threads, Go can be re-entered on a different thread with stale
+bounds, triggering `fatal error: morestack on g0`.
+
+The addon serialises every call to the Go library through a pthread mutex, which
+prevents the concurrent-entry race that surfaces the stale bounds. This makes
+the binding safe under `node:test`, but means calls are not concurrent — which
+is consistent with the binding's design (all N-API callbacks are synchronous and
+run on the main thread in normal use).
+
+If you observe the crash in an environment this fix does not cover, please
+report it. See [golang/go#59294](https://github.com/golang/go/issues/59294) and
+[golang/go#31683](https://github.com/golang/go/issues/31683) for the upstream
+mechanism.
+
 ## License
 
 Apache-2.0. Unaudited; see [`SECURITY.md`](../../SECURITY.md).

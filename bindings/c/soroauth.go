@@ -91,6 +91,10 @@ func kindOf(err error) string {
 		return "TOO_MANY_SIGNATURES"
 	case errors.Is(err, soroauth.ErrDecodeLimit):
 		return "DECODE_LIMIT"
+	case errors.Is(err, soroauth.ErrMergePayloadMismatch):
+		return "MERGE_PAYLOAD_MISMATCH"
+	case errors.Is(err, soroauth.ErrMergeSignatureConflict):
+		return "MERGE_SIGNATURE_CONFLICT"
 	default:
 		return "ERROR"
 	}
@@ -151,6 +155,15 @@ func options(forAddress string) []soroauth.AuthorizeOption {
 		return nil
 	}
 	return []soroauth.AuthorizeOption{soroauth.ForAddress(forAddress)}
+}
+
+// SoroauthAbiVersion returns a monotonic integer that increments on any
+// breaking ABI change: a removed function, a changed signature, or a changed
+// envelope schema. Adding a new function is not a breaking change.
+//
+//export SoroauthAbiVersion
+func SoroauthAbiVersion() C.int {
+	return 1
 }
 
 // SoroauthVersion returns the ABI version string. It is allocated the same way
