@@ -109,7 +109,15 @@
 
     "ci-rust.yml/rust": { "requires": ["cargo"] },
     "ci-jvm.yml/jvm": { "requires": ["go", "mvn", "java", "gcc"], "os": ["linux", "darwin"] },
-    "ci-node.yml/node": { "requires": ["node", "npm"] },
+    "ci-node.yml/node": {
+      "requires": ["go", "node", "npm", "gcc"],
+      "os": ["linux", "darwin"],
+      "steps": {
+        "assert the pair landed under the platform it claims": { "skip": "substitutes matrix.platform into the path, which only exists inside the matrix job; scripts/verify-prebuilds.mjs runs the same layout and header check before publish" }
+      }
+    },
+    "ci-node.yml/source-fallback": { "requires": ["go", "node", "npm", "gcc"] },
+    "ci-node.yml/installed-package": { "skip": "runs in a container image chosen to have no Go toolchain, which a developer machine is not" },
 
     "ci-grpc.yml/grpc": {
       "requires": ["go", "buf"],
@@ -159,6 +167,8 @@
     "release.yml/packaging": { "skip": "release workflow: renders the Homebrew formula and flake for the release and commits them" },
     "release.yml/wasm-parity": { "skip": "release workflow: runs when a version tag is pushed (ci-wasm.yml/wasm is the same check)" },
     "release.yml/npm": { "skip": "release workflow: publishes the npm package with provenance" },
+    "release.yml/node-prebuilds": { "skip": "release workflow: builds the node prebuilds on the tagged commit by calling ci-node.yml" },
+    "release.yml/npm-node": { "skip": "release workflow: publishes @soroauth/node with provenance when a version tag is pushed" },
     "release.yml/docs-site": { "skip": "release workflow: publishes the documentation site to gh-pages" },
     "release.yml/release": { "skip": "release workflow: creates the GitHub release and attests its assets" },
     "release.yml/verify-release": { "skip": "release workflow: verifies the release it just published" },

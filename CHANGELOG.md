@@ -10,6 +10,14 @@ this project adheres to
 
 ### Added
 
+- Publish `@soroauth/node` from a version tag with a prebuilt bindings pair for
+  `linux-x64`, `linux-arm64`, `darwin-x64` and `darwin-arm64`, so `npm install`
+  no longer needs a Go toolchain. Publishing is tag-gated and carries npm
+  provenance, and the tarball is refused unless every platform pair is present
+  and each binary matches the architecture its directory names. Installing on a
+  platform without a prebuild still falls back to the source build, and CI
+  exercises that fallback as well as the prebuild path.
+
 - Add a structured audit record for every signing decision: `AuditRecord` and
   the `AuditSink` interface, attached with the `WithAudit` option. A record is
   written whether the decision was to sign or to refuse, and an audit write

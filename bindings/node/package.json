@@ -15,18 +15,25 @@
     "index.js",
     "index.d.ts",
     "lib/",
+    "scripts/",
     "src/",
     "binding.gyp",
     "prebuilds/",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=22.12.0"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
     "install": "node scripts/install.mjs",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "prepack": "node scripts/stage-license.mjs",
+    "verify:prebuilds": "node scripts/verify-prebuilds.mjs"
   },
   "devDependencies": {
     "node-gyp": "^13.1.0"

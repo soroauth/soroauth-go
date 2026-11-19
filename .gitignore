@@ -14,6 +14,13 @@
 node_modules/
 .tools/
 
+# Node binding build output and pack-time staging. prebuilds/ is produced by
+# scripts/build.mjs (or unpacked from a CI artifact), and LICENSE is copied into
+# the package root by `prepack` so the published tarball carries it.
+bindings/node/prebuilds/
+bindings/node/LICENSE
+bindings/node/*.tgz
+
 # Rust (e2e test contract)
 target/
 
