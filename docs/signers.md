@@ -253,12 +253,12 @@ type VersionedSigner interface {
 }
 ```
 
-`AuthorizeAll` calls `KeyVersion()` after each `Sign` and tracks the version
-per address. If a second entry for the same address arrives with a different
-version, the whole batch is refused with `ErrSignerRotation` and no entries
-are written. The `SignerRotationError` struct carries the address, both entry
-indices, and both versions so an operator can pinpoint exactly when the
-rotation occurred.
+`AuthorizeAll` calls `KeyVersion()` after each `Sign` and tracks the version per
+address. If a second entry for the same address arrives with a different
+version, the whole batch is refused with `ErrSignerRotation` and no entries are
+written. The `SignerRotationError` struct carries the address, both entry
+indices, and both versions so an operator can pinpoint exactly when the rotation
+occurred.
 
 ### What rotation means for already-signed entries
 
@@ -266,9 +266,9 @@ An entry that was signed before a rotation carries a valid signature under the
 old key. If the account's authorized signers still include the old key (Stellar
 classic accounts track signers by public key; some KMS adapters expose the
 public key as the version), the entry is still valid and can be submitted
-separately. If the old key was removed from the account as part of the
-rotation, the entry is no longer valid, and any in-flight batch that contains
-it will fail on-chain.
+separately. If the old key was removed from the account as part of the rotation,
+the entry is no longer valid, and any in-flight batch that contains it will fail
+on-chain.
 
 **A rotation does not silently make an already-signed entry invalid.** The
 entry's signature is computed from the account's state at sign time, and the
@@ -284,12 +284,12 @@ detected and the batch is rebuilt rather than submitted with mixed signatures.
 
 ### For classic Stellar accounts
 
-A classic account's signing keys are part of the account itself. Rotating a
-key means adding the new public key as an authorized signer and removing the
-old one — or adjusting its weight. Any entry already signed with the old key
-carries the old key's public key in the signature vector, which the host
-verifies against the current account state. If the old key's weight is now
-zero or the key is gone, the entry fails.
+A classic account's signing keys are part of the account itself. Rotating a key
+means adding the new public key as an authorized signer and removing the old one
+— or adjusting its weight. Any entry already signed with the old key carries the
+old key's public key in the signature vector, which the host verifies against
+the current account state. If the old key's weight is now zero or the key is
+gone, the entry fails.
 
 **Key rotation on a classic account changes who can authorize it.** State that
 consequence clearly in any operator documentation for your deployment: an entry
@@ -303,10 +303,10 @@ An AWS KMS signer can return the key ARN including the version suffix as the
 including the version component. `KeyVersion` must return the version that
 produced the most recent signature, not the version the alias currently points
 at: the version may change between the time `Sign` returns and the time
-`KeyVersion` is called if the caller races a rotation, but the return value
-must reflect what was used, not what would be used next.
+`KeyVersion` is called if the caller races a rotation, but the return value must
+reflect what was used, not what would be used next.
 
-Adapters that do not know their key version at construction time should return
-a stable identifier (such as the key ARN without version) and not implement
+Adapters that do not know their key version at construction time should return a
+stable identifier (such as the key ARN without version) and not implement
 `VersionedSigner` at all; `AuthorizeAll` only checks for rotation when the
 interface is present.
