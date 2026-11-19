@@ -123,6 +123,12 @@ func TestHealthz(t *testing.T) {
 	if body["status"] != "ok" {
 		t.Errorf("healthz status = %q, want ok", body["status"])
 	}
+	if body["version"] == "" {
+		t.Error("healthz response missing version field")
+	}
+	if body["commit"] == "" {
+		t.Error("healthz response missing commit field")
+	}
 }
 
 func TestVerifyRejectsTheWrongMethod(t *testing.T) {

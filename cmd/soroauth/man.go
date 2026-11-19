@@ -16,6 +16,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	soroauth "github.com/soroauth/soroauth-go"
 )
 
 const manUsage = `soroauth man — emit a roff man page for this CLI.
@@ -99,7 +101,7 @@ func runMan(args []string, stdout, stderr io.Writer) error {
 func manPage() string {
 	var b strings.Builder
 
-	b.WriteString(`.TH SOROAUTH 1 "" "soroauth ` + roffField(version) + `" "User Commands"` + "\n")
+	b.WriteString(`.TH SOROAUTH 1 "" "soroauth ` + roffField(soroauth.Version) + `" "User Commands"` + "\n")
 	b.WriteString(".SH NAME\n")
 	b.WriteString("soroauth \\- build, sign and inspect Soroban authorization entries\n")
 

@@ -29,10 +29,14 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	soroauth "github.com/soroauth/soroauth-go"
 )
 
-// Version is set at build time via -ldflags.
-var Version = "dev"
+// Commit is the git commit hash this binary was built from, set at build time
+// via -ldflags "-X main.Commit=<sha>". It identifies the exact build so an
+// operator can reproduce or bisect a deployed service.
+var Commit = "unknown"
 
 // Defaults for every configurable bound. They are documented in
 // docs/verification-service.md, which is the contract an operator reads.
@@ -228,7 +232,7 @@ func intEnv(getenv func(string) string, key string, fallback int) (int, error) {
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "version" {
-		fmt.Printf("soroauth-server %s\n", Version)
+		fmt.Printf("soroauth-server %s (commit: %s)\n", soroauth.Version, Commit)
 		return
 	}
 

@@ -128,7 +128,7 @@ components:
     HealthStatus:
       type: object
       additionalProperties: false
-      required: [status, version]
+      required: [status, version, commit]
       properties:
         status:
           type: string
@@ -136,6 +136,11 @@ components:
         version:
           type: string
           example: v0.1.0
+          description: The library's release tag (soroauth.Version).
+        commit:
+          type: string
+          example: abc1234
+          description: The git commit hash this binary was built from.
     VerifyRequest:
       type: object
       additionalProperties: false

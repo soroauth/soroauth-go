@@ -10,6 +10,26 @@ this project adheres to
 
 ### Added
 
+- Add typed constants for the three authorized function types, with
+  round-tripping to and from the SDK's enum, so callers can branch on a function
+  type without reaching into the generated XDR names. An unrecognised value
+  returns the existing unsupported-function-type error rather than a zero value.
+  (#674)
+
+- Add `IsFullySigned`, which reports whether every node of an entry that needs a
+  signature has one, at every delegate depth. A source-account entry is reported
+  as not requiring a signature rather than as unsigned, and an empty `ScvVec`
+  counts as unsigned, matching `Inspect`. (#675)
+
+- Expose the library version from Go code as `Version`, so a consumer importing
+  the package can report it without build-time flags. The release workflow
+  stamps that symbol instead of `main.version`, and the CLI reports the same
+  value. (#676)
+
+- The verification service's health response now reports the library version and
+  build commit, so an operator can tell what is actually running rather than
+  inferring it from the deployed image tag. (#677)
+
 - Add `make ci-local`, which runs everything CI runs, in CI's order, with the
   commands CI uses. `scripts/cilocal` reads the `run:` steps out of
   `.github/workflows/*.yml` and executes them as written under bash, from each
