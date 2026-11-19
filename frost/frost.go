@@ -25,11 +25,13 @@
 package frost
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/bytemare/frost"
@@ -51,22 +53,32 @@ const DefaultCiphersuite = frost.Ed25519
 //
 // The coordinator does NOT hold any secret key material.
 type FROSTCoordinator struct {
-	cfg       *frost.Configuration
-	threshold uint16
-	address   string // G... account address the group signs for
-	mu        sync.Mutex
-	sessions  map[int64]*frostSigningSession
-	roundGen  func() (int64, error)
+	cfg             *frost.Configuration
+	threshold       uint16
+	address         string // G... account address the group signs for
+	mu              sync.Mutex
+	sessions        map[int64]*frostSigningSession
+	roundGen        func() (int64, error)
+	publicKeyShares map[uint16][]byte // participant ID -> raw 32-byte public key share
 }
 
 // frostSigningSession holds the state of an active signing round.
 type frostSigningSession struct {
-	round       int64
-	commitments frost.CommitmentList
-	message     [32]byte
-	sigShares   []*frost.SignatureShare
-	complete    bool
-	signature   []byte
+	round          int64
+	commitments    frost.CommitmentList
+	commitmentByID map[uint16]*frost.Commitment
+	message        [32]byte
+	sigShares      []*frost.SignatureShare
+	shareByID      map[uint16]*frost.SignatureShare
+	complete       bool
+	signature      []byte
+
+	// abort is the first attributable failure in the round. Once set, the
+	// round cannot complete: the commitments and shares collected before the
+	// failure were computed for a participant set that included the faulty
+	// contribution, so continuing would produce a signature the group key
+	// does not verify. The caller restarts without the named participant.
+	abort *ContributionError
 }
 
 // NewFROSTCoordinator creates a coordinator for a threshold signing group.
@@ -76,6 +88,34 @@ type frostSigningSession struct {
 // The threshold is the minimum number of participants required to sign.
 // The address is the G... account address the group signs for.
 func NewFROSTCoordinator(verificationKey []byte, publicKeyShares [][]byte, threshold, maxSigners int, address string) (*FROSTCoordinator, error) {
+	if _, err := strkey.Decode(strkey.VersionByteAccountID, address); err != nil {
+		return nil, fmt.Errorf("frost: invalid address %q: %w", address, err)
+	}
+
+	cfg, err := newFrostConfiguration(verificationKey, publicKeyShares, threshold, maxSigners)
+	if err != nil {
+		return nil, err
+	}
+
+	shares := make(map[uint16][]byte, len(publicKeyShares))
+	for i, share := range publicKeyShares {
+		shares[uint16(i+1)] = append([]byte(nil), share...)
+	}
+
+	return &FROSTCoordinator{
+		cfg:             cfg,
+		threshold:       uint16(threshold),
+		address:         address,
+		sessions:        make(map[int64]*frostSigningSession),
+		roundGen:        defaultRoundGen,
+		publicKeyShares: shares,
+	}, nil
+}
+
+// newFrostConfiguration builds and initializes the FROST configuration. It is
+// shared by the coordinator and by VerifyAbortEvidence, so a third party
+// checking evidence rebuilds exactly the configuration the round used.
+func newFrostConfiguration(verificationKey []byte, publicKeyShares [][]byte, threshold, maxSigners int) (*frost.Configuration, error) {
 	if len(verificationKey) != ed25519.PublicKeySize {
 		return nil, fmt.Errorf("frost: verification key must be %d bytes, got %d", ed25519.PublicKeySize, len(verificationKey))
 	}
@@ -84,9 +124,6 @@ func NewFROSTCoordinator(verificationKey []byte, publicKeyShares [][]byte, thres
 	}
 	if len(publicKeyShares) != maxSigners {
 		return nil, fmt.Errorf("frost: expected %d public key shares, got %d", maxSigners, len(publicKeyShares))
-	}
-	if _, err := strkey.Decode(strkey.VersionByteAccountID, address); err != nil {
-		return nil, fmt.Errorf("frost: invalid address %q: %w", address, err)
 	}
 
 	group := DefaultCiphersuite.Group()
@@ -122,13 +159,7 @@ func NewFROSTCoordinator(verificationKey []byte, publicKeyShares [][]byte, thres
 		return nil, fmt.Errorf("frost: init configuration: %w", err)
 	}
 
-	return &FROSTCoordinator{
-		cfg:       cfg,
-		threshold: uint16(threshold),
-		address:   address,
-		sessions:  make(map[int64]*frostSigningSession),
-		roundGen:  defaultRoundGen,
-	}, nil
+	return cfg, nil
 }
 
 // defaultRoundGen generates a cryptographically random round ID.
@@ -159,19 +190,33 @@ func (c *FROSTCoordinator) Begin(ctx context.Context, payload [32]byte) (int64, 
 	defer c.mu.Unlock()
 
 	c.sessions[round] = &frostSigningSession{
-		round:       round,
-		commitments: make(frost.CommitmentList, 0, c.threshold),
-		message:     payload,
-		sigShares:   make([]*frost.SignatureShare, 0, c.threshold),
+		round:          round,
+		commitments:    make(frost.CommitmentList, 0, c.threshold),
+		commitmentByID: make(map[uint16]*frost.Commitment, c.threshold),
+		message:        payload,
+		sigShares:      make([]*frost.SignatureShare, 0, c.threshold),
+		shareByID:      make(map[uint16]*frost.SignatureShare, c.threshold),
 	}
 
 	return round, nil
 }
 
 // AddCommitment adds a participant's commitment to the round.
-// This is called by each participant (via FROSTParticipant.Commit()).
-// Returns an error if the round doesn't exist or the commitment is invalid.
-func (c *FROSTCoordinator) AddCommitment(ctx context.Context, round int64, commitment *frost.Commitment) error {
+//
+// senderID is the participant identifier the transport authenticated for this
+// message. It is not read from commitment.SignerID: a contribution's own
+// claim about who sent it is untrusted input. A commitment whose embedded
+// identifier differs from senderID is rejected and attributed to senderID, so
+// one participant cannot make another look faulty by crafting a commitment
+// that names them (RFC 9591 §5.1 fixes only the encoding of the commitment,
+// not who is allowed to send which identifier).
+//
+// A rejected contribution returns a *ContributionError wrapping
+// ErrContributionInvalid, and the round is aborted: continuing would build an
+// aggregate signature over a participant set no honest party agreed to.
+// A transport failure or a timeout is never reported as an accusation; those
+// return the context error unchanged.
+func (c *FROSTCoordinator) AddCommitment(ctx context.Context, round int64, senderID uint16, commitment *frost.Commitment) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("frost: add commitment: %w", err)
 	}
@@ -183,14 +228,43 @@ func (c *FROSTCoordinator) AddCommitment(ctx context.Context, round int64, commi
 	if !ok {
 		return fmt.Errorf("frost: round %d not found", round)
 	}
+	if session.abort != nil {
+		return session.abort
+	}
 	if session.complete {
 		return fmt.Errorf("frost: round %d already complete", round)
 	}
+	if _, ok := c.publicKeyShares[senderID]; !ok {
+		return fmt.Errorf("frost: add commitment: sender %d is not a participant in this group: %w",
+			senderID, ErrParticipantUnavailable)
+	}
+
+	if commitment == nil {
+		return c.rejectContribution(session, senderID, 0,
+			AbortReasonCommitmentInvalid, nil)
+	}
+	if commitment.SignerID != senderID {
+		return c.rejectContribution(session, senderID, commitment.SignerID,
+			AbortReasonIdentifierMismatch, encodeCommitmentForEvidence(commitment))
+	}
+
+	if existing, ok := session.commitmentByID[senderID]; ok {
+		// An identical retransmission is harmless and is acknowledged. A
+		// different commitment for the same sender is a protocol violation.
+		if bytes.Equal(encodeCommitmentForEvidence(existing), encodeCommitmentForEvidence(commitment)) {
+			return nil
+		}
+		return c.rejectDuplicateContribution(session, senderID,
+			encodeCommitmentForEvidence(existing), encodeCommitmentForEvidence(commitment))
+	}
+
 	if err := c.cfg.ValidateCommitment(commitment); err != nil {
-		return fmt.Errorf("frost: invalid commitment: %w", err)
+		return c.rejectContribution(session, senderID, senderID,
+			AbortReasonCommitmentInvalid, encodeCommitmentForEvidence(commitment))
 	}
 
 	session.commitments = append(session.commitments, commitment)
+	session.commitmentByID[senderID] = commitment
 	return nil
 }
 
@@ -204,20 +278,35 @@ func (c *FROSTCoordinator) GetCommitments(round int64) (frost.CommitmentList, er
 	if !ok {
 		return nil, fmt.Errorf("frost: round %d not found", round)
 	}
+	if session.abort != nil {
+		return nil, session.abort
+	}
 	if len(session.commitments) < int(c.threshold) {
-		return nil, fmt.Errorf("frost: insufficient commitments (%d/%d)", len(session.commitments), c.threshold)
+		return nil, &UnavailableError{
+			Need:    int(c.threshold),
+			Have:    len(session.commitments),
+			Missing: c.missingCommitmentIDs(session),
+		}
 	}
 
-	// Return a sorted copy
-	commitments := make(frost.CommitmentList, len(session.commitments))
-	copy(commitments, session.commitments)
-	commitments.Sort()
-	return commitments, nil
+	return c.sortedCommitments(session), nil
 }
 
 // AddSignatureShare adds a participant's signature share to the round.
 // If the threshold is met, it aggregates the shares into the final signature.
-func (c *FROSTCoordinator) AddSignatureShare(ctx context.Context, round int64, share *frost.SignatureShare) ([]byte, error) {
+//
+// senderID is the transport-authenticated sender. As with AddCommitment, the
+// share's own SignerIdentifier is untrusted: if it differs from senderID the
+// contribution is rejected and attributed to senderID. Verifying the share
+// against the identifier it claims would let a participant send a deliberately
+// bad share labelled with another participant's identifier and have the round
+// blame the victim; this function never does that.
+//
+// A failing share is a *ContributionError whose Evidence re-checks with
+// VerifyAbortEvidence using only public group data. A round that is merely
+// short of contributions returns *UnavailableError, and a cancelled context
+// returns the context error — neither is an accusation.
+func (c *FROSTCoordinator) AddSignatureShare(ctx context.Context, round int64, senderID uint16, share *frost.SignatureShare) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("frost: add signature share: %w", err)
 	}
@@ -229,24 +318,63 @@ func (c *FROSTCoordinator) AddSignatureShare(ctx context.Context, round int64, s
 	if !ok {
 		return nil, fmt.Errorf("frost: round %d not found", round)
 	}
+	if session.abort != nil {
+		return nil, session.abort
+	}
 	if session.complete {
 		return session.signature, nil
 	}
+	if _, ok := c.publicKeyShares[senderID]; !ok {
+		return nil, fmt.Errorf("frost: add signature share: sender %d is not a participant in this group: %w",
+			senderID, ErrParticipantUnavailable)
+	}
 
-	// Verify the signature share
-	commitments := make(frost.CommitmentList, len(session.commitments))
-	copy(commitments, session.commitments)
-	commitments.Sort()
+	if share == nil || share.SignatureShare == nil {
+		return nil, c.rejectContribution(session, senderID, 0,
+			AbortReasonSignatureShareInvalid, nil)
+	}
+	if share.SignerIdentifier != senderID {
+		return nil, c.rejectContribution(session, senderID, share.SignerIdentifier,
+			AbortReasonIdentifierMismatch, encodeShareForEvidence(share))
+	}
+	if session.commitmentByID[senderID] == nil {
+		return nil, c.rejectContribution(session, senderID, 0,
+			AbortReasonCommitmentMissing, encodeShareForEvidence(share))
+	}
 
+	if existing, ok := session.shareByID[senderID]; ok {
+		if bytes.Equal(existing.Encode(), share.Encode()) {
+			return session.signature, nil
+		}
+		return nil, c.rejectDuplicateContribution(session, senderID,
+			existing.Encode(), encodeShareForEvidence(share))
+	}
+
+	if len(session.commitments) < int(c.threshold) {
+		return nil, &UnavailableError{
+			Need:    int(c.threshold),
+			Have:    len(session.commitments),
+			Missing: c.missingCommitmentIDs(session),
+		}
+	}
+
+	commitments := c.sortedCommitments(session)
 	if err := c.cfg.VerifySignatureShare(share, session.message[:], commitments); err != nil {
-		return nil, fmt.Errorf("frost: invalid signature share: %w", err)
+		return nil, c.rejectContribution(session, senderID, senderID,
+			AbortReasonSignatureShareInvalid, encodeShareForEvidence(share))
 	}
 
 	session.sigShares = append(session.sigShares, share)
+	session.shareByID[senderID] = share
 
 	if len(session.sigShares) >= int(c.threshold) {
-		// Aggregate the signature shares
-		sig, err := c.cfg.AggregateSignatures(session.message[:], session.sigShares[:c.threshold], commitments, true)
+		shares := append([]*frost.SignatureShare(nil), session.sigShares...)
+		sort.Slice(shares, func(i, j int) bool {
+			return shares[i].SignerIdentifier < shares[j].SignerIdentifier
+		})
+
+		// Aggregate the signature shares.
+		sig, err := c.cfg.AggregateSignatures(session.message[:], shares[:c.threshold], commitments, true)
 		if err != nil {
 			return nil, fmt.Errorf("frost: aggregate signatures: %w", err)
 		}
@@ -267,6 +395,91 @@ func (c *FROSTCoordinator) AddSignatureShare(ctx context.Context, round int64, s
 	return nil, nil
 }
 
+// rejectContribution builds the accusation for the authenticated sender,
+// records it as the round's abort, and returns it. The caller holds c.mu.
+func (c *FROSTCoordinator) rejectContribution(session *frostSigningSession, senderID, claimedID uint16,
+	reason AbortReason, contribution []byte) error {
+	err := c.newContributionError(session, senderID, claimedID, reason, contribution)
+	session.abort = err
+	return err
+}
+
+// rejectDuplicateContribution records a conflicting duplicate and includes
+// both values in the evidence, so a verifier can confirm that they disagree
+// rather than taking the coordinator's word for it. The caller holds c.mu.
+func (c *FROSTCoordinator) rejectDuplicateContribution(session *frostSigningSession,
+	senderID uint16, prior, contribution []byte) error {
+	err := c.newContributionError(session, senderID, senderID,
+		AbortReasonDuplicateContribution, contribution)
+	err.Evidence.PriorContribution = append([]byte(nil), prior...)
+	session.abort = err
+	return err
+}
+
+// newContributionError snapshots the public state a verifier needs. It holds
+// no secret: every field is either public group data or bytes that were sent
+// over the wire.
+func (c *FROSTCoordinator) newContributionError(session *frostSigningSession, senderID, claimedID uint16,
+	reason AbortReason, contribution []byte) *ContributionError {
+	commitments := make([][]byte, 0, len(session.commitments))
+	for _, commitment := range c.sortedCommitments(session) {
+		if encoded := encodeCommitmentForEvidence(commitment); encoded != nil {
+			commitments = append(commitments, encoded)
+		}
+	}
+
+	return &ContributionError{
+		Participant: senderID,
+		Reason:      reason,
+		Evidence: &AbortEvidence{
+			Version:            AbortEvidenceVersion,
+			Round:              session.round,
+			Participant:        senderID,
+			ClaimedParticipant: claimedID,
+			Reason:             reason,
+			Payload:            append([]byte(nil), session.message[:]...),
+			Contribution:       append([]byte(nil), contribution...),
+			Commitments:        commitments,
+			PublicKeyShare:     append([]byte(nil), c.publicKeyShares[senderID]...),
+		},
+	}
+}
+
+// sortedCommitments returns a sorted copy of the round's commitments, leaving
+// the session's slice untouched.
+func (c *FROSTCoordinator) sortedCommitments(session *frostSigningSession) frost.CommitmentList {
+	commitments := make(frost.CommitmentList, len(session.commitments))
+	copy(commitments, session.commitments)
+	commitments.Sort()
+	return commitments
+}
+
+// missingCommitmentIDs lists the registered participants that have not yet
+// contributed a commitment, ascending.
+func (c *FROSTCoordinator) missingCommitmentIDs(session *frostSigningSession) []uint16 {
+	var missing []uint16
+	for id := range c.publicKeyShares {
+		if session.commitmentByID[id] == nil {
+			missing = append(missing, id)
+		}
+	}
+	sort.Slice(missing, func(i, j int) bool { return missing[i] < missing[j] })
+	return missing
+}
+
+// missingShareIDs lists the registered participants that have not yet
+// contributed a signature share, ascending.
+func (c *FROSTCoordinator) missingShareIDs(session *frostSigningSession) []uint16 {
+	var missing []uint16
+	for id := range c.publicKeyShares {
+		if session.shareByID[id] == nil {
+			missing = append(missing, id)
+		}
+	}
+	sort.Slice(missing, func(i, j int) bool { return missing[i] < missing[j] })
+	return missing
+}
+
 // GetSignature returns the aggregated signature for a completed round.
 func (c *FROSTCoordinator) GetSignature(round int64) ([]byte, error) {
 	c.mu.Lock()
@@ -276,8 +489,15 @@ func (c *FROSTCoordinator) GetSignature(round int64) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("frost: round %d not found", round)
 	}
+	if session.abort != nil {
+		return nil, session.abort
+	}
 	if !session.complete {
-		return nil, fmt.Errorf("frost: round %d not complete", round)
+		return nil, &UnavailableError{
+			Need:    int(c.threshold),
+			Have:    len(session.sigShares),
+			Missing: c.missingShareIDs(session),
+		}
 	}
 	return session.signature, nil
 }
@@ -291,7 +511,7 @@ func (c *FROSTCoordinator) IsComplete(round int64) bool {
 	if !ok {
 		return false
 	}
-	return session.complete
+	return session.complete && session.abort == nil
 }
 
 // Cleanup removes a round's session data.
@@ -357,7 +577,7 @@ func (p *FROSTParticipant) Commit(ctx context.Context, round int64) (*frost.Comm
 		return nil, fmt.Errorf("frost: commit: %w", err)
 	}
 	commitment := p.signer.Commit()
-	if err := p.coord.AddCommitment(ctx, round, commitment); err != nil {
+	if err := p.coord.AddCommitment(ctx, round, p.id, commitment); err != nil {
 		return nil, err
 	}
 	return commitment, nil
@@ -389,7 +609,7 @@ func (p *FROSTParticipant) Sign(ctx context.Context, round int64) (*frost.Signat
 	}
 
 	// Submit the signature share to the coordinator
-	_, err = p.coord.AddSignatureShare(ctx, round, share)
+	_, err = p.coord.AddSignatureShare(ctx, round, p.id, share)
 	return share, err
 }
 

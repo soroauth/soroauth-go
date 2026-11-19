@@ -10,6 +10,16 @@ this project adheres to
 
 ### Added
 
+- Add identifiable abort to FROST threshold signing: a failed round returns a
+  `*ContributionError` naming the participant whose contribution was invalid,
+  with `AbortEvidence` that `VerifyAbortEvidence` re-checks using only public
+  group data. Missing contributions and timeouts are reported separately as
+  `*UnavailableError` and are never accusations; a cancelled context returns its
+  error unchanged. `AddCommitment` and `AddSignatureShare` now take the
+  transport-authenticated sender ID, so a participant cannot frame another by
+  labeling a crafted contribution with the victim's identifier. This is a
+  breaking signature change for direct callers. (#571)
+
 - Add a structured audit record for every signing decision: `AuditRecord` and
   the `AuditSink` interface, attached with the `WithAudit` option. A record is
   written whether the decision was to sign or to refuse, and an audit write
