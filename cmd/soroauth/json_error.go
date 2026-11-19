@@ -63,6 +63,8 @@ var sentinelJSONErrors = []sentinelJSONError{
 	{soroauth.ErrChainExhausted, "chain_exhausted", "--secret-env", "every signer in the chain failed"},
 	{soroauth.ErrQuorumNotMet, "quorum_not_met", "--secret-env", "signer quorum was not met"},
 	{soroauth.ErrQuorumDisagreement, "quorum_disagreement", "--secret-env", "signers disagree on the signature"},
+	{soroauth.ErrNonceDuplicate, "nonce_duplicate", "--entry", "the same address reuses a nonce within this batch"},
+	{soroauth.ErrSignerRotation, "signer_rotation", "--secret-env", "the signer's key was rotated part-way through the batch"},
 }
 
 func machineError(err error) jsonErrorFields {

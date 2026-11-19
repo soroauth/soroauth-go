@@ -7,7 +7,6 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-
 // AccountPolicy describes the signing requirements that an account contract
 // enforces. EvaluateAccountPolicy checks whether an entry's current signatures
 // satisfy the policy, without connecting to the network.
