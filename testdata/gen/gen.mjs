@@ -252,6 +252,10 @@ const DELEGATE_2 = "soroauth-vector-delegate-2";
 const DELEGATE_3 = "soroauth-vector-delegate-3";
 const DELEGATE_NESTED = "soroauth-vector-delegate-nested-1";
 
+// Contract delegate labels (issue #307).
+const CONTRACT_DELEGATE_1 = "soroauth-vector-contract-delegate-1";
+const CONTRACT_DELEGATE_2 = "soroauth-vector-contract-delegate-2";
+
 // A delegate descriptor, recorded in the vector exactly as written here — in
 // input order, before any sorting. The Go side passes the same unsorted tree to
 // WithDelegates, so the recorded unsigned entry proves both implementations
@@ -259,6 +263,15 @@ const DELEGATE_NESTED = "soroauth-vector-delegate-nested-1";
 const delegate = (label, nested = []) => ({
   label,
   address: keypairFor(label).publicKey(),
+  nested,
+});
+
+// A contract delegate descriptor (issue #307). The address is a C… strkey
+// derived from the label; it is never signed because the contract's __check_auth
+// defines its own verification.
+const contractDelegate = (label, nested = []) => ({
+  label,
+  address: Address.contract(sha256(label)).toString(),
   nested,
 });
 
@@ -676,6 +689,68 @@ const CASES = [
         authV2: true,
       }),
     steps: [{ signerLabel: SIGNER_1, forAddress: null }],
+  },
+  // #307: delegates arm with a single contract (C…) delegate. The contract
+  // cannot be signed here; its node stays scvVoid, which VerifyEntry reports
+  // as cannot_check (not unsigned) because only __check_auth defines validity.
+  {
+    name: "delegates_contract_delegate",
+    networkPassphrase: Networks.TESTNET,
+    entry: () =>
+      unsignedEntry({
+        signerLabel: SIGNER_1,
+        nonce: NONCE_ORDINARY,
+        invocation: invocationWithManyArgTypes(),
+        authV2: true,
+      }),
+    delegates: [contractDelegate(CONTRACT_DELEGATE_1)],
+    // No steps for the contract node — it stays scvVoid.
+    steps: [],
+  },
+  // #307: a G… account delegate with a C… contract nested under it. Exercises
+  // the case where only the contract node is cannot_check and the parent is
+  // signed.
+  {
+    name: "delegates_contract_nested_under_account",
+    networkPassphrase: Networks.TESTNET,
+    entry: () =>
+      unsignedEntry({
+        signerLabel: SIGNER_1,
+        nonce: NONCE_ORDINARY,
+        invocation: invocationWithManyArgTypes(),
+        authV2: true,
+      }),
+    delegates: [delegate(DELEGATE_1, [contractDelegate(CONTRACT_DELEGATE_1)])],
+    steps: [
+      { signerLabel: DELEGATE_1, forAddress: keypairFor(DELEGATE_1).publicKey() },
+      // CONTRACT_DELEGATE_1 nested under DELEGATE_1 stays scvVoid.
+    ],
+  },
+  // #307: a mixed G…/C… level — one account delegate and one contract delegate
+  // at the same nesting depth. Exercises the XDR byte ordering rule: ScAddress
+  // discriminates account (0) before contract (1), so an account address
+  // always sorts before a contract address at the same level, regardless of the
+  // key bytes.
+  {
+    name: "delegates_mixed_account_contract_level",
+    networkPassphrase: Networks.TESTNET,
+    entry: () =>
+      unsignedEntry({
+        signerLabel: SIGNER_1,
+        nonce: NONCE_ORDINARY,
+        invocation: invocationWithManyArgTypes(),
+        authV2: true,
+      }),
+    // Input order is [contract, account] — after sorting the account comes
+    // first because its ScAddress discriminant (0) is less than the contract's (1).
+    delegates: [
+      contractDelegate(CONTRACT_DELEGATE_1),
+      delegate(DELEGATE_1),
+    ],
+    steps: [
+      { signerLabel: DELEGATE_1, forAddress: keypairFor(DELEGATE_1).publicKey() },
+      // CONTRACT_DELEGATE_1 stays scvVoid.
+    ],
   },
 ];
 

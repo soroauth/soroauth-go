@@ -106,6 +106,7 @@
     "ci-adapters.yml/adapter": { "requires": ["go"] },
     "ci-adapters.yml/gcpkms": { "requires": ["go"] },
     "ci-adapters.yml/awskms": { "requires": ["go"] },
+    "ci-adapters.yml/azurekv": { "requires": ["go"] },
 
     "ci-rust.yml/rust": { "requires": ["cargo"] },
     "ci-jvm.yml/jvm": { "requires": ["go", "mvn", "java", "gcc"], "os": ["linux", "darwin"] },

@@ -110,6 +110,9 @@ func TestEveryExportedEntryFunctionPreservesInput(t *testing.T) {
 		"Equal": func(entry xdr.SorobanAuthorizationEntry) {
 			_ = Equal(entry, entry)
 		},
+		"EstimateEntrySignatureDelta": func(entry xdr.SorobanAuthorizationEntry) {
+			_, _ = EstimateEntrySignatureDelta(entry, xdr.ScVal{Type: xdr.ScValTypeScvVoid})
+		},
 	}
 
 	discovered := make(map[string]bool, len(functions))
