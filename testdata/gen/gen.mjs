@@ -247,6 +247,116 @@ const invocationWithMuxedAddressArg = () =>
     subInvocations: [],
   });
 
+// #310: Every ScVal type the XDR codec supports, each at its boundary value
+// (zero, min, max, empty), so the encoder is exercised across all arms rather
+// than just the common i128 transfer path.
+const invocationWithAllScValTypesBoundaries = () =>
+  new xdr.SorobanAuthorizedInvocation({
+    function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
+      new xdr.InvokeContractArgs({
+        contractAddress: contractAddress("soroauth-vector-contract-all-types"),
+        functionName: "all_types",
+        args: [
+          // Bool boundary: false (true is in invocationWithManyArgTypes)
+          xdr.ScVal.scvBool(false),
+          // U32 boundaries: zero and max (2^32 - 1)
+          xdr.ScVal.scvU32(0),
+          xdr.ScVal.scvU32(4294967295),
+          // I32 boundaries: min (-2^31) and max (2^31 - 1)
+          xdr.ScVal.scvI32(-2147483648),
+          xdr.ScVal.scvI32(2147483647),
+          // U64 boundaries: zero and max (2^64 - 1)
+          xdr.ScVal.scvU64(xdr.Uint64(0n)),
+          xdr.ScVal.scvU64(xdr.Uint64(18446744073709551615n)),
+          // I64 boundaries: min (-2^63) and max (2^63 - 1)
+          xdr.ScVal.scvI64(xdr.Int64(-9223372036854775808n)),
+          xdr.ScVal.scvI64(xdr.Int64(9223372036854775807n)),
+          // Timepoint boundaries: zero and max (uint64 range)
+          xdr.ScVal.scvTimepoint(0n),
+          xdr.ScVal.scvTimepoint(18446744073709551615n),
+          // Duration boundaries: zero and max (uint64 range)
+          xdr.ScVal.scvDuration(0n),
+          xdr.ScVal.scvDuration(18446744073709551615n),
+          // U128 boundaries: zero and max (all bits set)
+          xdr.ScVal.scvU128(new xdr.Uint128Parts({ hi: xdr.Uint64(0n), lo: xdr.Uint64(0n) })),
+          xdr.ScVal.scvU128(
+            new xdr.Uint128Parts({
+              hi: xdr.Uint64(18446744073709551615n),
+              lo: xdr.Uint64(18446744073709551615n),
+            }),
+          ),
+          // I128 boundaries: min (-2^127) and max (2^127 - 1)
+          xdr.ScVal.scvI128(
+            new xdr.Int128Parts({ hi: xdr.Int64(-9223372036854775808n), lo: xdr.Uint64(0n) }),
+          ),
+          xdr.ScVal.scvI128(
+            new xdr.Int128Parts({
+              hi: xdr.Int64(9223372036854775807n),
+              lo: xdr.Uint64(18446744073709551615n),
+            }),
+          ),
+          // U256 boundaries: zero and max (all bits set)
+          xdr.ScVal.scvU256(
+            new xdr.Uint256Parts({
+              hiHi: xdr.Uint64(0n),
+              hiLo: xdr.Uint64(0n),
+              loHi: xdr.Uint64(0n),
+              loLo: xdr.Uint64(0n),
+            }),
+          ),
+          xdr.ScVal.scvU256(
+            new xdr.Uint256Parts({
+              hiHi: xdr.Uint64(18446744073709551615n),
+              hiLo: xdr.Uint64(18446744073709551615n),
+              loHi: xdr.Uint64(18446744073709551615n),
+              loLo: xdr.Uint64(18446744073709551615n),
+            }),
+          ),
+          // I256 boundaries: min (-2^255) and max (2^255 - 1)
+          xdr.ScVal.scvI256(
+            new xdr.Int256Parts({
+              hiHi: xdr.Int64(-9223372036854775808n),
+              hiLo: xdr.Uint64(0n),
+              loHi: xdr.Uint64(0n),
+              loLo: xdr.Uint64(0n),
+            }),
+          ),
+          xdr.ScVal.scvI256(
+            new xdr.Int256Parts({
+              hiHi: xdr.Int64(9223372036854775807n),
+              hiLo: xdr.Uint64(18446744073709551615n),
+              loHi: xdr.Uint64(18446744073709551615n),
+              loLo: xdr.Uint64(18446744073709551615n),
+            }),
+          ),
+          // Empty Vec and Map
+          xdr.ScVal.scvVec([]),
+          xdr.ScVal.scvMap([]),
+          // ContractInstance with wasm hash and no storage
+          xdr.ScVal.scvContractInstance(
+            new xdr.ScContractInstance({
+              executable: xdr.ContractExecutable.contractExecutableWasm(
+                sha256("soroauth-vector-wasm-all-types"),
+              ),
+              storage: null,
+            }),
+          ),
+          // LedgerKeyContractInstance: takes no arguments
+          xdr.ScVal.scvLedgerKeyContractInstance(),
+          // LedgerKeyNonce: nonce = 0
+          xdr.ScVal.scvLedgerKeyNonce(
+            new xdr.ScNonceKey({ nonce: xdr.Int64(0n) }),
+          ),
+          // Error: contract error code 1
+          xdr.ScVal.scvError(xdr.ScError.sceContract(1)),
+          // ExecutableTag: wasm
+          xdr.ScVal.scvExecutableTag("wasm"),
+        ],
+      }),
+    ),
+    subInvocations: [],
+  });
+
 const DELEGATE_1 = "soroauth-vector-delegate-1";
 const DELEGATE_2 = "soroauth-vector-delegate-2";
 const DELEGATE_3 = "soroauth-vector-delegate-3";
@@ -673,6 +783,19 @@ const CASES = [
         signerLabel: SIGNER_1,
         nonce: NONCE_ORDINARY,
         invocation: invocationWithMuxedAddressArg(),
+        authV2: true,
+      }),
+    steps: [{ signerLabel: SIGNER_1, forAddress: null }],
+  },
+  // #310: V2 arm, all ScVal types at boundary values (zero / min / max / empty).
+  {
+    name: "v2_all_scval_types_boundaries",
+    networkPassphrase: Networks.TESTNET,
+    entry: () =>
+      unsignedEntry({
+        signerLabel: SIGNER_1,
+        nonce: NONCE_ORDINARY,
+        invocation: invocationWithAllScValTypesBoundaries(),
         authV2: true,
       }),
     steps: [{ signerLabel: SIGNER_1, forAddress: null }],
