@@ -10,6 +10,11 @@ this project adheres to
 
 ### Added
 
+- `GET /healthz` on the verification service now also reports `library_version`
+  and `commit`, read from the build information the Go toolchain embeds, and the
+  OpenAPI document and generated client describe them. No configuration or
+  environment detail is exposed. (#677)
+
 - Add `EntryInfo.SigningStatus`, which reports from `Inspect`'s report whether
   every credential node of an entry, at every delegate depth, is signed
   (`SigningComplete`), some node is not (`SigningIncomplete`), or the entry is a

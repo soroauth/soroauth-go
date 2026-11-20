@@ -121,9 +121,48 @@ func (s *server) healthzHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{
-		"status":  "ok",
-		"version": Version,
+		"status":          "ok",
+		"version":         Version,
+		"library_version": libraryVersion,
+		"commit":          buildCommit,
 	})
+}
+
+// libraryModulePath is the soroauth module, whose version /healthz reports.
+const libraryModulePath = "github.com/soroauth/soroauth-go"
+
+// libraryVersion and buildCommit are what /healthz reports about the running
+// binary, read once from the build information the Go toolchain embeds in
+// every binary rather than from another -ldflags variable: they describe what
+// was actually built, not what a deployment intended to run.
+var libraryVersion, buildCommit = readBuildIdentity()
+
+// readBuildIdentity returns the soroauth module version linked into this
+// binary and the VCS revision it was built from. Each falls back to "unknown",
+// never an empty string, when the toolchain recorded nothing (a build with
+// -buildvcs=false, or one outside a checkout). Only these two values are read:
+// the build settings also carry flags and environment details, and none of
+// those are exposed.
+func readBuildIdentity() (version, commit string) {
+	version, commit = "unknown", "unknown"
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return version, commit
+	}
+	if info.Main.Path == libraryModulePath && info.Main.Version != "" {
+		version = info.Main.Version
+	}
+	for _, dep := range info.Deps {
+		if dep.Path == libraryModulePath && dep.Version != "" {
+			version = dep.Version
+		}
+	}
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs.revision" && setting.Value != "" {
+			commit = setting.Value
+		}
+	}
+	return version, commit
 }
 
 // verifyHandler answers one question about each entry it is handed: do the
