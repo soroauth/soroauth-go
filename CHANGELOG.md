@@ -10,6 +10,11 @@ this project adheres to
 
 ### Added
 
+- Add `EntryInfo.SigningStatus`, which reports from `Inspect`'s report whether
+  every credential node of an entry, at every delegate depth, is signed
+  (`SigningComplete`), some node is not (`SigningIncomplete`), or the entry is a
+  source-account entry that needs no signature (`SigningNotRequired`). (#675)
+
 - Add `FunctionType` with `FunctionContractFn`, `FunctionCreateContractHostFn`
   and `FunctionCreateContractV2HostFn`, plus `FunctionTypeFromXDR` and
   `FunctionType.XDR` to convert to and from the SDK's

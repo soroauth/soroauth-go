@@ -771,3 +771,105 @@ func TestEntryInfoStringDoesNotPanic(t *testing.T) {
 	empty := EntryInfo{}
 	_ = empty.String() // Should not panic
 }
+
+func TestEntryInfoSigningStatus(t *testing.T) {
+	ctx := context.Background()
+	top := testKeypair(t, "soroauth-preimage-signer")
+	sign := func(t *testing.T, entry xdr.SorobanAuthorizationEntry, address string) xdr.SorobanAuthorizationEntry {
+		t.Helper()
+		signed, err := AuthorizeEntry(ctx, entry, NewEd25519Signer(keypairForAddress(t, address)),
+			testValidUntilLedger, network.TestNetworkPassphrase, ForAddress(address))
+		if err != nil {
+			t.Fatalf("signing for %s: %v", address, err)
+		}
+		return signed
+	}
+	status := func(t *testing.T, entry xdr.SorobanAuthorizationEntry) SigningStatus {
+		t.Helper()
+		info, err := Inspect(entry)
+		if err != nil {
+			t.Fatalf("Inspect returned an unexpected error: %v", err)
+		}
+		return info.SigningStatus()
+	}
+
+	t.Run("source account needs no signature", func(t *testing.T) {
+		entry := entryForArm(t, xdr.SorobanCredentialsTypeSorobanCredentialsSourceAccount, 42)
+		if got := status(t, entry); got != SigningNotRequired {
+			t.Errorf("SigningStatus() = %q, want %q", got, SigningNotRequired)
+		}
+	})
+
+	for _, armType := range []xdr.SorobanCredentialsType{
+		xdr.SorobanCredentialsTypeSorobanCredentialsAddress,
+		xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2,
+	} {
+		t.Run(armType.String(), func(t *testing.T) {
+			// entryForArm leaves the signature as an empty ScvVec, which
+			// Inspect counts as unsigned.
+			entry := entryForArm(t, armType, 42)
+			if got := status(t, entry); got != SigningIncomplete {
+				t.Errorf("unsigned (empty ScvVec): SigningStatus() = %q, want %q", got, SigningIncomplete)
+			}
+			voided := entryForArm(t, armType, 42)
+			if voided.Credentials.Address != nil {
+				voided.Credentials.Address.Signature = xdr.ScVal{Type: xdr.ScValTypeScvVoid}
+			} else {
+				voided.Credentials.AddressV2.Signature = xdr.ScVal{Type: xdr.ScValTypeScvVoid}
+			}
+			if got := status(t, voided); got != SigningIncomplete {
+				t.Errorf("unsigned (Void): SigningStatus() = %q, want %q", got, SigningIncomplete)
+			}
+			if got := status(t, sign(t, entry, top.Address())); got != SigningComplete {
+				t.Errorf("signed: SigningStatus() = %q, want %q", got, SigningComplete)
+			}
+		})
+	}
+
+	t.Run("delegates tree", func(t *testing.T) {
+		base := entryForArm(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 42)
+		d1 := testKeypair(t, "soroauth-delegate-1").Address()
+		d2 := testKeypair(t, "soroauth-delegate-2").Address()
+		nested := testKeypair(t, "soroauth-delegate-nested-1").Address()
+		entry, err := WithDelegates(base, testValidUntilLedger, []Delegate{
+			{Address: d1, Nested: []Delegate{{Address: nested}}},
+			{Address: d2},
+		}, nil)
+		if err != nil {
+			t.Fatalf("building the entry: %v", err)
+		}
+
+		if got := status(t, entry); got != SigningIncomplete {
+			t.Errorf("nothing signed: SigningStatus() = %q, want %q", got, SigningIncomplete)
+		}
+
+		// Everything signed except the nested delegate: the top-level node
+		// and both first-level delegates are signed, so only a walk that
+		// reaches the nested level gets this right.
+		partial := sign(t, sign(t, sign(t, entry, top.Address()), d1), d2)
+		if got := status(t, partial); got != SigningIncomplete {
+			t.Errorf("nested delegate unsigned: SigningStatus() = %q, want %q", got, SigningIncomplete)
+		}
+
+		// Every delegate signed but the top-level node left Void.
+		delegatesOnly := sign(t, sign(t, sign(t, entry, d1), d2), nested)
+		if got := status(t, delegatesOnly); got != SigningIncomplete {
+			t.Errorf("top-level node unsigned: SigningStatus() = %q, want %q", got, SigningIncomplete)
+		}
+
+		full := sign(t, partial, nested)
+		if got := status(t, full); got != SigningComplete {
+			t.Errorf("every node signed: SigningStatus() = %q, want %q", got, SigningComplete)
+		}
+	})
+
+	t.Run("unknown credential type fails closed", func(t *testing.T) {
+		info := EntryInfo{CredentialType: "address_v3", TopLevelSigned: true}
+		if got := info.SigningStatus(); got != SigningIncomplete {
+			t.Errorf("SigningStatus() = %q, want %q", got, SigningIncomplete)
+		}
+		if got := (EntryInfo{}).SigningStatus(); got != SigningIncomplete {
+			t.Errorf("zero EntryInfo: SigningStatus() = %q, want %q", got, SigningIncomplete)
+		}
+	})
+}
