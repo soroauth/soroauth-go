@@ -114,7 +114,16 @@ type FindingSeverity string
 
 // HealthStatus defines model for HealthStatus.
 type HealthStatus struct {
-	Status  string `json:"status"`
+	// Commit The VCS revision the running binary was built from, from the build
+	// information the Go toolchain records, or `unknown`.
+	Commit string `json:"commit"`
+
+	// LibraryVersion The soroauth module version linked into the running binary, from the
+	// build information the Go toolchain records, or `unknown`.
+	LibraryVersion string `json:"library_version"`
+	Status         string `json:"status"`
+
+	// Version The service build version stamped at build time (`dev` when none was).
 	Version string `json:"version"`
 }
 

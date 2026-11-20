@@ -258,6 +258,62 @@ func Inspect(entry xdr.SorobanAuthorizationEntry) (EntryInfo, error) {
 	return info, nil
 }
 
+// SigningStatus answers whether an entry still needs a signature. It has three
+// values rather than a bool because a source-account entry is neither signed
+// nor unsigned: the transaction envelope's signature covers it.
+type SigningStatus string
+
+const (
+	// SigningNotRequired is a source-account entry, which carries no
+	// signature of its own.
+	SigningNotRequired SigningStatus = "not_required"
+	// SigningComplete is an address entry whose every credential node is
+	// signed.
+	SigningComplete SigningStatus = "complete"
+	// SigningIncomplete is an address entry with at least one credential node
+	// left unsigned.
+	SigningIncomplete SigningStatus = "incomplete"
+)
+
+// SigningStatus reports whether every credential node of the inspected entry
+// carries a signature: the top-level node and, for the delegates arm, every
+// delegate at every depth. It reads the report Inspect produced rather than
+// re-walking the XDR, so it uses exactly Inspect's definition of signed: Void
+// and an empty ScvVec are unsigned.
+//
+// The check is literal, the same reading RequireAllSigned applies. CAP-71-01
+// lets an account that authenticates only through its delegates leave its
+// top-level node Void, and such an entry reports SigningIncomplete here; this
+// cannot know an account's own policy, only whether every node is signed.
+//
+// A source-account entry reports SigningNotRequired. An EntryInfo that did not
+// come from Inspect and names no known credential type reports
+// SigningIncomplete, failing closed.
+func (i EntryInfo) SigningStatus() SigningStatus {
+	switch i.CredentialType {
+	case CredentialTypeSourceAccount:
+		return SigningNotRequired
+	case CredentialTypeAddress, CredentialTypeAddressV2, CredentialTypeAddressWithDelegates:
+		if i.TopLevelSigned && allNodesSigned(i.Delegates) {
+			return SigningComplete
+		}
+		return SigningIncomplete
+	default:
+		return SigningIncomplete
+	}
+}
+
+// allNodesSigned reports whether every node in a delegate tree, at every
+// depth, is signed. An empty tree has nothing unsigned in it.
+func allNodesSigned(nodes []NodeInfo) bool {
+	for _, node := range nodes {
+		if !node.Signed || !allNodesSigned(node.Nested) {
+			return false
+		}
+	}
+	return true
+}
+
 // String renders the entry info for a terminal, verdict first.
 //
 // The first line answers the reader's immediate question: what credential arm

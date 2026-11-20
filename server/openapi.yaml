@@ -206,14 +206,28 @@ components:
     HealthStatus:
       type: object
       additionalProperties: false
-      required: [status, version]
+      required: [status, version, library_version, commit]
       properties:
         status:
           type: string
           example: ok
         version:
           type: string
+          description: |
+            The service build version stamped at build time (`dev` when none was).
           example: v0.1.0
+        library_version:
+          type: string
+          description: |
+            The soroauth module version linked into the running binary, from the
+            build information the Go toolchain records, or `unknown`.
+          example: v0.1.0
+        commit:
+          type: string
+          description: |
+            The VCS revision the running binary was built from, from the build
+            information the Go toolchain records, or `unknown`.
+          example: 0123456789abcdef0123456789abcdef01234567
     VerifyRequest:
       type: object
       additionalProperties: false

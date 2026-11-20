@@ -16,13 +16,31 @@ type CredentialArm string
 // The four SorobanCredentials arms defined by the protocol: SOURCE_ACCOUNT,
 // ADDRESS (legacy), ADDRESS_V2, and ADDRESS_WITH_DELEGATES. These are the
 // same four values CredentialTypeName reports and Inspect's credential_type
-// field carries.
+// field carries; they are declared from inspect.go's CredentialType constants
+// so the two vocabularies cannot drift apart.
 const (
-	ArmSourceAccount        CredentialArm = "source_account"
-	ArmAddress              CredentialArm = "address"
-	ArmAddressV2            CredentialArm = "address_v2"
-	ArmAddressWithDelegates CredentialArm = "address_with_delegates"
+	ArmSourceAccount        CredentialArm = CredentialTypeSourceAccount
+	ArmAddress              CredentialArm = CredentialTypeAddress
+	ArmAddressV2            CredentialArm = CredentialTypeAddressV2
+	ArmAddressWithDelegates CredentialArm = CredentialTypeAddressWithDelegates
 )
+
+// String returns the arm's stable identifier: the same value Inspect reports
+// in EntryInfo.CredentialType for an entry of this arm (source_account,
+// address, address_v2 or address_with_delegates).
+//
+// The identifiers are stable. Logs, reports and callers match on them, so they
+// change only with a major version.
+//
+// A value that is not one of the four arms renders as unknown("<value>")
+// rather than as itself or as an empty string, so a mistyped or zero arm is
+// visible wherever it is printed and never reads as a real arm.
+func (a CredentialArm) String() string {
+	if behavior, ok := armBehaviors[a]; ok {
+		return behavior.CredentialTypeName()
+	}
+	return fmt.Sprintf("unknown(%q)", string(a))
+}
 
 // ArmBehavior defines the operations that vary by credential arm.
 // All methods are pure functions of the entry and parameters.

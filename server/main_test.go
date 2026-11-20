@@ -123,6 +123,29 @@ func TestHealthz(t *testing.T) {
 	if body["status"] != "ok" {
 		t.Errorf("healthz status = %q, want ok", body["status"])
 	}
+	// The version fields are present and non-empty, and nothing else is
+	// reported alongside them: no configuration, secret or environment detail.
+	for _, field := range []string{"version", "library_version", "commit"} {
+		if value, ok := body[field]; !ok || value == "" {
+			t.Errorf("healthz %s = %q (present: %v), want a non-empty value", field, value, ok)
+		}
+	}
+	if len(body) != 4 {
+		t.Errorf("healthz reported %d fields, want exactly status, version, library_version and commit: %v", len(body), body)
+	}
+}
+
+// TestReadBuildIdentityIsNeverEmpty pins the fallback: a binary with no build
+// information recorded reports "unknown", never an empty string that reads as
+// a bug in the endpoint.
+func TestReadBuildIdentityIsNeverEmpty(t *testing.T) {
+	version, commit := readBuildIdentity()
+	if version == "" || commit == "" {
+		t.Errorf("readBuildIdentity() = (%q, %q), want non-empty values", version, commit)
+	}
+	if libraryVersion != version || buildCommit != commit {
+		t.Errorf("healthz values (%q, %q) differ from readBuildIdentity() (%q, %q)", libraryVersion, buildCommit, version, commit)
+	}
 }
 
 func TestVerifyRejectsTheWrongMethod(t *testing.T) {

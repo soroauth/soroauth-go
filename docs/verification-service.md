@@ -109,7 +109,9 @@ as "public internet, unexamined". What is now safe and what is still not:
   any process environment deserves.
 
 There is no authentication on `/healthz`, so a load balancer's check needs no
-token. It reports liveness and the version only.
+token. It reports liveness and the version only: the stamped service `version`,
+the soroauth `library_version` linked into the binary and the build `commit`,
+the last two read from the build information the Go toolchain embeds.
 
 If signing is ever added to this service, authentication stops being optional:
 the token check and its fail-closed bind already assume that, and the metrics

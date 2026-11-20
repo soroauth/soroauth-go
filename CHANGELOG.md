@@ -10,6 +10,29 @@ this project adheres to
 
 ### Added
 
+- `GET /healthz` on the verification service now also reports `library_version`
+  and `commit`, read from the build information the Go toolchain embeds, and the
+  OpenAPI document and generated client describe them. No configuration or
+  environment detail is exposed. (#677)
+
+- Add `EntryInfo.SigningStatus`, which reports from `Inspect`'s report whether
+  every credential node of an entry, at every delegate depth, is signed
+  (`SigningComplete`), some node is not (`SigningIncomplete`), or the entry is a
+  source-account entry that needs no signature (`SigningNotRequired`). (#675)
+
+- Add `FunctionType` with `FunctionContractFn`, `FunctionCreateContractHostFn`
+  and `FunctionCreateContractV2HostFn`, plus `FunctionTypeFromXDR` and
+  `FunctionType.XDR` to convert to and from the SDK's
+  `SorobanAuthorizedFunctionType`. An unrecognised value returns
+  `ErrUnsupportedFunctionType`, and a test fails if the SDK gains a function
+  type with no constant. (#674)
+
+- Add `CredentialArm.String`, returning the arm's stable identifier, the same
+  value `Inspect` reports as `credential_type`. The arm constants are now
+  declared from the `CredentialType` constants so the two cannot drift, and an
+  unknown arm renders as `unknown("<value>")` rather than an empty string.
+  (#673)
+
 - Add a FROST distributed key generation ceremony in `frost/dkg.go`: every
   participant contributes a VSS commitment and proof of knowledge, verifies
   every peer's contributions, and finishes with exactly the `DKGShare` the FROST
