@@ -60,31 +60,46 @@ func (s *server) riskHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxBodyBytes)
+	requestID := newRequestID()
+	fail := func(entry string, status int, msg string) {
+		if err := s.emitAudit(r.Context(), AuditRecord{
+			RequestID: requestID,
+			Operation: routeRisk,
+			Decision:  AuditDecisionError,
+			EntryHash: entryDigest(entry),
+			Error:     msg,
+		}); err != nil {
+			s.writeError(w, r, http.StatusInternalServerError, "audit record could not be written")
+			return
+		}
+		s.writeError(w, r, status, msg)
+	}
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			s.writeError(w, r, http.StatusRequestEntityTooLarge,
+			fail("", http.StatusRequestEntityTooLarge,
 				fmt.Sprintf("request body exceeds the %d-byte limit", s.cfg.MaxBodyBytes))
 			return
 		}
-		s.writeError(w, r, http.StatusBadRequest, "reading request body: "+err.Error())
+		fail("", http.StatusBadRequest, "reading request body: "+err.Error())
 		return
 	}
 
 	var req riskRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		s.writeError(w, r, http.StatusBadRequest, "parsing JSON: "+err.Error())
+		fail("", http.StatusBadRequest, "parsing JSON: "+err.Error())
 		return
 	}
 	if req.Entry == "" {
-		s.writeError(w, r, http.StatusBadRequest, "entry is required")
+		fail("", http.StatusBadRequest, "entry is required")
 		return
 	}
 
 	input, err := decodeEntryOrEnvelope(req.Entry)
 	if err != nil {
-		s.writeError(w, r, http.StatusBadRequest, err.Error())
+		fail(req.Entry, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -97,7 +112,7 @@ func (s *server) riskHandler(w http.ResponseWriter, r *http.Request) {
 	if input.isEnvelope {
 		entries, err := soroauth.EnvelopeEntries(input.envelope)
 		if err != nil {
-			s.writeError(w, r, http.StatusBadRequest, "envelope has no authorization entries: "+err.Error())
+			fail(req.Entry, http.StatusBadRequest, "envelope has no authorization entries: "+err.Error())
 			return
 		}
 		for _, e := range entries {
@@ -111,12 +126,12 @@ func (s *server) riskHandler(w http.ResponseWriter, r *http.Request) {
 	for _, item := range locatedEntries {
 		info, err := soroauth.Inspect(item.entry)
 		if err != nil {
-			s.writeError(w, r, http.StatusBadRequest, "analysis failed: "+err.Error())
+			fail(req.Entry, http.StatusBadRequest, "analysis failed: "+err.Error())
 			return
 		}
 		findings, err := soroauth.Analyze(item.entry, nil)
 		if err != nil {
-			s.writeError(w, r, http.StatusBadRequest, "analysis failed: "+err.Error())
+			fail(req.Entry, http.StatusBadRequest, "analysis failed: "+err.Error())
 			return
 		}
 		if findings == nil {
@@ -131,6 +146,20 @@ func (s *server) riskHandler(w http.ResponseWriter, r *http.Request) {
 		if input.isEnvelope {
 			report.OperationIndex = item.operationIndex + 1
 			report.EntryIndex = item.entryIndex + 1
+		}
+		if err := s.emitAudit(r.Context(), AuditRecord{
+			RequestID:        requestID,
+			Operation:        routeRisk,
+			Decision:         AuditDecisionReported,
+			EntryHash:        entryDigest(req.Entry),
+			CredentialType:   info.CredentialType,
+			Address:          info.Address,
+			ValidUntilLedger: info.ValidUntilLedger,
+			NodeCount:        1 + countNodes(info.Delegates),
+			Findings:         len(findings),
+		}); err != nil {
+			s.writeError(w, r, http.StatusInternalServerError, "audit record could not be written")
+			return
 		}
 		reports = append(reports, report)
 	}

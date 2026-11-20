@@ -15,6 +15,7 @@
 import { loadCore } from "./core.js";
 import { buildReport } from "./report.js";
 import { confirmReport } from "./overlay.js";
+import { signEntryWithPasskey } from "./signing.js";
 
 /**
  * The gate object the page awaits.
@@ -29,6 +30,43 @@ const explanation = {
     const core = await loadCore();
     const report = buildReport({ core, entryXdr: entry, validUntilLedger, currentLedger });
     return confirmReport({ report });
+  },
+
+  /**
+   * Sign the explained entry with a passkey and return the signed entry.
+   *
+   * The same report is rendered, and the payload hash shown in it is the hash
+   * of the bytes the authenticator is asked to sign. A refusal rejects the
+   * promise and no partial entry is returned. The page supplies the public key
+   * it registered with the account contract; the extension does not store keys.
+   */
+  async sign({
+    entry,
+    validUntilLedger,
+    currentLedger,
+    networkPassphrase,
+    publicKeyHex,
+    forAddress = "",
+    rpId,
+    credentialId,
+    allowCredentials,
+  }) {
+    const core = await loadCore();
+    const report = buildReport({ core, entryXdr: entry, validUntilLedger, currentLedger });
+    const { payloadHex } = core.preimage(entry, validUntilLedger, networkPassphrase);
+    return signEntryWithPasskey({
+      core,
+      entryXdr: entry,
+      validUntilLedger,
+      networkPassphrase,
+      publicKeyHex,
+      expectedPayloadHex: payloadHex,
+      forAddress,
+      rpId,
+      credentialId,
+      allowCredentials,
+      confirm: ({ payloadHex: shown }) => confirmReport({ report, payloadHex: shown }),
+    });
   },
 };
 

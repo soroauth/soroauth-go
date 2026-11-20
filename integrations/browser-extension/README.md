@@ -42,7 +42,35 @@ authorize": a second implementation is a second thing that can be wrong.
 | `src/injected.js` | Runs in the page's world and installs `globalThis.soroauthExplain`.                     |
 | `src/content.js`  | Injects `injected.js` into matching pages.                                              |
 | `src/popup.*`     | Paste an entry, see its structure.                                                      |
+| `src/signing.js`  | Passkey completion: payload-hash match, assertion checks, signature export.             |
 | `test/`           | The logic above, against the real wasm core.                                            |
+
+## Completing the signature
+
+The gate can do more than explain. `globalThis.soroauthExplain.sign({...})`
+renders the same panel with the **full payload SHA-256 that the authenticator
+will sign**, asks for an explicit approval, requests a passkey assertion, and
+returns the signed entry. The page supplies the uncompressed P-256 public key
+it registered with the account contract; the extension stores no keys.
+
+```js
+const { entryB64, payloadHex } = await globalThis.soroauthExplain.sign({
+  entry,                 // unsigned base64 XDR from simulation
+  validUntilLedger,
+  networkPassphrase,
+  publicKeyHex,          // 65-byte uncompressed P-256 key, hex
+  rpId: "localhost",
+  forAddress: "",        // empty means the entry's top-level address
+});
+```
+
+The payload hash is compared before the authenticator is asked and again after
+the assertion returns, so a page cannot swap the entry while the dialog is
+open. The assertion must commit to that payload (challenge binding), assert
+user presence and user verification, and the DER signature is converted to the
+fixed-width low-S `r || s` ScVal by the Go core — the same
+`Secp256r1SignatureScValFromDER` path the library uses. A refusal, a timeout or
+any check failure rejects the promise and no partial entry is returned.
 
 ## The gate
 

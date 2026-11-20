@@ -25,6 +25,7 @@
     "cost-report.yml",
     "reproducible.yml",
     "verify-release.yml",
+    "vulnerability-scan.yml",
     "release.yml"
   ],
   "plumbing": [
@@ -150,6 +151,8 @@
     "reproducible.yml/reproduce": { "skip": "rebuilds a published release and compares it with the checksums attached to that release" },
     "verify-release.yml/verify": { "skip": "verifies the signatures and attestations of a published release with cosign and the GitHub API" },
     "verify-release.yml/self-test": { "skip": "by hand only: keyless-signs a throwaway binary with the workflow's GitHub OIDC identity" },
+
+    "vulnerability-scan.yml/published-artifacts": { "skip": "scans the published image, npm package and Go module, which only exist in their registries; it also files issues through the GitHub API" },
 
     "release.yml/release-preflight": { "skip": "release workflow: runs when a version tag is pushed" },
     "release.yml/golden-drift": { "skip": "release workflow: runs when a version tag is pushed (ci.yml/golden-drift is the same check)" },

@@ -67,6 +67,38 @@ message NodeVerdict {
   string reason = 3;
 }
 
+// SignStreamRequest is one item of a bidirectional signing stream.
+//
+// sequence is chosen by the caller and echoed back untouched, so a caller can
+// correlate a result with the request that produced it even when results
+// complete out of order. The server does not use it for ordering.
+message SignStreamRequest {
+  // The entry to sign. The fields are identical to SignRequest.
+  SignRequest request = 1;
+  // Caller-chosen correlation value, echoed in SignStreamResponse.
+  uint64 sequence = 2;
+}
+
+// SignStreamResponse is the result of one SignStreamRequest.
+//
+// Unlike the unary Sign, a stream is not all-or-nothing: an error is reported
+// against the item that produced it and the stream continues. The failure is
+// in the message, not in the stream status, so one bad entry does not discard
+// the signatures of the others. A stream-level error means the stream itself
+// could not continue (a cancelled context, a transport failure), and the
+// caller must not assume any unreported item succeeded.
+message SignStreamResponse {
+  // The sequence carried by the request this result answers.
+  uint64 sequence = 1;
+  // Exactly one of the two is set.
+  oneof result {
+    // The signed entry, on success.
+    SignResponse signed = 2;
+    // Why this item failed, on failure.
+    string error = 3;
+  }
+}
+
 // VerifyRequest asks the service to check an entry's signatures without
 // submitting anything.
 message VerifyRequest {
@@ -105,4 +137,14 @@ message VerifyResponse {
 service SoroauthService {
   rpc Sign(SignRequest) returns (SignResponse);
   rpc Verify(VerifyRequest) returns (VerifyResponse);
+
+  // SignStream signs a sequence of entries in both directions at once.
+  //
+  // It exists because a caller with ten thousand entries should not pay a
+  // round trip each, and because unary calls force all-or-nothing error
+  // handling that is the wrong shape for a batch. Items are read and results
+  // written concurrently, with a bounded in-flight window so a client cannot
+  // exhaust the server's memory faster than it signs. Per-item failures are
+  // in SignStreamResponse.error and do not abort the stream.
+  rpc SignStream(stream SignStreamRequest) returns (stream SignStreamResponse);
 }

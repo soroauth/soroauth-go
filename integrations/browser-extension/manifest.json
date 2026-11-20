@@ -21,6 +21,7 @@
         "src/injected.js",
         "src/report.js",
         "src/overlay.js",
+        "src/signing.js",
         "vendor/index.js",
         "vendor/soroauth.wasm",
         "vendor/wasm_exec.js"

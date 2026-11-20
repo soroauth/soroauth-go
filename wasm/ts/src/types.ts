@@ -49,6 +49,21 @@ export interface RawEntryResult extends RawEnvelope {
   readonly entryB64?: string;
 }
 
+/** Raw result of `passkeySignature`. */
+export interface RawPasskeySignatureResult extends RawEnvelope {
+  readonly signatureScvalB64?: string;
+}
+
+/** Raw result of `inspect` and `analyze`, both JSON-encoded strings. */
+export interface RawJSONResult extends RawEnvelope {
+  readonly json?: string;
+}
+
+/** Raw result of `renderTree` and `renderInvocations`. */
+export interface RawTreeResult extends RawEnvelope {
+  readonly tree?: string;
+}
+
 /**
  * The bindings the module installs on its global object. Application code
  * should not use these directly; {@link Soroauth} wraps them so a failure is a
@@ -75,6 +90,14 @@ export interface RawBindings {
     seedHex: string,
     forAddress: string,
   ): RawEntryResult;
+  passkeySignature(
+    publicKeyHex: string,
+    signatureDerHex: string,
+  ): RawPasskeySignatureResult;
+  inspect(entryB64: string): RawJSONResult;
+  analyze(entryB64: string, currentLedger: number): RawJSONResult;
+  renderTree(entryB64: string, format: string): RawTreeResult;
+  renderInvocations(entryB64: string): RawTreeResult;
 }
 
 /**

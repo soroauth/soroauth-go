@@ -502,7 +502,15 @@ func TestGeneratedCodeMatchesProto(t *testing.T) {
 		}
 	}
 	for _, name := range rpcRe.FindAllStringSubmatch(schema, -1) {
-		if !strings.Contains(string(rpc), name[1]+"(context.Context") {
+		// Unary methods appear as `Sign(context.Context, …)` in the server
+		// interface and `Sign(ctx context.Context, …)` in the client;
+		// streaming methods take a generated stream type instead of a
+		// context as the first server argument. Accept each shape so the
+		// drift check covers streams too.
+		generated := strings.Contains(string(rpc), name[1]+"(context.Context") ||
+			strings.Contains(string(rpc), name[1]+"(ctx context.Context") ||
+			strings.Contains(string(rpc), name[1]+"(grpc.")
+		if !generated {
 			t.Errorf("rpc %s has no generated method in gen/soroauth_grpc.pb.go; run ./generate.sh", name[1])
 		}
 	}

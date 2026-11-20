@@ -86,6 +86,13 @@ type config struct {
 	// once. A request over the bound is refused with 503 rather than queued.
 	MaxConcurrentRequests int
 
+	// AuditLog is the path of the append-only decision-record file. Empty
+	// disables records.
+	AuditLog string
+	// AuditSink receives one record per decision. main builds it from
+	// AuditLog; tests inject one directly.
+	AuditSink AuditSink
+
 	// Logger receives the structured request log. main sets a JSON handler on
 	// stderr; tests capture it.
 	Logger *slog.Logger
@@ -117,6 +124,7 @@ func loadConfig(getenv func(string) string) (config, error) {
 	cfg.Addr = valueOr(getenv("ADDR"), cfg.Addr)
 	cfg.MetricsAddr = valueOr(getenv("METRICS_ADDR"), cfg.MetricsAddr)
 	cfg.AuthToken = getenv("AUTH_TOKEN")
+	cfg.AuditLog = getenv("AUDIT_LOG")
 
 	var err error
 	if cfg.ReadTimeout, err = durationEnv(getenv, "READ_TIMEOUT", cfg.ReadTimeout); err != nil {
@@ -239,6 +247,16 @@ func main() {
 		os.Exit(1)
 	}
 	cfg.Logger = logger
+
+	if cfg.AuditLog != "" {
+		auditFile, err := os.OpenFile(cfg.AuditLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		if err != nil {
+			logger.Error("opening audit log", "path", cfg.AuditLog, "error", err)
+			os.Exit(1)
+		}
+		defer func() { _ = auditFile.Close() }()
+		cfg.AuditSink = NewJSONAuditSink(auditFile)
+	}
 
 	srv := newServer(cfg)
 

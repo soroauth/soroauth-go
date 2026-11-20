@@ -1,9 +1,11 @@
 package soroauth
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
+	"encoding/asn1"
 	"errors"
 	"math/big"
 	"testing"
@@ -93,5 +95,42 @@ func TestSecp256r1SignatureScValUsesSortedKeysAndFixedEncoding(t *testing.T) {
 	}
 	if len(*entries[0].Val.Bytes) != Secp256r1PublicKeySize || len(*entries[1].Val.Bytes) != Secp256r1SignatureSize {
 		t.Fatalf("map byte lengths = %d, %d, want %d, %d", len(*entries[0].Val.Bytes), len(*entries[1].Val.Bytes), Secp256r1PublicKeySize, Secp256r1SignatureSize)
+	}
+}
+
+func TestSecp256r1SignatureScValFromDERMatchesRawEncoding(t *testing.T) {
+	key := testP256Key(t)
+	payload := sha256.Sum256([]byte("webauthn assertion payload"))
+	raw, err := SignSecp256r1(key, payload)
+	if err != nil {
+		t.Fatalf("signing: %v", err)
+	}
+	r, s, err := ParseSecp256r1Signature(raw)
+	if err != nil {
+		t.Fatalf("parsing the raw signature: %v", err)
+	}
+	der, err := asn1.Marshal(struct{ R, S *big.Int }{r, s})
+	if err != nil {
+		t.Fatalf("encoding DER: %v", err)
+	}
+
+	fromDER, err := Secp256r1SignatureScValFromDER(&key.PublicKey, der)
+	if err != nil {
+		t.Fatalf("converting the DER signature: %v", err)
+	}
+	direct, err := Secp256r1SignatureScVal(&key.PublicKey, raw)
+	if err != nil {
+		t.Fatalf("building the raw signature: %v", err)
+	}
+	fromDERBytes, err := fromDER.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshalling the DER-derived value: %v", err)
+	}
+	directBytes, err := direct.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshalling the raw value: %v", err)
+	}
+	if !bytes.Equal(fromDERBytes, directBytes) {
+		t.Fatal("the DER-derived ScVal differs from the raw encoding")
 	}
 }

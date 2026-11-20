@@ -3,6 +3,8 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"io"
+	"sync"
 
 	"github.com/stellar/go-stellar-sdk/network"
 	"github.com/stellar/go-stellar-sdk/xdr"
@@ -67,26 +69,40 @@ func (s *Server) Sign(ctx context.Context, req *soroauthv1.SignRequest) (*soroau
 	if err := ctx.Err(); err != nil {
 		return nil, status.Error(codes.Canceled, err.Error())
 	}
+	encoded, err := s.signOne(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &soroauthv1.SignResponse{SignedEntry: encoded}, nil
+}
+
+// signOne signs one request and returns the base64 entry or a status error.
+// Both Sign and SignStream use it, so a streamed item and a unary call answer
+// the same way and cannot drift apart.
+func (s *Server) signOne(ctx context.Context, req *soroauthv1.SignRequest) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", status.Error(codes.Canceled, err.Error())
+	}
 	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "request is required")
+		return "", status.Error(codes.InvalidArgument, "request is required")
 	}
 	if len(s.signers) == 0 {
-		return nil, status.Error(codes.FailedPrecondition, "server has no signer")
+		return "", status.Error(codes.FailedPrecondition, "server has no signer")
 	}
 	passphrase, err := resolveNetwork(req.Network)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "network: %v", err)
+		return "", status.Errorf(codes.InvalidArgument, "network: %v", err)
 	}
 
 	entry, err := decodeEntry(req.Entry)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "decoding entry: %v", err)
+		return "", status.Errorf(codes.InvalidArgument, "decoding entry: %v", err)
 	}
 
 	target := req.Address
 	if target == "" {
 		if len(s.signers) != 1 {
-			return nil, status.Error(codes.InvalidArgument, "address is required: the server holds more than one key")
+			return "", status.Error(codes.InvalidArgument, "address is required: the server holds more than one key")
 		}
 		for address := range s.signers {
 			target = address
@@ -94,19 +110,126 @@ func (s *Server) Sign(ctx context.Context, req *soroauthv1.SignRequest) (*soroau
 	}
 	signer, ok := s.signers[target]
 	if !ok {
-		return nil, status.Errorf(codes.InvalidArgument, "this server holds no key for %q", target)
+		return "", status.Errorf(codes.InvalidArgument, "this server holds no key for %q", target)
 	}
 
 	signed, err := soroauth.AuthorizeEntry(ctx, entry, signer, req.ValidUntilLedger, passphrase, soroauth.ForAddress(target))
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "signing entry: %v", err)
+		return "", status.Errorf(codes.InvalidArgument, "signing entry: %v", err)
 	}
 
 	encoded, err := xdr.MarshalBase64(signed)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "encoding the signed entry: %v", err)
+		return "", status.Errorf(codes.Internal, "encoding the signed entry: %v", err)
 	}
-	return &soroauthv1.SignResponse{SignedEntry: encoded}, nil
+	return encoded, nil
+}
+
+// streamInFlight bounds how many items of one stream are being signed at once.
+// The bound is also the capacity of the request and result channels, so reading
+// stops when this many are outstanding: a client that sends faster than the
+// server signs is held by HTTP/2 flow control instead of the server buffering
+// the whole batch in memory.
+const streamInFlight = 16
+
+// SignStream signs a sequence of entries in both directions at once.
+//
+// Items are read and results are written concurrently, with at most
+// streamInFlight outstanding. A failure on one item is reported in that item's
+// SignStreamResponse.error and the stream continues; the all-or-nothing rule
+// of AuthorizeAll is deliberately not the contract here. A nil request is an
+// item failure, not a stream failure, so one malformed item does not discard
+// the signatures already produced.
+//
+// The stream ends when the client closes its send side. A stream-level error
+// means the stream itself could not continue (the caller cancelled, or the
+// transport failed); results already written remain valid, and an item without
+// a result must be treated as not signed.
+func (s *Server) SignStream(stream soroauthv1.SoroauthService_SignStreamServer) error {
+	ctx := stream.Context()
+
+	type job struct {
+		sequence uint64
+		request  *soroauthv1.SignRequest
+	}
+
+	jobs := make(chan job, streamInFlight)
+	type outcome struct {
+		sequence uint64
+		signed   string
+		err      error
+	}
+	results := make(chan outcome, streamInFlight)
+
+	// One reader goroutine so a slow client cannot block the writer, and one
+	// writer (this goroutine) because gRPC's Send is not safe for concurrent
+	// use. Workers only call Sign, never Send.
+	readErr := make(chan error, 1)
+	go func() {
+		defer close(jobs)
+		for {
+			item, err := stream.Recv()
+			if err == io.EOF {
+				readErr <- nil
+				return
+			}
+			if err != nil {
+				readErr <- err
+				return
+			}
+			select {
+			case jobs <- job{sequence: item.GetSequence(), request: item.GetRequest()}:
+			case <-ctx.Done():
+				readErr <- ctx.Err()
+				return
+			}
+		}
+	}()
+
+	var workers sync.WaitGroup
+	for i := 0; i < streamInFlight; i++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for item := range jobs {
+				if err := ctx.Err(); err != nil {
+					results <- outcome{sequence: item.sequence, err: err}
+					continue
+				}
+				signed, err := s.signOne(ctx, item.request)
+				results <- outcome{sequence: item.sequence, signed: signed, err: err}
+			}
+		}()
+	}
+	go func() {
+		workers.Wait()
+		close(results)
+	}()
+
+	for result := range results {
+		response := &soroauthv1.SignStreamResponse{Sequence: result.sequence}
+		if result.err != nil {
+			// Report the message without the transport-code prefix: this is
+			// the item's failure, not the stream's.
+			response.Result = &soroauthv1.SignStreamResponse_Error{Error: status.Convert(result.err).Message()}
+		} else {
+			response.Result = &soroauthv1.SignStreamResponse_Signed{Signed: &soroauthv1.SignResponse{SignedEntry: result.signed}}
+		}
+		if err := stream.Send(response); err != nil {
+			// Let the workers finish into a draining consumer rather than
+			// blocking forever on a stream nobody will read again.
+			go func() {
+				for range results {
+				}
+			}()
+			return err
+		}
+	}
+
+	if err := <-readErr; err != nil {
+		return err
+	}
+	return nil
 }
 
 // Verify checks an entry's signatures without submitting anything.

@@ -93,7 +93,7 @@ function limitsBody(doc) {
  * caller cannot render this report as a safety verdict without deleting the
  * text that says it is not one.
  */
-export function renderReport(report, doc = document) {
+export function renderReport(report, doc = document, options = {}) {
   const root = element(doc, "div", `${PREFIX}__panel`);
   root.setAttribute("role", "dialog");
   root.setAttribute("aria-modal", "true");
@@ -108,6 +108,14 @@ export function renderReport(report, doc = document) {
   root.append(disclaimer);
 
   const summary = element(doc, "dl", `${PREFIX}__summary`);
+  // The payload hash is the value the authenticator will sign. Showing it
+  // next to the explanation is what makes "the entry explained" and "the
+  // bytes signed" the same statement rather than two claims a caller has to
+  // connect. It is a full hash, not a fingerprint abbreviation, so a user can
+  // compare it against the wallet's own display.
+  if (options.payloadHex) {
+    summary.append(...definitionRow(doc, "Payload SHA-256 to sign", options.payloadHex));
+  }
   summary.append(...definitionRow(doc, "Credential arm", report.armLabel));
   if (report.address) summary.append(...definitionRow(doc, "Address", report.address));
   summary.append(
@@ -150,10 +158,10 @@ export function renderReport(report, doc = document) {
  * at all (the page navigated away, the dialog was removed) must treat it as
  * refusal — see `explain-gate.js` in the passkey example, which does.
  */
-export function confirmReport({ report, doc = document, mount = doc.body }) {
+export function confirmReport({ report, payloadHex, doc = document, mount = doc.body }) {
   return new Promise((resolve) => {
     const backdrop = element(doc, "div", `${PREFIX}__backdrop`);
-    const panel = renderReport(report, doc);
+    const panel = renderReport(report, doc, { payloadHex });
 
     const actions = element(doc, "div", `${PREFIX}__actions`);
     const reject = element(doc, "button", `${PREFIX}__reject`);

@@ -167,6 +167,24 @@ func (s *server) verifyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxBodyBytes)
+	requestID := newRequestID()
+	// fail records the rejected request and writes the error response. If the
+	// record cannot be written, the request fails with 500 instead: a decision
+	// the operator cannot audit must not be served as if it happened.
+	fail := func(entry string, status int, msg string) {
+		if err := s.emitAudit(r.Context(), AuditRecord{
+			RequestID: requestID,
+			Operation: routeVerify,
+			Decision:  AuditDecisionError,
+			EntryHash: entryDigest(entry),
+			Error:     msg,
+		}); err != nil {
+			s.writeError(w, r, http.StatusInternalServerError, "audit record could not be written")
+			return
+		}
+		s.writeError(w, r, status, msg)
+	}
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		// An oversize body is reported as 413 rather than 400: the request
@@ -174,32 +192,32 @@ func (s *server) verifyHandler(w http.ResponseWriter, r *http.Request) {
 		// succeed and the caller should know why at a glance.
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			s.writeError(w, r, http.StatusRequestEntityTooLarge,
+			fail("", http.StatusRequestEntityTooLarge,
 				fmt.Sprintf("request body exceeds the %d-byte limit", s.cfg.MaxBodyBytes))
 			return
 		}
-		s.writeError(w, r, http.StatusBadRequest, "reading request body: "+err.Error())
+		fail("", http.StatusBadRequest, "reading request body: "+err.Error())
 		return
 	}
 
 	var req verifyRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		s.writeError(w, r, http.StatusBadRequest, "parsing JSON: "+err.Error())
+		fail("", http.StatusBadRequest, "parsing JSON: "+err.Error())
 		return
 	}
 	if req.Entry == "" {
-		s.writeError(w, r, http.StatusBadRequest, "entry is required")
+		fail("", http.StatusBadRequest, "entry is required")
 		return
 	}
 	passphrase, err := resolveNetwork(req.Network)
 	if err != nil {
-		s.writeError(w, r, http.StatusBadRequest, err.Error())
+		fail(req.Entry, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	input, err := decodeEntryOrEnvelope(req.Entry)
 	if err != nil {
-		s.writeError(w, r, http.StatusBadRequest, err.Error())
+		fail(req.Entry, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -212,7 +230,7 @@ func (s *server) verifyHandler(w http.ResponseWriter, r *http.Request) {
 	if input.isEnvelope {
 		entries, err := soroauth.EnvelopeEntries(input.envelope)
 		if err != nil {
-			s.writeError(w, r, http.StatusBadRequest, "envelope has no authorization entries: "+err.Error())
+			fail(req.Entry, http.StatusBadRequest, "envelope has no authorization entries: "+err.Error())
 			return
 		}
 		for _, e := range entries {
@@ -226,12 +244,12 @@ func (s *server) verifyHandler(w http.ResponseWriter, r *http.Request) {
 	for _, item := range locatedEntries {
 		report, err := soroauth.VerifyEntry(item.entry, passphrase)
 		if err != nil {
-			s.writeError(w, r, http.StatusBadRequest, "verification failed: "+err.Error())
+			fail(req.Entry, http.StatusBadRequest, "verification failed: "+err.Error())
 			return
 		}
 		if req.ValidUntilLedger != 0 && report.ValidUntilLedger != req.ValidUntilLedger {
 			s.metrics.recordRefusal(refusalExpirationMismatch)
-			s.writeError(w, r, http.StatusBadRequest,
+			fail(req.Entry, http.StatusBadRequest,
 				fmt.Sprintf("entry carries expiration %d, but valid_until_ledger says %d",
 					report.ValidUntilLedger, req.ValidUntilLedger))
 			return
@@ -242,6 +260,23 @@ func (s *server) verifyHandler(w http.ResponseWriter, r *http.Request) {
 			out.EntryIndex = item.entryIndex + 1
 		}
 		s.recordVerdicts(report)
+		decision := AuditDecisionRejected
+		if report.Verified() {
+			decision = AuditDecisionVerified
+		}
+		if err := s.emitAudit(r.Context(), AuditRecord{
+			RequestID:        requestID,
+			Operation:        routeVerify,
+			Decision:         decision,
+			EntryHash:        entryDigest(req.Entry),
+			CredentialType:   report.CredentialType,
+			Address:          report.Address,
+			ValidUntilLedger: report.ValidUntilLedger,
+			NodeCount:        len(report.Nodes),
+		}); err != nil {
+			s.writeError(w, r, http.StatusInternalServerError, "audit record could not be written")
+			return
+		}
 		outputs = append(outputs, out)
 	}
 

@@ -98,6 +98,28 @@ export interface Soroauth {
     seedHex: string,
     forAddress?: string,
   ): string;
+
+  /**
+   * Convert a WebAuthn assertion's P-256 key and DER signature into the
+   * signature ScVal a passkey smart account's __check_auth decodes. The
+   * conversion (including low-S normalisation) happens in the Go core, not
+   * here, so the browser and the library cannot disagree about the bytes.
+   * Both arguments are hex.
+   */
+  passkeySignature(publicKeyHex: string, signatureDerHex: string): string;
+
+  /** The structural report for an entry, as soroauth.Inspect returns it. */
+  inspect(entryB64: string): Record<string, unknown>;
+
+  /** The risk analyzer's findings, with currentLedger enabling the
+   * far-future expiration heuristic when non-zero. */
+  analyze(entryB64: string, currentLedger?: number): unknown[];
+
+  /** The ASCII delegate tree. `format` is "ascii"; anything else is refused. */
+  renderTree(entryB64: string, format?: string): string;
+
+  /** The ASCII invocation tree. */
+  renderInvocations(entryB64: string): string;
 }
 
 /** Options for {@link loadSoroauth}. */
@@ -235,6 +257,33 @@ function wrap(raw: RawBindings): Soroauth {
         "authorizeWithSeed",
       );
       return requireField(result.entryB64, "entryB64", "authorizeWithSeed");
+    },
+    passkeySignature(publicKeyHex, signatureDerHex) {
+      const result = unwrap(
+        raw.passkeySignature(publicKeyHex, signatureDerHex),
+        "passkeySignature",
+      );
+      return requireField(
+        result.signatureScvalB64,
+        "signatureScvalB64",
+        "passkeySignature",
+      );
+    },
+    inspect(entryB64) {
+      const result = unwrap(raw.inspect(entryB64), "inspect");
+      return JSON.parse(requireField(result.json, "json", "inspect"));
+    },
+    analyze(entryB64, currentLedger = 0) {
+      const result = unwrap(raw.analyze(entryB64, currentLedger), "analyze");
+      return JSON.parse(requireField(result.json, "json", "analyze"));
+    },
+    renderTree(entryB64, format = "ascii") {
+      const result = unwrap(raw.renderTree(entryB64, format), "renderTree");
+      return requireField(result.tree, "tree", "renderTree");
+    },
+    renderInvocations(entryB64) {
+      const result = unwrap(raw.renderInvocations(entryB64), "renderInvocations");
+      return requireField(result.tree, "tree", "renderInvocations");
     },
   };
 }

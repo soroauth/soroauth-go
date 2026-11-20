@@ -36,6 +36,45 @@ go test ./...   # parity, honesty boundary, deadlines, schema sync
 ./generate.sh   # regenerate gen/ after editing proto/soroauth.proto
 ```
 
+## Streaming batch signing
+
+`SignStream` is a bidirectional stream: the client sends `SignStreamRequest`
+items and receives one `SignStreamResponse` per item. It exists because a
+caller with ten thousand entries should not pay a round trip each, and because
+a unary call forces all-or-nothing error handling that is the wrong shape for a
+batch.
+
+Each request carries a caller-chosen `sequence`, echoed unchanged so results
+can be correlated even though they complete out of order. A failure is reported
+in that item's `error` field and the stream continues; the process does **not**
+apply `AuthorizeAll`'s all-or-nothing rule, and the proto comments say so. The
+server keeps at most 16 items in flight, so HTTP/2 flow control holds a client
+that sends faster than the server signs instead of the server buffering the
+batch in memory.
+
+A stream-level error means the stream itself could not continue — cancellation
+or transport failure. Results already received remain valid; an item without a
+result must be treated as not signed.
+
+```go
+stream, _ := client.SignStream(ctx)
+for i, entry := range entries {
+    _ = stream.Send(&soroauthv1.SignStreamRequest{
+        Sequence: uint64(i),
+        Request: &soroauthv1.SignRequest{
+            Entry: entry, ValidUntilLedger: until, Network: "testnet", Address: address,
+        },
+    })
+}
+_ = stream.CloseSend()
+for {
+    result, err := stream.Recv()
+    if err == io.EOF { break }
+    if err != nil { return err }
+    if result.GetError() != "" { /* this item failed; keep going */ }
+}
+```
+
 ## Authentication
 
 A service that signs needs its authentication story stated, not deferred: this

@@ -42,6 +42,28 @@ body is subject to the same `MAX_BODY_BYTES` cap. It shares the request body cap
 with verification but not its verdicts: a 200 with a critical finding is a
 successful analysis, not a refused request.
 
+## Audit records
+
+`AUDIT_LOG` turns on one record per decision: one for each entry in a `/verify`
+request and one for each entry in a `/risk` request. A malformed request also
+produces a record with decision `error`, so an operator can answer "what did the
+service decide, and when" without reading operational logs, which are for
+running the process rather than for reviewing decisions.
+
+Records are newline-delimited JSON and carry `schema_version`, a UTC timestamp,
+a per-request id, the operation, the decision (`verified`, `rejected`,
+`reported` or `error`), the entry's SHA-256 as `entry_hash`, and the credential
+type, address, expiration, node count, finding count and error message when
+known. They never carry the entry, its signature, a bearer token or a secret
+seed: the record identifies an entry rather than copying everyone's entries.
+
+A write failure fails the request with `500` and an `{"error"}` body. A decision
+that cannot be persisted must not be served as if it happened. The service does
+not rotate, compress or delete the file; retention, rotation and access control
+belong to the operator, and an audit log that grows unbounded is one that gets
+deleted in a hurry. Point `AUDIT_LOG` at a file on storage with the retention
+the deployment's policy requires.
+
 ## Configuration
 
 Every bound has a default an operator does not have to set. Each is read from
@@ -53,6 +75,7 @@ falling back silently.
 | `ADDR`                    | `127.0.0.1:8080`  | API listen address. A non-loopback host requires `AUTH_TOKEN` (see below).                                    |
 | `METRICS_ADDR`            | `127.0.0.1:9090`  | Prometheus listen address. `off`, `none` or `-` disables the metrics server entirely.                         |
 | `AUTH_TOKEN`              | unset             | Bearer token `/verify` requires. Unset means no authentication, which is only allowed on a loopback bind.     |
+| `AUDIT_LOG`               | unset             | Path of the append-only decision record. Unset disables records; an unopenable path refuses to start.           |
 | `READ_TIMEOUT`            | `5s`              | Whole-request read deadline.                                                                                  |
 | `READ_HEADER_TIMEOUT`     | `5s`              | Header read deadline, the classic slowloris bound.                                                            |
 | `WRITE_TIMEOUT`           | `10s`             | Response write deadline.                                                                                      |

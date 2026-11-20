@@ -26,6 +26,7 @@
 // then: `npm test` (which stages the build output into vendor/ first).
 
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -41,6 +42,7 @@ import {
   highestSeverity,
 } from "../src/report.js";
 import { confirmReport, renderReport } from "../src/overlay.js";
+import { signEntryWithPasskey, verifyAssertion } from "../src/signing.js";
 import { requestExplanation } from "../../../examples/browser-passkey/explain-gate.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -322,4 +324,185 @@ test("the example proceeds only on an explicit true from the extension", async (
   globalThis.soroauthExplain = { confirm: async () => true };
   assert.deepEqual(await requestExplanation({}), { approved: true, gate: "extension" });
   delete globalThis.soroauthExplain;
+});
+
+// --- the extension completes a passkey signature ----------------------------
+
+/** buildAssertion builds a WebAuthn assertion over payloadHex with a real P-256 key. */
+function buildAssertion(payloadHex, { flags = 0x05 } = {}) {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync("ec", {
+    namedCurve: "prime256v1",
+  });
+  const spki = publicKey.export({ format: "der", type: "spki" });
+  const publicKeyBytes = spki.subarray(spki.length - 65);
+  assert.equal(publicKeyBytes[0], 0x04, "SPKI ends in an uncompressed P-256 point");
+
+  const clientDataJSON = Buffer.from(
+    JSON.stringify({
+      type: "webauthn.get",
+      challenge: Buffer.from(payloadHex, "hex").toString("base64url"),
+      origin: "http://localhost",
+    }),
+  );
+  const authenticatorData = Buffer.alloc(37);
+  authenticatorData[32] = flags;
+  const signed = Buffer.concat([
+    authenticatorData,
+    crypto.createHash("sha256").update(clientDataJSON).digest(),
+  ]);
+  const signature = crypto.sign("sha256", signed, privateKey);
+  return {
+    publicKeyHex: publicKeyBytes.toString("hex"),
+    assertion: {
+      response: {
+        clientDataJSON,
+        authenticatorData,
+        signature,
+      },
+    },
+  };
+}
+
+test("the extension signs an explained entry with a passkey", { skip }, async () => {
+  const soroauth = await core();
+  const v = vector("v2_single_testnet.json");
+  const { payloadHex } = soroauth.preimage(
+    v.unsigned_entry_xdr,
+    v.valid_until_ledger,
+    v.network_passphrase,
+  );
+  const { publicKeyHex, assertion } = buildAssertion(payloadHex);
+
+  let gets = 0;
+  const result = await signEntryWithPasskey({
+    core: soroauth,
+    entryXdr: v.unsigned_entry_xdr,
+    validUntilLedger: v.valid_until_ledger,
+    networkPassphrase: v.network_passphrase,
+    publicKeyHex,
+    expectedPayloadHex: payloadHex,
+    credentials: {
+      get: async (options) => {
+        gets += 1;
+        assert.ok(options.publicKey.challenge instanceof Uint8Array);
+        assert.equal(
+          Buffer.from(options.publicKey.challenge).toString("hex"),
+          payloadHex,
+          "the challenge is the payload the user was shown",
+        );
+        return assertion;
+      },
+    },
+  });
+
+  assert.equal(gets, 1);
+  assert.equal(result.payloadHex, payloadHex);
+  assert.equal(result.signatureScvalB64.length > 0, true);
+  assert.notEqual(result.entryB64, v.unsigned_entry_xdr);
+});
+
+test("a payload that changed after explanation is never signed", { skip }, async () => {
+  const soroauth = await core();
+  const v = vector("v2_single_testnet.json");
+  const { publicKeyHex } = buildAssertion("00".repeat(32));
+  let gets = 0;
+
+  await assert.rejects(
+    signEntryWithPasskey({
+      core: soroauth,
+      entryXdr: v.unsigned_entry_xdr,
+      validUntilLedger: v.valid_until_ledger,
+      networkPassphrase: v.network_passphrase,
+      publicKeyHex,
+      expectedPayloadHex: "00".repeat(32),
+      credentials: {
+        get: async () => {
+          gets += 1;
+          throw new Error("must not be called");
+        },
+      },
+    }),
+    /changed between explanation and signing/,
+  );
+  assert.equal(gets, 0, "the authenticator is never asked for a changed payload");
+});
+
+test("an authenticator refusal returns no entry", { skip }, async () => {
+  const soroauth = await core();
+  const v = vector("v2_single_testnet.json");
+  const { payloadHex } = soroauth.preimage(
+    v.unsigned_entry_xdr,
+    v.valid_until_ledger,
+    v.network_passphrase,
+  );
+  const { publicKeyHex } = buildAssertion(payloadHex);
+
+  await assert.rejects(
+    signEntryWithPasskey({
+      core: soroauth,
+      entryXdr: v.unsigned_entry_xdr,
+      validUntilLedger: v.valid_until_ledger,
+      networkPassphrase: v.network_passphrase,
+      publicKeyHex,
+      expectedPayloadHex: payloadHex,
+      credentials: {
+        get: async () => {
+          throw new Error("NotAllowedError: the user refused");
+        },
+      },
+    }),
+    /user refused/,
+  );
+});
+
+test("an assertion without user verification is refused", { skip }, async () => {
+  const soroauth = await core();
+  const v = vector("v2_single_testnet.json");
+  const { payloadHex } = soroauth.preimage(
+    v.unsigned_entry_xdr,
+    v.valid_until_ledger,
+    v.network_passphrase,
+  );
+  const { publicKeyHex, assertion } = buildAssertion(payloadHex, { flags: 0x01 });
+
+  await assert.rejects(
+    signEntryWithPasskey({
+      core: soroauth,
+      entryXdr: v.unsigned_entry_xdr,
+      validUntilLedger: v.valid_until_ledger,
+      networkPassphrase: v.network_passphrase,
+      publicKeyHex,
+      expectedPayloadHex: payloadHex,
+      credentials: { get: async () => assertion },
+    }),
+    /did not verify the user/,
+  );
+});
+
+test("an assertion for a different payload is refused", { skip }, async () => {
+  const soroauth = await core();
+  const v = vector("v2_single_testnet.json");
+  const { payloadHex } = soroauth.preimage(
+    v.unsigned_entry_xdr,
+    v.valid_until_ledger,
+    v.network_passphrase,
+  );
+  const { assertion } = buildAssertion("11".repeat(32));
+  assert.throws(
+    () => verifyAssertion(assertion, payloadHex),
+    /does not commit to this payload/,
+  );
+});
+
+test("the panel shows the payload hash the authenticator will sign", { skip }, async () => {
+  const soroauth = await core();
+  const v = vector("v2_single_testnet.json");
+  const { payloadHex } = soroauth.preimage(
+    v.unsigned_entry_xdr,
+    v.valid_until_ledger,
+    v.network_passphrase,
+  );
+  const report = buildReport({ core: soroauth, entryXdr: v.unsigned_entry_xdr });
+  const panel = renderReport(report, makeDocument(), { payloadHex });
+  assert.ok(collectText(panel).includes(payloadHex), "the full payload hash is shown");
 });

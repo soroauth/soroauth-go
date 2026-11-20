@@ -64,6 +64,7 @@ navigation.
 | [e2e/README](../e2e/README.md)                                           | What each live testnet scenario proves, and how the two-pass simulation flow works.                 |
 | [e2e/RESULTS](../e2e/RESULTS.md)                                         | The transaction hashes and observed credential arms from a real testnet run.                        |
 | [fuzzing](fuzzing.md)                                                    | How the fuzz targets run continuously, and how a crash becomes a committed regression seed.         |
+| [vulnerability-scanning](vulnerability-scanning.md)                      | Which published artifacts are scanned on a schedule, and what happens on a finding or a scanner error. |
 | [soak](soak.md)                                                          | The reported batch signing soak run: what each round asserts, and how its tolerances were measured. |
 | [parity](parity.md)                                                      | What agreement across implementations does and does not establish.                                  |
 | [rpc-fixtures](rpc-fixtures.md)                                          | How real RPC request/response pairs are recorded, scrubbed and replayed offline.                    |

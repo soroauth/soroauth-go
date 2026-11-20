@@ -36,8 +36,11 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"syscall/js"
@@ -56,6 +59,11 @@ func main() {
 		js.FuncOf(payload),
 		js.FuncOf(writeSignature),
 		js.FuncOf(authorizeWithSeed),
+		js.FuncOf(passkeySignature),
+		js.FuncOf(inspectEntry),
+		js.FuncOf(analyzeEntry),
+		js.FuncOf(renderTree),
+		js.FuncOf(renderInvocations),
 	}
 	bindings = functions
 
@@ -64,6 +72,11 @@ func main() {
 		"payload":           functions[1],
 		"writeSignature":    functions[2],
 		"authorizeWithSeed": functions[3],
+		"passkeySignature":  functions[4],
+		"inspect":           functions[5],
+		"analyze":           functions[6],
+		"renderTree":        functions[7],
+		"renderInvocations": functions[8],
 	}))
 
 	// Keep the program alive so the callbacks remain callable from JS.
@@ -214,6 +227,138 @@ func writeSignature(this js.Value, args []js.Value) any {
 		return fail(err)
 	}
 	return ok(map[string]any{"entryB64": encoded})
+}
+
+// inspect(entryB64) -> {ok, json} | {ok:false, error}
+//
+// json is the JSON encoding of soroauth.EntryInfo. It is returned as a string
+// rather than a hand-built JS object so the shape is exactly the library's
+// struct tags, and the TypeScript wrapper parses it once.
+func inspectEntry(this js.Value, args []js.Value) any {
+	if len(args) != 1 {
+		return fail(fmt.Errorf("soroauth: wasm: inspect expects 1 argument"))
+	}
+	entry, err := decodeEntry(args[0].String())
+	if err != nil {
+		return fail(err)
+	}
+	info, err := soroauth.Inspect(entry)
+	if err != nil {
+		return fail(err)
+	}
+	encoded, err := json.Marshal(info)
+	if err != nil {
+		return fail(fmt.Errorf("soroauth: wasm: encoding inspection: %w", err))
+	}
+	return ok(map[string]any{"json": string(encoded)})
+}
+
+// analyze(entryB64, currentLedger) -> {ok, json} | {ok:false, error}
+//
+// json is the JSON encoding of the finding slice. currentLedger, when non-zero,
+// enables the far-future expiration heuristic; the extension passes the ledger
+// it knows rather than letting the core guess.
+func analyzeEntry(this js.Value, args []js.Value) any {
+	if len(args) != 2 {
+		return fail(fmt.Errorf("soroauth: wasm: analyze expects 2 arguments"))
+	}
+	entry, err := decodeEntry(args[0].String())
+	if err != nil {
+		return fail(err)
+	}
+	cfg := soroauth.DefaultRiskConfig()
+	cfg.CurrentLedger = uint32(args[1].Int())
+	findings, err := soroauth.Analyze(entry, &cfg)
+	if err != nil {
+		return fail(err)
+	}
+	if findings == nil {
+		findings = []soroauth.Finding{}
+	}
+	encoded, err := json.Marshal(findings)
+	if err != nil {
+		return fail(fmt.Errorf("soroauth: wasm: encoding findings: %w", err))
+	}
+	return ok(map[string]any{"json": string(encoded)})
+}
+
+// renderTree(entryB64, format) -> {ok, tree} | {ok:false, error}
+//
+// Only the "ascii" format exists; an unknown format is refused rather than
+// silently rendered as ascii, so a caller cannot believe it asked for one
+// thing and got another.
+func renderTree(this js.Value, args []js.Value) any {
+	if len(args) != 2 {
+		return fail(fmt.Errorf("soroauth: wasm: renderTree expects 2 arguments"))
+	}
+	if args[1].String() != "ascii" {
+		return fail(fmt.Errorf("soroauth: wasm: renderTree: unknown format %q", args[1].String()))
+	}
+	entry, err := decodeEntry(args[0].String())
+	if err != nil {
+		return fail(err)
+	}
+	info, err := soroauth.Inspect(entry)
+	if err != nil {
+		return fail(err)
+	}
+	return ok(map[string]any{"tree": soroauth.DelegateTreeASCII(info)})
+}
+
+// renderInvocations(entryB64) -> {ok, tree} | {ok:false, error}
+func renderInvocations(this js.Value, args []js.Value) any {
+	if len(args) != 1 {
+		return fail(fmt.Errorf("soroauth: wasm: renderInvocations expects 1 argument"))
+	}
+	entry, err := decodeEntry(args[0].String())
+	if err != nil {
+		return fail(err)
+	}
+	tree, err := soroauth.InvocationTreeASCII(entry.RootInvocation)
+	if err != nil {
+		return fail(err)
+	}
+	return ok(map[string]any{"tree": tree})
+}
+
+// passkeySignature(publicKeyHex, signatureDerHex) ->
+//
+//	{ok, signatureScvalB64} | {ok:false, error}
+//
+// A WebAuthn assertion carries an uncompressed P-256 public key and a DER
+// signature; the Soroban signature ScVal needs the fixed-width low-S r || s
+// form (CAP-71 / the account contract's __check_auth shape). Converting that in
+// JavaScript would be a second implementation of the conversion, so it happens
+// here through Secp256r1SignatureScValFromDER. Both inputs are hex because the
+// browser has the assertion's bytes and does not need a second byte encoding.
+func passkeySignature(this js.Value, args []js.Value) any {
+	if len(args) != 2 {
+		return fail(fmt.Errorf("soroauth: wasm: passkeySignature expects 2 arguments"))
+	}
+	publicKeyBytes, err := hex.DecodeString(args[0].String())
+	if err != nil {
+		return fail(fmt.Errorf("soroauth: wasm: decoding passkey public key: %w", err))
+	}
+	if len(publicKeyBytes) != soroauth.Secp256r1PublicKeySize {
+		return fail(fmt.Errorf("soroauth: wasm: passkey public key is %d bytes, want %d", len(publicKeyBytes), soroauth.Secp256r1PublicKeySize))
+	}
+	x, y := elliptic.Unmarshal(elliptic.P256(), publicKeyBytes)
+	if x == nil {
+		return fail(fmt.Errorf("soroauth: wasm: passkey public key is not a P-256 point"))
+	}
+	signatureBytes, err := hex.DecodeString(args[1].String())
+	if err != nil {
+		return fail(fmt.Errorf("soroauth: wasm: decoding passkey signature: %w", err))
+	}
+	value, err := soroauth.Secp256r1SignatureScValFromDER(&ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}, signatureBytes)
+	if err != nil {
+		return fail(err)
+	}
+	raw, err := value.MarshalBinary()
+	if err != nil {
+		return fail(fmt.Errorf("soroauth: wasm: marshalling signature scval: %w", err))
+	}
+	return ok(map[string]any{"signatureScvalB64": base64.StdEncoding.EncodeToString(raw)})
 }
 
 // authorizeWithSeed(entryB64, validUntilLedger, networkPassphrase, seedHex,

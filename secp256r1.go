@@ -137,6 +137,21 @@ func Secp256r1SignatureScVal(publicKey *ecdsa.PublicKey, signature []byte) (xdr.
 	})}, nil
 }
 
+// Secp256r1SignatureScValFromDER builds the passkey signature ScVal from the
+// DER-encoded signature a WebAuthn assertion carries. It normalises S to the
+// low-S form first, so the value matches the single wire representation
+// SignSecp256r1 emits rather than preserving whichever form the authenticator
+// chose. Refusing to convert is the only alternative to normalising, and it
+// would reject honest authenticators, so the conversion is explicit here.
+func Secp256r1SignatureScValFromDER(publicKey *ecdsa.PublicKey, der []byte) (xdr.ScVal, error) {
+	r, s, err := ParseDERECDSASignature(der)
+	if err != nil {
+		return xdr.ScVal{}, fmt.Errorf("soroauth: secp256r1 signature scval: %w", err)
+	}
+	s = normalizeP256LowS(s, elliptic.P256().Params().N)
+	return Secp256r1SignatureScVal(publicKey, marshalSecp256r1Signature(r, s))
+}
+
 func mapPtr(value xdr.ScMap) **xdr.ScMap {
 	p := &value
 	return &p
