@@ -10,6 +10,13 @@ this project adheres to
 
 ### Added
 
+- Add `FunctionType` with `FunctionContractFn`, `FunctionCreateContractHostFn`
+  and `FunctionCreateContractV2HostFn`, plus `FunctionTypeFromXDR` and
+  `FunctionType.XDR` to convert to and from the SDK's
+  `SorobanAuthorizedFunctionType`. An unrecognised value returns
+  `ErrUnsupportedFunctionType`, and a test fails if the SDK gains a function
+  type with no constant. (#674)
+
 - Add `CredentialArm.String`, returning the arm's stable identifier, the same
   value `Inspect` reports as `credential_type`. The arm constants are now
   declared from the `CredentialType` constants so the two cannot drift, and an
