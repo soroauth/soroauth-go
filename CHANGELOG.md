@@ -10,6 +10,12 @@ this project adheres to
 
 ### Added
 
+- Add `CredentialArm.String`, returning the arm's stable identifier, the same
+  value `Inspect` reports as `credential_type`. The arm constants are now
+  declared from the `CredentialType` constants so the two cannot drift, and an
+  unknown arm renders as `unknown("<value>")` rather than an empty string.
+  (#673)
+
 - Add a FROST distributed key generation ceremony in `frost/dkg.go`: every
   participant contributes a VSS commitment and proof of knowledge, verifies
   every peer's contributions, and finishes with exactly the `DKGShare` the FROST
