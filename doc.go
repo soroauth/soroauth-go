@@ -67,6 +67,16 @@
 //	ArmAddressV2            = "address_v2"
 //	ArmAddressWithDelegates = "address_with_delegates"
 //
+// Authorized function types (stable — AuthorizedFunctionTypeFromXDR returns these)
+//
+//	FunctionTypeContractFn            = "contract_fn"
+//	FunctionTypeCreateContractHostFn  = "create_contract_host_fn"
+//	FunctionTypeCreateContractV2HostFn = "create_contract_v2_host_fn"
+//
+// Library version (stable — matches the release git tag)
+//
+//	Version = "v0.1.0"
+//
 // Decode limits (numeric constants, stable)
 //
 //	MaxDecodeDepth       = 64

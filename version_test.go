@@ -15,7 +15,7 @@ func TestVersionConstantIsNonEmpty(t *testing.T) {
 }
 
 // TestVersionConstantMatchesLatestTag asserts that soroauth.Version matches
-// the most recent git tag so the two cannot silently diverge. The test is
+// the most recent git tag so the two cannot silently diverge.  The test is
 // skipped when git is unavailable or the working tree has no tags (e.g. a
 // shallow clone in a dependency fetch), so it does not break unrelated
 // consumers — it fires in the development and release workflows where the tag
