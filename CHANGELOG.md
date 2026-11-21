@@ -30,6 +30,33 @@ this project adheres to
   signature and requires the host to refuse it. The `modular-account` fixture
   gains a `require_all` entry point for it. (#566)
 
+- Publish the Python binding to PyPI on each `v*` tag: a per-platform wheel
+  matrix (linux-x86\_64, linux-aarch64, darwin-x86\_64, darwin-aarch64) bundles
+  the `libsoroauth` native library, auditwheel / delocate repair satisfies the
+  manylinux and macOS policies, and PyPI trusted publishing (OIDC) replaces any
+  long-lived token. A golden-vector smoke test runs before and after publish.
+  (#540)
+
+- Add PEP 561 `py.typed` marker and `__init__.pyi` stubs to the Python binding:
+  all public symbols, exception classes, and result types are typed, a mypy
+  harness in `bindings/python/typecheck/` verifies the stubs, and
+  `ci-python.yml` runs `mypy --strict` on every push to `main`. (#541)
+
+- Publish the JVM binding to Maven Central on each `v*` tag: the pom now carries
+  all required Central metadata (licenses, developers, scm, issueManagement), a
+  `release` profile adds sources, Javadoc, and GPG signatures via the new
+  Central Portal (`central-publishing-maven-plugin`), a four-platform native
+  matrix builds and bundles `libsoroauth`, and a cross-platform consumer smoke
+  test resolves the published artifact from `repo1.maven.org` and replays all
+  golden vectors. (#544)
+
+- Document the C ABI threading contract in `bindings/c/THREADING.md`: every
+  exported symbol is concurrency-safe with no initialisation call and no
+  library-wide lock; the caller owns every returned `char *` and must call
+  `SoroauthFree` exactly once. `TestABIThreadingContract` proves the contract on
+  the Go side with `GOMAXPROCS*4` goroutines running 24 iterations each under
+  `go test -race`. (#547)
+
 - Expose `Version` constant in the root package and document it in package docs,
   ensuring programmatic access to the library version and aligning CLI defaults
   with the library version. (#676)

@@ -32,6 +32,14 @@ console.log(soroauth.inspect(signed));
 - **Architectures**: `x86_64`, `aarch64` / `arm64`.
 - **Runtime**: Node.js 18 or later.
 
+## Threading
+
+Node calls the C ABI from its worker threads through N-API, so the ABI's
+contract applies unchanged: every function is safe to call concurrently from any
+thread; the addon releases each returned pointer before handing JavaScript its
+value, so the host never owns a `char*`. The committed contract lives at
+[bindings/c/THREADING.md](../c/THREADING.md).
+
 ## Which package to use
 
 |                                    | `@soroauth/node`             | `@soroauth/wasm`                 |

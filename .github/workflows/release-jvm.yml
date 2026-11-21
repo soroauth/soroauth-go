@@ -1,0 +1,201 @@
+# Publish the soroauth JVM binding to Maven Central.
+#
+# Only on a version tag. The JVM artifact ships one jar whose
+# src/main/resources/native/<os>-<arch>/ tree holds the native libraries
+# the FFM binding selects at runtime; each matrix row builds its own
+# platform's library and uploads it as an artifact, and the publish job
+# downloads them all into the resources tree before `mvn deploy` runs.
+#
+# Signing: the artifacts are signed with a GPG key held in CI secrets as
+# `GPG_PRIVATE_KEY` + `GPG_PASSPHRASE`. The key is imported into a
+# transient keyring the job cleans up on exit. The signature itself is a
+# Central requirement (https://central.sonatype.org/publish/requirements/).
+#
+# Deploy: the new Central Publisher Portal (publish.sonatype.com) rather
+# than legacy OSSRH, via Sonatype's `central-publishing-maven-plugin`
+# configured in pom.xml's `release` profile. Credentials come from
+# `CENTRAL_USERNAME` / `CENTRAL_PASSWORD` secrets.
+name: release-jvm
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: refuse to proceed off a version tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: enforce tag ref
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "${EVENT}" = "workflow_dispatch" ]; then
+            echo "dispatch run: build native + stage only, publish will be skipped"
+            exit 0
+          fi
+          if [ "${REF_TYPE}" != "tag" ]; then
+            echo "refuse: this workflow only runs on a version tag, got ref_type=${REF_TYPE}" >&2
+            exit 1
+          fi
+          case "${REF_NAME}" in
+            v*) echo "ok: ${REF_NAME}" ;;
+            *) echo "refuse: tag must start with v, got ${REF_NAME}" >&2; exit 1 ;;
+          esac
+
+  native:
+    name: build native library (${{ matrix.target }})
+    needs: guard
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            os: ubuntu-latest
+            resource_dir: linux-x86_64
+            ext: so
+          - target: linux-aarch64
+            os: ubuntu-24.04-arm
+            resource_dir: linux-aarch64
+            ext: so
+          - target: macos-x86_64
+            os: macos-13
+            resource_dir: macos-x86_64
+            ext: dylib
+          - target: macos-aarch64
+            os: macos-14
+            resource_dir: macos-aarch64
+            ext: dylib
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
+      - name: build the native library
+        working-directory: bindings/jvm/native
+        run: ./build.sh
+      - name: upload native library
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: jvm-native-${{ matrix.target }}
+          # The path build.sh writes to; naming it the same way across OSes
+          # keeps the download step in the deploy job matrix-free.
+          path: bindings/jvm/src/main/resources/native/${{ matrix.resource_dir }}/libsoroauth.${{ matrix.ext }}
+          retention-days: 1
+
+  deploy:
+    name: sign and publish to Central
+    needs: native
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    environment:
+      name: maven-central
+      url: https://central.sonatype.com/artifact/org.soroauth/soroauth-jvm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "22"
+          # The action writes a ~/.m2/settings.xml with server entries whose
+          # ids match `publishingServerId` in pom.xml and the
+          # `passphraseServerId` the gpg plugin reads.
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: GPG_PASSPHRASE
+      # Pull every platform's native library into the resources tree the
+      # jar packages. One jar ships all four; NativeLoader picks the
+      # right one at runtime by OS + arch.
+      - name: stage native libraries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: jvm-native-*
+          merge-multiple: true
+          path: bindings/jvm/src/main/resources/native
+      - name: show staged natives
+        run: find bindings/jvm/src/main/resources/native -type f -print
+      - name: set release version from tag
+        env:
+          TAG: ${{ github.ref_name }}
+        working-directory: bindings/jvm
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          # One place to set the version; the central plugin reads what
+          # pom.xml declares.
+          mvn -B -Prelease versions:set -DnewVersion="${version}" -DgenerateBackupPoms=false
+      - name: deploy signed artifacts
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        working-directory: bindings/jvm
+        run: |
+          set -euo pipefail
+          mvn -B -Prelease -DskipTests=true deploy
+
+  verify-consumer:
+    name: resolve the published artifact and replay goldens
+    needs: deploy
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            os: ubuntu-latest
+          - target: linux-aarch64
+            os: ubuntu-24.04-arm
+          - target: macos-x86_64
+            os: macos-13
+          - target: macos-aarch64
+            os: macos-14
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "22"
+      - name: wait for Central to serve the version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          url="https://repo1.maven.org/maven2/org/soroauth/soroauth-jvm/${version}/soroauth-jvm-${version}.pom"
+          for i in $(seq 1 60); do
+            if curl -fsS -o /dev/null "${url}"; then
+              echo "Central serves ${version}"
+              exit 0
+            fi
+            echo "attempt ${i}/60: Central does not serve ${version} yet, waiting 30s"
+            sleep 30
+          done
+          echo "Central never served ${version}" >&2
+          exit 1
+      # The consumer test lives beside the workflow so it runs
+      # independently of the binding's own source tree: a minimal Maven
+      # project that depends on `org.soroauth:soroauth-jvm:${version}`
+      # and replays the goldens.
+      - name: build the consumer against the published artifact
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          bash .github/scripts/jvm-consumer-smoke.sh "${version}"

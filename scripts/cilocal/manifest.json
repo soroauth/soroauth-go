@@ -20,18 +20,22 @@
     "ci-packaging.yml",
     "ci-sdk-main.yml",
     "ci-devcontainer.yml",
+    "ci-python.yml",
     "e2e.yml",
     "fuzz.yml",
     "cost-report.yml",
     "reproducible.yml",
     "verify-release.yml",
-    "release.yml"
+    "release.yml",
+    "release-python.yml",
+    "release-jvm.yml"
   ],
   "plumbing": [
     "actions/checkout",
     "actions/setup-go",
     "actions/setup-node",
     "actions/setup-java",
+    "actions/setup-python",
     "actions/cache",
     "actions/upload-artifact",
     "actions/download-artifact",
@@ -39,7 +43,8 @@
     "docker/setup-buildx-action",
     "docker/login-action",
     "DeterminateSystems/nix-installer-action",
-    "sigstore/cosign-installer"
+    "sigstore/cosign-installer",
+    "pypa/gh-action-pypi-publish"
   ],
   "jobs": {
     "ci.yml/build": { "requires": ["go", "node", "npm", "npx", "make", "git"] },
@@ -164,6 +169,20 @@
     "release.yml/docs-site": { "skip": "release workflow: publishes the documentation site to gh-pages" },
     "release.yml/release": { "skip": "release workflow: creates the GitHub release and attests its assets" },
     "release.yml/verify-release": { "skip": "release workflow: verifies the release it just published" },
-    "release.yml/install-check": { "skip": "release workflow: installs the CLI from the Go module proxy after the tag is published" }
+    "release.yml/install-check": { "skip": "release workflow: installs the CLI from the Go module proxy after the tag is published" },
+
+    "ci-python.yml/typecheck": { "requires": ["python3"], "os": ["linux", "darwin"] },
+
+    "release-python.yml/guard": { "skip": "release workflow: runs when a version tag is pushed" },
+    "release-python.yml/sdist": { "skip": "release workflow: builds the Python sdist when a version tag is pushed" },
+    "release-python.yml/wheels": { "skip": "release workflow: builds per-platform wheels when a version tag is pushed" },
+    "release-python.yml/smoke": { "skip": "release workflow: installs the built wheels in a clean venv and replays goldens" },
+    "release-python.yml/publish": { "skip": "release workflow: publishes to PyPI with trusted publishing when a version tag is pushed" },
+    "release-python.yml/verify-published": { "skip": "release workflow: installs the published wheel from PyPI and replays goldens" },
+
+    "release-jvm.yml/guard": { "skip": "release workflow: runs when a version tag is pushed" },
+    "release-jvm.yml/native": { "skip": "release workflow: builds per-platform native libraries for the Maven artifact" },
+    "release-jvm.yml/deploy": { "skip": "release workflow: signs and publishes the JVM artifact to Maven Central" },
+    "release-jvm.yml/verify-consumer": { "skip": "release workflow: resolves the published artifact from Central and replays goldens" }
   }
 }

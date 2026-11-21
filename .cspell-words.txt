@@ -408,3 +408,10 @@ slowloris
 oapi
 codegen
 openapi
+
+# Python and JVM binding distribution
+auditwheel
+delocate
+manylinux
+initialisation
+GOMAXPROCS
