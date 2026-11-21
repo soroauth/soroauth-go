@@ -70,9 +70,19 @@ type config struct {
 	// MetricsAddr is the Prometheus listen address. "off", "none" or "-"
 	// disables the metrics server.
 	MetricsAddr string
-	// AuthToken is the bearer token /verify requires. Empty means no
-	// authentication, which is only allowed on a loopback bind.
+	// AuthToken is the raw AUTH_TOKEN value. Historically a single bearer
+	// token; now also accepts the richer id:token:ops;... syntax
+	// Authenticator parses. Kept on config for the one hardening test that
+	// asserts the value survives loadConfig.
 	AuthToken string
+
+	// Authenticator decides whether a request may invoke an operation.
+	// loadConfig installs either openLoopbackAuthenticator (unauthenticated
+	// loopback binds) or a bearerTokenAuthenticator parsed from AuthToken.
+	// A caller using this package as a library may replace it with any
+	// Authenticator — mTLS, OIDC, HMAC — by setting it on the config
+	// before calling newServer.
+	Authenticator Authenticator
 
 	ReadTimeout       time.Duration
 	ReadHeaderTimeout time.Duration
@@ -150,6 +160,21 @@ func loadConfig(getenv func(string) string) (config, error) {
 		return config{}, fmt.Errorf(
 			"refusing to bind %q without AUTH_TOKEN: set a bearer token, or bind a loopback address such as 127.0.0.1:8080",
 			cfg.Addr)
+	}
+
+	// Install the Authenticator the handlers will use. A bind with a token
+	// gets the bearer-token scheme (which also parses the richer
+	// id:token:ops;... form); a loopback bind with no token keeps the
+	// pre-existing open behaviour, now behind a named authenticator so a
+	// reader of the config can see which path it took.
+	if cfg.AuthToken != "" {
+		a, err := newBearerTokenAuthenticator(cfg.AuthToken)
+		if err != nil {
+			return config{}, fmt.Errorf("AUTH_TOKEN: %w; %s", err, authEnvVarDoc)
+		}
+		cfg.Authenticator = a
+	} else {
+		cfg.Authenticator = openLoopbackAuthenticator{}
 	}
 	return cfg, nil
 }

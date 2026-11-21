@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,9 +71,29 @@ type server struct {
 
 // newServer builds a server from a resolved configuration. Every dependency the
 // handlers need is on the struct, so no handler reads the environment.
+//
+// When the caller did not set cfg.Authenticator, one is installed from the
+// AuthToken field so a test (or any library caller) that only sets AuthToken
+// still gets the same behaviour it had before the Authenticator interface
+// existed: an empty AuthToken is the loopback open path, a set AuthToken is
+// bearer-token auth with every operation. Setting cfg.Authenticator
+// explicitly overrides this default.
 func newServer(cfg config) *server {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	if cfg.Authenticator == nil {
+		if cfg.AuthToken == "" {
+			cfg.Authenticator = openLoopbackAuthenticator{}
+		} else if a, err := newBearerTokenAuthenticator(cfg.AuthToken); err == nil {
+			cfg.Authenticator = a
+		} else {
+			// A library caller handed us a malformed AuthToken. Refuse every
+			// request rather than silently open: the fail-closed default is
+			// the whole point of this interface.
+			cfg.Logger.Error("AUTH_TOKEN parsed but is malformed; refusing every request", "error", err)
+			cfg.Authenticator = denyAll{}
+		}
 	}
 	return &server{
 		cfg:     cfg,
@@ -148,8 +167,7 @@ func (s *server) verifyHandler(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if !s.authorized(r) {
-		s.writeError(w, r, http.StatusUnauthorized, "missing or invalid bearer token")
+	if _, ok := s.authorize(w, r, OpVerify); !ok {
 		return
 	}
 
@@ -271,18 +289,6 @@ func (s *server) recordVerdicts(report soroauth.VerificationReport) {
 			s.metrics.recordRefusal(refusalUnsigned)
 		}
 	}
-}
-
-// authorized applies the bearer-token check. With no configured token the
-// check is a no-op, which loadConfig only permits on a loopback bind.
-func (s *server) authorized(r *http.Request) bool {
-	if s.cfg.AuthToken == "" {
-		return true
-	}
-	got := r.Header.Get("Authorization")
-	want := "Bearer " + s.cfg.AuthToken
-	// Constant time so a caller cannot recover the token by timing guesses.
-	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
 }
 
 // writeError writes the JSON error body and counts it. The status is the only

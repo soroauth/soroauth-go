@@ -45,8 +45,7 @@ func (s *server) riskHandler(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if !s.authorized(r) {
-		s.writeError(w, r, http.StatusUnauthorized, "missing or invalid bearer token")
+	if _, ok := s.authorize(w, r, OpRisk); !ok {
 		return
 	}
 	select {

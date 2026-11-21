@@ -10,6 +10,38 @@ this project adheres to
 
 ### Added
 
+- Ship the cross-language conformance suite: one committed case list at
+  `testdata/conformance/cases.json`, a format spec in
+  `testdata/conformance/README.md`, a Go oracle under `conformance/`, and
+  reference thin runners for Python (`bindings/python/conformance/run.py`) and
+  Node (`bindings/node/conformance/run.mjs`). A Go test asserts the oracle's
+  output matches the committed golden vectors and that every error case is
+  rejected with an acceptable kind. (#545)
+
+- Guarantee no Go panic crosses an FFI boundary: every `//export` in
+  `bindings/c/soroauth.go` now defers a recover that converts a panic into the
+  ABI's error envelope (a new `PANIC` kind), writes the Go stack to stderr
+  instead of the caller's return value, and strips embedded newlines. An
+  enumeration test fails if a new `//export` is added without the guard or
+  without the named return value the guard needs to write through. (#546)
+
+- Make the HTTP verification service's authentication pluggable and
+  per-operation: a new `Authenticator` interface, a shipped bearer-token scheme
+  that accepts the legacy single-token form plus a richer `id:token:ops;...`
+  form, and per-operation authorization that lets a caller be allowed to verify
+  but not to run risk analysis. Tests cover a missing credential (401), a wrong
+  credential (401), and an authenticated-but-unauthorized call (403), each
+  asserting the rejected body carries no information about the submitted entry.
+  (#548)
+
+- Add mutual TLS and optional certificate pinning for the gRPC service:
+  `integrations/grpc/tls.go` builds `grpc.credentials.TransportCredentials` that
+  require and verify client certificates at the handshake, so an unverified
+  client is refused before any method runs. Pinning is optional and expressed as
+  the hex SHA-256 of the peer's SPKI. Tests cover an untrusted client, an
+  expired certificate, a pin mismatch, and the happy path; test certificates are
+  generated at test time and never committed. (#554)
+
 - Make the WebAssembly signing core reproducible: both targets are built with
   `-trimpath -buildvcs=false`, `scripts/reproduce-wasm.sh` rebuilds a tag twice
   and writes `soroauth-wasm-checksums.txt`, and the release and npm package

@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "description": "Cross-language conformance suite for soroauth bindings. One committed data file every binding runs; see testdata/conformance/README.md for the output format and runner contract.",
+  "cases": [
+    {
+      "id": "preimage.v2_single_testnet",
+      "op": "preimage",
+      "vector": "v2_single_testnet"
+    },
+    {
+      "id": "payload.v2_single_testnet",
+      "op": "payload",
+      "vector": "v2_single_testnet"
+    },
+    {
+      "id": "authorize_with_seed.v2_single_testnet",
+      "op": "authorize_with_seed",
+      "vector": "v2_single_testnet"
+    },
+    {
+      "id": "preimage.legacy_single_testnet",
+      "op": "preimage",
+      "vector": "legacy_single_testnet"
+    },
+    {
+      "id": "authorize_with_seed.legacy_single_testnet",
+      "op": "authorize_with_seed",
+      "vector": "legacy_single_testnet"
+    },
+    {
+      "id": "preimage.delegates_single_node",
+      "op": "preimage",
+      "vector": "delegates_single_node"
+    },
+    {
+      "id": "error.preimage_empty_entry",
+      "op": "preimage",
+      "input": {
+        "entry_xdr_b64": "",
+        "valid_until_ledger": 1234567,
+        "network_passphrase": "Test SDF Network ; September 2015"
+      },
+      "expect": {
+        "ok": false,
+        "kind_in": ["ERROR"]
+      }
+    },
+    {
+      "id": "error.preimage_empty_passphrase",
+      "op": "preimage",
+      "vector": "v2_single_testnet",
+      "override": {
+        "network_passphrase": ""
+      },
+      "expect": {
+        "ok": false,
+        "kind_in": ["ERROR"]
+      }
+    },
+    {
+      "id": "error.payload_malformed_preimage",
+      "op": "payload",
+      "input": {
+        "preimage_xdr_b64": "not-base64!@#"
+      },
+      "expect": {
+        "ok": false,
+        "kind_in": ["ERROR"]
+      }
+    },
+    {
+      "id": "error.authorize_short_seed",
+      "op": "authorize_with_seed",
+      "vector": "v2_single_testnet",
+      "override": {
+        "seed_hex": "00"
+      },
+      "expect": {
+        "ok": false,
+        "kind_in": ["ERROR"]
+      }
+    },
+    {
+      "id": "error.authorize_bad_seed_hex",
+      "op": "authorize_with_seed",
+      "vector": "v2_single_testnet",
+      "override": {
+        "seed_hex": "nothex"
+      },
+      "expect": {
+        "ok": false,
+        "kind_in": ["ERROR"]
+      }
+    },
+    {
+      "id": "error.payload_zeroed_preimage",
+      "op": "payload",
+      "input": {
+        "preimage_xdr_b64": "AAAACgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      },
+      "expect": {
+        "ok": false,
+        "kind_in": ["ERROR", "DECODE_LIMIT"]
+      }
+    }
+  ]
+}
