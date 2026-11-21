@@ -98,6 +98,14 @@ export interface Soroauth {
     seedHex: string,
     forAddress?: string,
   ): string;
+
+  /**
+   * Build the `{public_key, signature}` ScVal a passkey wallet contract
+   * decodes, from a 65-byte uncompressed SEC1 P-256 key and a 64-byte raw
+   * low-S `r || s` signature, both hex-encoded. This keeps the offline page
+   * free of a second XDR implementation.
+   */
+  passkeySignature(publicKeyHex: string, signatureHex: string): string;
 }
 
 /** Options for {@link loadSoroauth}. */
@@ -235,6 +243,17 @@ function wrap(raw: RawBindings): Soroauth {
         "authorizeWithSeed",
       );
       return requireField(result.entryB64, "entryB64", "authorizeWithSeed");
+    },
+    passkeySignature(publicKeyHex, signatureHex) {
+      const result = unwrap(
+        raw.passkeySignature(publicKeyHex, signatureHex),
+        "passkeySignature",
+      );
+      return requireField(
+        result.signatureScvalB64,
+        "signatureScvalB64",
+        "passkeySignature",
+      );
     },
   };
 }

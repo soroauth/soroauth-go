@@ -664,6 +664,7 @@ type RiskResponse struct {
 	JSON401      *ErrorResponse
 	JSON405      *ErrorResponse
 	JSON413      *ErrorResponse
+	JSON429      *ErrorResponse
 	JSON500      *ErrorResponse
 	JSON503      *ErrorResponse
 }
@@ -692,6 +693,7 @@ type VerifyResponse struct {
 	JSON401      *ErrorResponse
 	JSON405      *ErrorResponse
 	JSON413      *ErrorResponse
+	JSON429      *ErrorResponse
 	JSON500      *ErrorResponse
 	JSON503      *ErrorResponse
 }
@@ -837,6 +839,13 @@ func ParseRiskResponse(rsp *http.Response) (*RiskResponse, error) {
 		}
 		response.JSON413 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest ErrorResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -904,6 +913,13 @@ func ParseVerifyResponse(rsp *http.Response) (*VerifyResponse, error) {
 			return nil, err
 		}
 		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest ErrorResponse

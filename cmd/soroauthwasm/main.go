@@ -12,6 +12,8 @@
 //     credential nodes, maintaining strict isolation of signing keys.
 //   - authorizeWithSeed: provides a deterministic test and local demo path using
 //     an in-memory raw ed25519 seed.
+//   - passkeySignature: builds the {public_key, signature} ScVal a passkey
+//     wallet contract decodes, so an offline page needs no second XDR encoder.
 //
 // Why this exists: passkey signing happens in the browser, and the browser
 // should derive the bytes it signs rather than trust a server to hand them
@@ -50,6 +52,7 @@ func main() {
 		js.FuncOf(payload),
 		js.FuncOf(writeSignature),
 		js.FuncOf(authorizeWithSeed),
+		js.FuncOf(passkeySignature),
 	}
 	bindings = functions
 
@@ -58,6 +61,7 @@ func main() {
 		"payload":           functions[1],
 		"writeSignature":    functions[2],
 		"authorizeWithSeed": functions[3],
+		"passkeySignature":  functions[4],
 	}))
 
 	// Keep the program alive so the callbacks remain callable from JS.
@@ -151,4 +155,21 @@ func authorizeWithSeed(this js.Value, args []js.Value) any {
 		return fail(err)
 	}
 	return ok(map[string]any{"entryB64": encoded})
+}
+
+// passkeySignature(publicKeyHex, signatureHex) ->
+//
+//	{ok, signatureScvalB64} | {ok:false, error}
+//
+// The body lives in wasmcore with the rest of the signing flow, so the js/wasm
+// and WASI targets cannot diverge.
+func passkeySignature(this js.Value, args []js.Value) any {
+	if len(args) != 2 {
+		return fail(fmt.Errorf("soroauth: wasm: passkeySignature expects 2 arguments"))
+	}
+	encoded, err := wasmcore.PasskeySignature(args[0].String(), args[1].String())
+	if err != nil {
+		return fail(err)
+	}
+	return ok(map[string]any{"signatureScvalB64": encoded})
 }

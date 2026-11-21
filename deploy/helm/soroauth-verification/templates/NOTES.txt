@@ -1,0 +1,26 @@
+The soroauth verification service is installed as {{ include "soroauth.fullname" . }}.
+
+Check it:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "soroauth.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  curl -s http://127.0.0.1:{{ .Values.service.port }}/healthz
+
+The bearer token comes from the existing Secret {{ .Values.auth.existingSecret }}
+(key {{ .Values.auth.secretKey }}). It is never rendered by this chart.
+
+{{- if .Values.metrics.enabled }}
+
+Metrics are on their own Service:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "soroauth.fullname" . }}-metrics {{ .Values.metrics.port }}:{{ .Values.metrics.port }}
+  curl -s http://127.0.0.1:{{ .Values.metrics.port }}/metrics
+{{- else }}
+
+Metrics are disabled (metrics.enabled=false).
+{{- end }}
+
+The limits come from the ConfigMap: body size {{ .Values.config.maxBodyBytes | int64 }},
+concurrency {{ .Values.config.maxConcurrentRequests | int64 }}, and
+{{ .Values.config.rateLimitPerSecond | int64 }} requests/second per caller with a burst of
+{{ .Values.config.rateLimitBurst | int64 }}. A caller over its rate gets 429 with
+Retry-After; a request over the concurrency bound gets 503.

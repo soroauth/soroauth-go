@@ -32,6 +32,10 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.MaxConcurrentRequests != defaultMaxConcurrent {
 		t.Errorf("default MaxConcurrentRequests = %d, want %d", cfg.MaxConcurrentRequests, defaultMaxConcurrent)
 	}
+	if cfg.RateLimitPerSecond != defaultRateLimitPerSecond || cfg.RateLimitBurst != defaultRateLimitBurst {
+		t.Errorf("default rate limits = %d/%d, want %d/%d",
+			cfg.RateLimitPerSecond, cfg.RateLimitBurst, defaultRateLimitPerSecond, defaultRateLimitBurst)
+	}
 	if cfg.ReadTimeout != defaultReadTimeout || cfg.WriteTimeout != defaultWriteTimeout {
 		t.Errorf("default timeouts = %v/%v, want %v/%v",
 			cfg.ReadTimeout, cfg.WriteTimeout, defaultReadTimeout, defaultWriteTimeout)
@@ -62,8 +66,24 @@ func TestLoadConfigRefusesNonLoopbackWithoutAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadConfig with a token: %v", err)
 	}
-	if cfg.AuthToken != "tok" {
-		t.Errorf("AuthToken = %q, want tok", cfg.AuthToken)
+	if len(cfg.AuthTokens) != 1 || cfg.AuthTokens[0] != "tok" {
+		t.Errorf("AuthTokens = %q, want [tok]", cfg.AuthTokens)
+	}
+
+	multi, err := loadConfig(envMap(map[string]string{"ADDR": ":8080", "AUTH_TOKEN": "alpha,beta"}))
+	if err != nil {
+		t.Fatalf("loadConfig with two comma-separated tokens: %v", err)
+	}
+	if len(multi.AuthTokens) != 2 || multi.AuthTokens[0] != "alpha" || multi.AuthTokens[1] != "beta" {
+		t.Errorf("AuthTokens = %q, want [alpha beta]", multi.AuthTokens)
+	}
+
+	// A leading or trailing comma is a configuration mistake, not a request to
+	// authenticate with the empty string.
+	for _, bad := range []string{",tok", "tok,", "alpha,,beta"} {
+		if _, err := loadConfig(envMap(map[string]string{"AUTH_TOKEN": bad})); err == nil {
+			t.Errorf("loadConfig accepted AUTH_TOKEN=%q; want an error", bad)
+		}
 	}
 }
 
@@ -78,6 +98,10 @@ func TestLoadConfigRejectsMalformedBounds(t *testing.T) {
 		{"negative body size", map[string]string{"MAX_BODY_BYTES": "-1"}},
 		{"zero concurrency", map[string]string{"MAX_CONCURRENT_REQUESTS": "0"}},
 		{"bad concurrency", map[string]string{"MAX_CONCURRENT_REQUESTS": "many"}},
+		{"zero rate", map[string]string{"RATE_LIMIT_PER_SECOND": "0"}},
+		{"negative rate", map[string]string{"RATE_LIMIT_PER_SECOND": "-1"}},
+		{"zero burst", map[string]string{"RATE_LIMIT_BURST": "0"}},
+		{"burst below rate", map[string]string{"RATE_LIMIT_PER_SECOND": "10", "RATE_LIMIT_BURST": "5"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -98,6 +122,8 @@ func TestLoadConfigReadsEveryBound(t *testing.T) {
 		"IDLE_TIMEOUT":            "4s",
 		"MAX_BODY_BYTES":          "4096",
 		"MAX_CONCURRENT_REQUESTS": "7",
+		"RATE_LIMIT_PER_SECOND":   "11",
+		"RATE_LIMIT_BURST":        "13",
 	}))
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
@@ -111,6 +137,9 @@ func TestLoadConfigReadsEveryBound(t *testing.T) {
 	}
 	if cfg.MaxBodyBytes != 4096 || cfg.MaxConcurrentRequests != 7 {
 		t.Errorf("bounds = %d/%d", cfg.MaxBodyBytes, cfg.MaxConcurrentRequests)
+	}
+	if cfg.RateLimitPerSecond != 11 || cfg.RateLimitBurst != 13 {
+		t.Errorf("rate limits = %d/%d", cfg.RateLimitPerSecond, cfg.RateLimitBurst)
 	}
 	if !metricsDisabled(cfg.MetricsAddr) {
 		t.Error("METRICS_ADDR=off should disable the metrics endpoint")
@@ -177,7 +206,7 @@ func postVerifyRaw(t *testing.T, url, token, body string) (int, string) {
 
 func TestVerifyRequiresBearerToken(t *testing.T) {
 	const token = "correct-horse-battery-staple"
-	ts, _, _ := newTestServer(t, func(c *config) { c.AuthToken = token })
+	ts, _, _ := newTestServer(t, func(c *config) { c.AuthTokens = []string{token} })
 	entry := signedTestEntry(t)
 	body, err := json.Marshal(map[string]string{"entry": entry, "network": "testnet"})
 	if err != nil {
@@ -209,7 +238,7 @@ func TestVerifyRequiresBearerToken(t *testing.T) {
 }
 
 func TestHealthzNeedsNoToken(t *testing.T) {
-	ts, _, _ := newTestServer(t, func(c *config) { c.AuthToken = "tok" })
+	ts, _, _ := newTestServer(t, func(c *config) { c.AuthTokens = []string{"tok"} })
 	resp, err := http.Get(ts.URL + "/healthz")
 	if err != nil {
 		t.Fatalf("GET /healthz: %v", err)
@@ -288,7 +317,7 @@ func TestVerifyReturns503AtConcurrencyBound(t *testing.T) {
 
 func TestRequestLogCarriesNoEntryOrSecret(t *testing.T) {
 	const token = "super-secret-bearer-token"
-	ts, logs, _ := newTestServer(t, func(c *config) { c.AuthToken = token })
+	ts, logs, _ := newTestServer(t, func(c *config) { c.AuthTokens = []string{token} })
 	entry := signedTestEntry(t)
 	body, err := json.Marshal(map[string]string{"entry": entry, "network": "testnet"})
 	if err != nil {

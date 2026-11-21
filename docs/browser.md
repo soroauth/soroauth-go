@@ -184,6 +184,27 @@ what a live extension run still has to record. The Go half of the same states is
 `walletsdk.SignViaFreighter`, whose tests replay a golden vector through a
 wallet stub and assert byte-identical output.
 
+## Offline signing
+
+[`examples/browser-passkey/offline.html`](../examples/browser-passkey/offline.html)
+is a page whose assets are all local and which makes no request after load. It
+takes an unsigned entry, derives the payload with the local WASM core, signs it
+with a passkey, and writes the signature back. It does not submit a transaction
+and does not contact an RPC.
+
+Build its assets with
+[`build-offline.sh`](../examples/browser-passkey/build-offline.sh) and serve the
+directory; the script stages the WASM core, the matching `wasm_exec.js`, and the
+typed wrapper under the gitignored `dist/`. There is no CDN reference in the
+page.
+
+The test in `examples/browser-passkey/offline.test.mjs` drives Chromium with a
+virtual authenticator. Once the page reports that it loaded, the test intercepts
+and aborts every request, so any network access after load fails the run. That
+is a property the page has, not a claim about the host: a compromised machine, a
+browser extension, or the passkey provider are outside what a page can prove.
+The example's README states the boundary in full.
+
 ## The demo
 
 [`examples/browser-passkey`](../examples/browser-passkey/README.md) is a

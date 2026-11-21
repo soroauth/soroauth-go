@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>soroauth — offline passkey signing</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      body {
+        max-width: 60rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+      }
+      h1 {
+        font-size: 1.25rem;
+      }
+      label {
+        display: block;
+        margin-top: 0.75rem;
+        font-weight: 600;
+      }
+      input,
+      textarea,
+      button {
+        width: 100%;
+        box-sizing: border-box;
+        font: inherit;
+        margin-top: 0.25rem;
+      }
+      textarea {
+        min-height: 8rem;
+      }
+      button {
+        margin-top: 1rem;
+        padding: 0.5rem;
+        cursor: pointer;
+      }
+      #log {
+        white-space: pre-wrap;
+        border: 1px solid currentColor;
+        padding: 0.75rem;
+        margin-top: 1rem;
+        min-height: 6rem;
+      }
+      .hint {
+        opacity: 0.75;
+        font-size: 0.85rem;
+      }
+      #signed {
+        min-height: 10rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>soroauth — sign an authorization entry offline</h1>
+    <p class="hint">
+      This page loads every asset from this directory and makes no request after
+      load. It derives the Soroban authorization preimage and payload in the
+      browser with the local WASM core, signs the payload with a passkey, writes
+      the signature back onto the entry, and prints the signed entry. It does not
+      submit anything and does not contact an RPC.
+    </p>
+    <p class="hint">
+      Offline protects the signing step on this page. It does not protect a
+      compromised machine, an extension with access to the page, or the ledger
+      state the entry commits to. See <code>README.md</code> in this directory.
+    </p>
+
+    <button id="register">Register a passkey on this device</button>
+
+    <label for="entry">Unsigned entry (base64 XDR)</label>
+    <textarea id="entry" spellcheck="false" placeholder="AAAA..."></textarea>
+
+    <label for="wallet">Address to sign for (G… or C…)</label>
+    <input id="wallet" spellcheck="false" placeholder="C…" />
+
+    <label for="network">Network passphrase</label>
+    <input
+      id="network"
+      value="Test SDF Network ; September 2015"
+      spellcheck="false"
+    />
+
+    <label for="validUntil">Signature expiration ledger</label>
+    <input id="validUntil" type="number" value="1234567" />
+
+    <button id="sign">Sign the entry with the passkey</button>
+
+    <div id="log" role="status" aria-live="polite"></div>
+
+    <label for="signed">Signed entry (base64 XDR)</label>
+    <textarea id="signed" readonly spellcheck="false"></textarea>
+
+    <!-- Every asset below is local. There is deliberately no CDN reference.
+         wasm_exec.js is a build output, so it is attached at runtime: a static
+         src would make the documentation build report a source-tree link to a
+         file that only exists after build-offline.sh has run. -->
+    <script>
+      (function () {
+        var log = document.getElementById("log");
+        var wasmExec = document.createElement("script");
+        wasmExec.src = "./dist/wasm_exec.js";
+        wasmExec.onload = function () {
+          import("./offline.js").catch(function (err) {
+            log.textContent = "Failed to load the local signer: " + err;
+          });
+        };
+        wasmExec.onerror = function () {
+          log.textContent =
+            "Local assets are missing. Run ./build-offline.sh, then reload this page.";
+        };
+        document.head.appendChild(wasmExec);
+      })();
+    </script>
+  </body>
+</html>

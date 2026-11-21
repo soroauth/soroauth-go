@@ -10,6 +10,29 @@ this project adheres to
 
 ### Added
 
+- Add a per-caller token-bucket rate limit to the verification service, checked
+  before the body is read and before a concurrency slot is taken. A refusal is
+  `429` with `Retry-After`; `AUTH_TOKEN` accepts a comma-separated list so
+  distinct clients get distinct quotas, and a new limit-rejection metric splits
+  sheds by rate, concurrency and body. (#549)
+
+- Run the OpenAPI conformance check on pull requests when its inputs change, and
+  prove the check rejects an extra field, a renamed field, an undeclared status
+  and the wrong body shape rather than only passing on a correct response.
+  (#552)
+
+- Add an offline browser signing page whose assets are all local: it derives the
+  payload in the WASM core, signs with a passkey, verifies the assertion
+  locally, builds the signature ScVal with a new wasm binding, and makes no
+  request after load. A Playwright test aborts and records every request after
+  load so a CDN import or font fetch fails the run. (#557)
+
+- Add a Helm chart and plain Kubernetes manifests for the verification service.
+  The chart runs the server from the published image, uses `/healthz` for all
+  probes, separates metrics onto their own Service, and refuses to render
+  without an existing token Secret. CI lints and validates both, then deploys
+  the chart in kind and verifies a golden vector through the service. (#560)
+
 - Make the WebAssembly signing core reproducible: both targets are built with
   `-trimpath -buildvcs=false`, `scripts/reproduce-wasm.sh` rebuilds a tag twice
   and writes `soroauth-wasm-checksums.txt`, and the release and npm package

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "soroauth.fullname" . }}
+  labels:
+    {{- include "soroauth.labels" . | nindent 4 }}
+data:
+  # Non-secret service bounds. AUTH_TOKEN is deliberately absent: it comes from
+  # the existing Secret referenced by the Deployment.
+  READ_TIMEOUT: {{ .Values.config.readTimeout | quote }}
+  READ_HEADER_TIMEOUT: {{ .Values.config.readHeaderTimeout | quote }}
+  WRITE_TIMEOUT: {{ .Values.config.writeTimeout | quote }}
+  IDLE_TIMEOUT: {{ .Values.config.idleTimeout | quote }}
+  # The int64 conversion is required: Helm parses an unquoted YAML integer as a
+  # float, and quota would render 1048576 as 1.048576e+06, which the service
+  # then refuses as a malformed bound.
+  MAX_BODY_BYTES: {{ .Values.config.maxBodyBytes | int64 | quote }}
+  MAX_CONCURRENT_REQUESTS: {{ .Values.config.maxConcurrentRequests | int64 | quote }}
+  RATE_LIMIT_PER_SECOND: {{ .Values.config.rateLimitPerSecond | int64 | quote }}
+  RATE_LIMIT_BURST: {{ .Values.config.rateLimitBurst | int64 | quote }}

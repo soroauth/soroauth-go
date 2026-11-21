@@ -45,14 +45,19 @@ func (s *server) riskHandler(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if !s.authorized(r) {
+	identity, ok := s.authenticate(r)
+	if !ok {
 		s.writeError(w, r, http.StatusUnauthorized, "missing or invalid bearer token")
+		return
+	}
+	if !s.allowRate(w, r, identity) {
 		return
 	}
 	select {
 	case s.sem <- struct{}{}:
 		defer func() { <-s.sem }()
 	default:
+		s.metrics.recordLimitRejection(limitConcurrency)
 		w.Header().Set("Retry-After", "1")
 		s.writeError(w, r, http.StatusServiceUnavailable,
 			"service is at its concurrent-request limit; retry shortly")
@@ -64,6 +69,7 @@ func (s *server) riskHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
+			s.metrics.recordLimitRejection(limitBody)
 			s.writeError(w, r, http.StatusRequestEntityTooLarge,
 				fmt.Sprintf("request body exceeds the %d-byte limit", s.cfg.MaxBodyBytes))
 			return

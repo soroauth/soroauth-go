@@ -1,0 +1,150 @@
+# Validates the deployment reference and deploys it for real.
+#
+# Two jobs:
+#   - helm: lint and render the chart, prove the chart refuses to render
+#     without a bearer-token Secret, and validate both the chart output and the
+#     plain manifests against the Kubernetes schemas with kubeconform.
+#   - smoke: build the image, install the chart into a throwaway kind cluster,
+#     wait for the rollout, then call /healthz, send one real /verify request
+#     from a golden vector, and scrape the metrics listener.
+name: ci / deploy
+
+on:
+  pull_request:
+    paths:
+      - "deploy/**"
+      - "Dockerfile"
+      - "server/**"
+      - "docs/verification-service*.md"
+      - "testdata/vectors/v2_single_testnet.json"
+      - ".github/workflows/ci-deploy.yml"
+  push:
+    branches: [main]
+    paths:
+      - "deploy/**"
+      - "Dockerfile"
+      - "server/**"
+      - "docs/verification-service*.md"
+      - "testdata/vectors/v2_single_testnet.json"
+      - ".github/workflows/ci-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  KUBECONFORM_VERSION: v0.7.0
+
+jobs:
+  helm:
+    name: chart and manifests are valid
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: ensure helm
+        run: command -v helm || go install helm.sh/helm/v3/cmd/helm@v3.16.4
+      - name: lint
+        run: helm lint deploy/helm/soroauth-verification --set auth.existingSecret=soroauth-auth
+      - name: render
+        run: |
+          helm template soroauth deploy/helm/soroauth-verification \
+            --namespace soroauth \
+            --set auth.existingSecret=soroauth-auth \
+            --set fullnameOverride=soroauth > /tmp/soroauth-chart.yaml
+      - name: the chart refuses to render without a token Secret
+        run: |
+          if helm template soroauth deploy/helm/soroauth-verification >/tmp/helm.out 2>/tmp/helm.err; then
+            echo "the chart rendered without auth.existingSecret; it must fail closed" >&2
+            exit 1
+          fi
+          cat /tmp/helm.err
+      - name: render the plain manifests
+        run: |
+          kubectl kustomize deploy/kubernetes > /tmp/soroauth-raw.yaml
+      - name: validate both against the Kubernetes schemas
+        run: |
+          docker run --rm -v /tmp:/tmp "ghcr.io/yannh/kubeconform:${KUBECONFORM_VERSION}" \
+            -strict -summary /tmp/soroauth-chart.yaml /tmp/soroauth-raw.yaml
+
+  smoke:
+    name: one request end to end in kind
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: ensure helm and kind
+        run: |
+          command -v helm || go install helm.sh/helm/v3/cmd/helm@v3.16.4
+          command -v kind || go install sigs.k8s.io/kind@v0.24.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: build the image the chart deploys
+        run: docker build -t soroauth-server:ci .
+      - name: create the throwaway cluster
+        run: kind create cluster --name soroauth --wait 120s
+      - name: install the chart
+        run: |
+          set -euo pipefail
+          kind load docker-image soroauth-server:ci --name soroauth
+          kubectl create namespace soroauth
+          kubectl -n soroauth create secret generic soroauth-auth \
+            --from-literal=auth-token=ci-token
+          helm install soroauth deploy/helm/soroauth-verification \
+            --namespace soroauth \
+            --set fullnameOverride=soroauth \
+            --set auth.existingSecret=soroauth-auth \
+            --set image.repository=soroauth-server \
+            --set image.tag=ci \
+            --set image.pullPolicy=Never \
+            --set config.rateLimitPerSecond=1 \
+            --set config.rateLimitBurst=1
+          kubectl -n soroauth rollout status deploy/soroauth --timeout=180s
+      - name: health, verify one vector, and scrape metrics
+        run: |
+          set -euo pipefail
+          kubectl -n soroauth port-forward svc/soroauth 18080:8080 >/tmp/port-forward.log 2>&1 &
+          kubectl -n soroauth port-forward svc/soroauth-metrics 19090:9090 >/tmp/metrics-port-forward.log 2>&1 &
+          trap 'kill %1 %2 2>/dev/null || true' EXIT
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:18080/healthz >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18080/healthz | jq -e '.status == "ok"'
+
+          entry="$(jq -r .signed_entry_xdr testdata/vectors/v2_single_testnet.json)"
+          passphrase="$(jq -r .network_passphrase testdata/vectors/v2_single_testnet.json)"
+          jq -n --arg entry "$entry" --arg network "$passphrase" \
+            '{entry: $entry, network: $network}' > /tmp/verify.json
+          curl -fsS -X POST http://127.0.0.1:18080/verify \
+            -H "Authorization: Bearer ci-token" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/verify.json | jq -e '.verified == true'
+
+          # The next request from the same caller is over the one-token budget.
+          # This is the live check that the 429 path and its metric work in the
+          # deployed pod, not only in a unit test.
+          headers=/tmp/rate-headers.txt
+          status="$(curl -sS -o /tmp/rate-body.json -D "$headers" -w '%{http_code}' \
+            -X POST http://127.0.0.1:18080/verify \
+            -H "Authorization: Bearer ci-token" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/verify.json)"
+          test "$status" = "429"
+          grep -qi '^retry-after:' "$headers"
+
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:19090/metrics >/tmp/metrics.txt; then break; fi
+            sleep 1
+          done
+          grep -q 'soroauth_http_requests_total' /tmp/metrics.txt
+          grep -q 'soroauth_http_limit_rejections_total' /tmp/metrics.txt
+      - name: delete the cluster
+        if: always()
+        run: kind delete cluster --name soroauth

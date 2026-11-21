@@ -105,6 +105,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: |
+            The caller is past its request-rate limit. The limit is enforced
+            before the body is read, so the request did no decoding work. Retry,
+            honouring the `Retry-After` header.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: An unexpected internal error; the handler panicked and was recovered.
           content:
@@ -178,6 +192,20 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "413":
           description: The request body is past the configured size limit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: |
+            The caller is past its request-rate limit. The limit is enforced
+            before the body is read, so the request did no decoding work. Retry,
+            honouring the `Retry-After` header.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: string
           content:
             application/json:
               schema:

@@ -21,6 +21,12 @@ const (
 	metricVerdicts        = "soroauth_verify_verdicts_total"
 	metricRefusals        = "soroauth_verify_refusals_total"
 	metricSignerDuration  = "soroauth_signer_duration_seconds"
+	// metricLimitRejections counts requests shed by one of the service's
+	// availability bounds. It is separate from the refusal counter because a
+	// shed request never reached verification: the two answer different
+	// operator questions ("is the service under attack?" versus "are entries
+	// failing?").
+	metricLimitRejections = "soroauth_http_limit_rejections_total"
 )
 
 // Refusal reasons. The set is closed on purpose: a reason that is not listed is
@@ -41,7 +47,16 @@ const (
 	refusalInternal           = "internal"
 	refusalBadRequest         = "bad_request"
 	refusalNotFound           = "not_found"
+	refusalRateLimited        = "rate_limited"
 	refusalOther              = "other"
+)
+
+// The limit labels. The set is closed, like the refusal reasons, so a new shed
+// point must be added here deliberately rather than appearing as a stray series.
+const (
+	limitRate        = "rate"
+	limitConcurrency = "concurrency"
+	limitBody        = "body"
 )
 
 // serviceMetrics holds one process's collectors. A private registry (rather
@@ -55,6 +70,7 @@ type serviceMetrics struct {
 	verdicts        *prometheus.CounterVec
 	refusals        *prometheus.CounterVec
 	signerDuration  *prometheus.HistogramVec
+	limitRejections *prometheus.CounterVec
 }
 
 // newServiceMetrics builds the collectors and registers them. Every collector
@@ -86,8 +102,12 @@ func newServiceMetrics() *serviceMetrics {
 			Help:    "Signing phase latency in seconds, fed by soroauth.Hook events. Empty unless the service is used for signing.",
 			Buckets: prometheus.DefBuckets,
 		}, []string{"phase", "credential_type"}),
+		limitRejections: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: metricLimitRejections,
+			Help: "Requests shed by an availability limit, by which limit refused them.",
+		}, []string{"limit"}),
 	}
-	registry.MustRegister(m.requests, m.requestDuration, m.verdicts, m.refusals, m.signerDuration)
+	registry.MustRegister(m.requests, m.requestDuration, m.verdicts, m.refusals, m.signerDuration, m.limitRejections)
 	return m
 }
 
@@ -116,6 +136,12 @@ func (m *serviceMetrics) recordRefusal(reason string) {
 	m.refusals.WithLabelValues(clamp(labelRefusalReasons, reason, refusalOther)).Inc()
 }
 
+// recordLimitRejection counts one request shed by a bound. The label is clamped
+// to the closed set for the same reason the refusal reasons are.
+func (m *serviceMetrics) recordLimitRejection(limit string) {
+	m.limitRejections.WithLabelValues(clamp(labelLimits, limit, limitRate)).Inc()
+}
+
 // recordRefusalReason classifies an error response by its status so every
 // refusal is counted with a reason, without the handler passing a string at
 // each call site.
@@ -135,6 +161,8 @@ func (m *serviceMetrics) recordRefusalReason(status int) {
 		m.recordRefusal(refusalNotFound)
 	case http.StatusBadRequest:
 		m.recordRefusal(refusalBadRequest)
+	case http.StatusTooManyRequests:
+		m.recordRefusal(refusalRateLimited)
 	default:
 		m.recordRefusal(refusalOther)
 	}
@@ -182,7 +210,7 @@ func (s *server) hook() soroauth.Hook {
 var (
 	labelMethods         = setOf(http.MethodGet, http.MethodPost, "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS")
 	labelRoutes          = setOf(routeVerify, routeRisk, routeHealthz, routeUnmatched)
-	labelStatuses        = setOf("200", "400", "401", "404", "405", "413", "500", "503")
+	labelStatuses        = setOf("200", "400", "401", "404", "405", "413", "429", "500", "503")
 	labelCredentialTypes = setOf(
 		soroauth.CredentialTypeSourceAccount,
 		soroauth.CredentialTypeAddress,
@@ -200,8 +228,9 @@ var (
 	labelRefusalReasons = setOf(
 		refusalInvalid, refusalCannotCheck, refusalUnsigned, refusalExpirationMismatch,
 		refusalUnauthorized, refusalMethodNotAllowed, refusalTooLarge, refusalOverloaded,
-		refusalInternal, refusalBadRequest, refusalNotFound, refusalOther,
+		refusalInternal, refusalBadRequest, refusalNotFound, refusalRateLimited, refusalOther,
 	)
+	labelLimits = setOf(limitRate, limitConcurrency, limitBody)
 	labelPhases = setOf(
 		string(soroauth.HookPhasePreimage),
 		string(soroauth.HookPhaseSign),

@@ -107,6 +107,26 @@ test("wrapper reproduces a delegates golden vector byte for byte", { skip }, asy
   assert.equal(signed, vector.signed_entry_xdr);
 });
 
+test("wrapper reproduces the passkey signature-map vector", { skip }, async () => {
+  installGoRuntime();
+  const soroauth = await loadSoroauth({
+    wasm: readFileSync(WASM),
+    go: globalThis.Go,
+    globalObject: globalThis,
+  });
+
+  const vector = JSON.parse(
+    readFileSync(
+      join(VECTORS, "passkey", "passkey_signature_map_typical.json"),
+      "utf8",
+    ),
+  );
+  assert.equal(
+    soroauth.passkeySignature(vector.public_key_hex, vector.signature_hex),
+    vector.signature_map_xdr,
+  );
+});
+
 test("wrapper throws a SoroauthError for a source-account entry", { skip }, async () => {
   installGoRuntime();
   const soroauth = await loadSoroauth({

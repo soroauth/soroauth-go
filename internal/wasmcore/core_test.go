@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stellar/go-stellar-sdk/keypair"
@@ -26,6 +27,9 @@ type vector struct {
 	PreimageXDR       string `json:"preimage_xdr"`
 	PayloadHex        string `json:"payload_hex"`
 	SignedEntryXDR    string `json:"signed_entry_xdr"`
+	PublicKeyHex      string `json:"public_key_hex"`
+	SignatureHex      string `json:"signature_hex"`
+	SignatureMapXDR   string `json:"signature_map_xdr"`
 	Steps             []struct {
 		SignerLabel string  `json:"signer_label"`
 		ForAddress  *string `json:"for_address"`
@@ -138,5 +142,41 @@ func TestPreimageRejectsSourceAccount(t *testing.T) {
 func TestPayloadRejectsMalformedXDR(t *testing.T) {
 	if _, err := wasmcore.Payload("not base64 xdr"); err == nil {
 		t.Fatal("Payload accepted malformed input")
+	}
+}
+
+func TestPasskeySignatureMatchesGoldenVector(t *testing.T) {
+	v := loadVector(t, "passkey/passkey_signature_map_typical")
+	if v.PublicKeyHex == "" || v.SignatureHex == "" || v.SignatureMapXDR == "" {
+		t.Fatal("the passkey vector is missing a field this test needs")
+	}
+
+	got, err := wasmcore.PasskeySignature(v.PublicKeyHex, v.SignatureHex)
+	if err != nil {
+		t.Fatalf("PasskeySignature: %v", err)
+	}
+	if got != v.SignatureMapXDR {
+		t.Errorf("signature map differs from the golden vector")
+	}
+}
+
+func TestPasskeySignatureRejectsMalformedKey(t *testing.T) {
+	tests := []struct {
+		name      string
+		publicKey string
+		signature string
+	}{
+		{"not hex", "zz", strings.Repeat("00", 64)},
+		{"wrong key length", "04" + strings.Repeat("00", 62), strings.Repeat("00", 64)},
+		{"not an uncompressed point", "02" + strings.Repeat("00", 64), strings.Repeat("00", 64)},
+		{"off curve", "04" + strings.Repeat("00", 64), strings.Repeat("00", 64)},
+		{"wrong signature length", "04" + strings.Repeat("00", 64), strings.Repeat("00", 63)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := wasmcore.PasskeySignature(tt.publicKey, tt.signature); err == nil {
+				t.Fatal("PasskeySignature accepted malformed input")
+			}
+		})
 	}
 }

@@ -44,6 +44,11 @@ export interface RawPayloadResult extends RawEnvelope {
   readonly payloadHex?: string;
 }
 
+/** Raw result of `passkeySignature`. */
+export interface RawPasskeySignatureResult extends RawEnvelope {
+  readonly signatureScvalB64?: string;
+}
+
 /** Raw result of `writeSignature` and `authorizeWithSeed`. */
 export interface RawEntryResult extends RawEnvelope {
   readonly entryB64?: string;
@@ -75,6 +80,10 @@ export interface RawBindings {
     seedHex: string,
     forAddress: string,
   ): RawEntryResult;
+  passkeySignature(
+    publicKeyHex: string,
+    signatureHex: string,
+  ): RawPasskeySignatureResult;
 }
 
 /**

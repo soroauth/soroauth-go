@@ -1,0 +1,108 @@
+{{- if not .Values.auth.existingSecret }}
+{{- fail "auth.existingSecret is required: create a Secret with the bearer token and reference it; the chart will not render an unauthenticated service" }}
+{{- end }}
+{{- if lt (int .Values.replicaCount) 1 }}
+{{- fail "replicaCount must be at least 1" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "soroauth.fullname" . }}
+  labels:
+    {{- include "soroauth.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "soroauth.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "soroauth.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: server
+          image: {{ include "soroauth.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # The image entrypoint is the CLI; the service is the second binary in
+          # the same signed image.
+          command: ["/usr/local/bin/soroauth-server"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+              protocol: TCP
+            {{- end }}
+          env:
+            # A non-loopback bind is deliberate: the pod must accept traffic
+            # from the Service. loadConfig therefore requires AUTH_TOKEN, which
+            # is read from the existing Secret and never rendered here.
+            - name: ADDR
+              value: ":{{ .Values.service.port }}"
+            {{- if .Values.metrics.enabled }}
+            - name: METRICS_ADDR
+              value: ":{{ .Values.metrics.port }}"
+            {{- else }}
+            - name: METRICS_ADDR
+              value: "off"
+            {{- end }}
+            - name: AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret }}
+                  key: {{ .Values.auth.secretKey }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "soroauth.fullname" . }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            {{- toYaml .Values.probes.startup | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

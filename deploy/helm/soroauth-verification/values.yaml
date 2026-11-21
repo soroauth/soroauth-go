@@ -1,0 +1,122 @@
+# Defaults for the soroauth verification service.
+#
+# The chart fails closed: there is no default bearer token and no default
+# secret, and the template refuses to render without auth.existingSecret. A
+# verification service exposed without a token is a service anyone who can
+# reach it can use.
+
+replicaCount: 2
+
+image:
+  # The release publishes the CLI and the server in one image; this chart
+  # overrides the command to run the server.
+  repository: ghcr.io/soroauth/soroauth-go
+  pullPolicy: IfNotPresent
+  # Pin a release tag or, preferably, a digest in production.
+  tag: "latest"
+  digest: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# The secret must already exist and carry the bearer token under this key.
+# Never put the token in values.yaml or a ConfigMap.
+auth:
+  existingSecret: ""
+  secretKey: auth-token
+
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+# The metrics listener is separate from the API listener in the server, so it
+# can be scraped without exposing it alongside /verify.
+metrics:
+  enabled: true
+  port: 9090
+  service:
+    annotations: {}
+  serviceMonitor:
+    # Requires the Prometheus Operator CRDs. Disabled by default so a plain
+    # cluster does not reject the chart.
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+
+# Every value is passed through to the service as an environment variable. They
+# are the bounds documented in docs/verification-service.md and enforced in
+# server/main.go; changing one here changes the service's actual behaviour.
+config:
+  readTimeout: 5s
+  readHeaderTimeout: 5s
+  writeTimeout: 10s
+  idleTimeout: 120s
+  maxBodyBytes: 1048576
+  maxConcurrentRequests: 64
+  rateLimitPerSecond: 50
+  rateLimitBurst: 100
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+# Readiness and liveness both use /healthz: it is unauthenticated and reports
+# process liveness. There is no separate readiness endpoint to point at, and
+# using /verify for a probe would spend a caller's quota.
+probes:
+  readiness:
+    initialDelaySeconds: 2
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  liveness:
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 2
+    failureThreshold: 3
+  startup:
+    initialDelaySeconds: 1
+    periodSeconds: 2
+    timeoutSeconds: 2
+    failureThreshold: 30
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+podAnnotations: {}
+podLabels: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+terminationGracePeriodSeconds: 30
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70

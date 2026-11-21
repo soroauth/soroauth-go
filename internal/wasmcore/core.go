@@ -10,6 +10,8 @@ package wasmcore
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -154,6 +156,44 @@ func AuthorizeWithSeed(entryB64 string, validUntilLedger uint32, networkPassphra
 		return "", err
 	}
 	return encodeEntry(signed)
+}
+
+// PasskeySignature builds the {public_key, signature} ScVal a passkey wallet
+// contract decodes, from an uncompressed SEC1 P-256 public key (65 bytes,
+// 0x04 || X || Y) and a raw low-S r||s signature (64 bytes), both hex-encoded.
+//
+// The shape comes from the same soroauth.Secp256r1SignatureScVal the native
+// library uses, so an offline page can produce it without linking the Stellar
+// SDK or carrying a second XDR encoder that could drift.
+func PasskeySignature(publicKeyHex, signatureHex string) (string, error) {
+	publicBytes, err := hex.DecodeString(strings.TrimSpace(publicKeyHex))
+	if err != nil {
+		return "", fmt.Errorf("soroauth: wasm: decoding public key: %w", err)
+	}
+	signatureBytes, err := hex.DecodeString(strings.TrimSpace(signatureHex))
+	if err != nil {
+		return "", fmt.Errorf("soroauth: wasm: decoding signature: %w", err)
+	}
+	if len(publicBytes) != 65 || publicBytes[0] != 0x04 {
+		return "", fmt.Errorf("soroauth: wasm: public key must be 65-byte uncompressed SEC1, got %d bytes", len(publicBytes))
+	}
+	x, y := elliptic.Unmarshal(elliptic.P256(), publicBytes)
+	if x == nil || y == nil {
+		return "", fmt.Errorf("soroauth: wasm: public key is not a valid P-256 point")
+	}
+	value, err := soroauth.Secp256r1SignatureScVal(&ecdsa.PublicKey{
+		Curve: elliptic.P256(),
+		X:     x,
+		Y:     y,
+	}, signatureBytes)
+	if err != nil {
+		return "", err
+	}
+	raw, err := value.MarshalBinary()
+	if err != nil {
+		return "", fmt.Errorf("soroauth: wasm: marshalling signature scval: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(raw), nil
 }
 
 // decodeEntry parses a base64 XDR SorobanAuthorizationEntry through the

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strconv"
 	"time"
 
 	"github.com/stellar/go-stellar-sdk/network"
@@ -65,6 +66,10 @@ type errorOutput struct {
 type server struct {
 	cfg     config
 	metrics *serviceMetrics
+	// limiter bounds each caller's request rate. It is consulted before the
+	// concurrency slot and before the body is read, because a request that is
+	// going to be refused should not consume either resource.
+	limiter *callerLimiter
 	// sem bounds in-flight /verify requests. A slot is taken before the body
 	// is read, so a slow or stalled upload cannot pile up past the bound.
 	sem chan struct{}
@@ -79,6 +84,7 @@ func newServer(cfg config) *server {
 	return &server{
 		cfg:     cfg,
 		metrics: newServiceMetrics(),
+		limiter: newCallerLimiter(cfg.RateLimitPerSecond, cfg.RateLimitBurst, time.Second),
 		sem:     make(chan struct{}, cfg.MaxConcurrentRequests),
 	}
 }
@@ -148,8 +154,12 @@ func (s *server) verifyHandler(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if !s.authorized(r) {
+	identity, ok := s.authenticate(r)
+	if !ok {
 		s.writeError(w, r, http.StatusUnauthorized, "missing or invalid bearer token")
+		return
+	}
+	if !s.allowRate(w, r, identity) {
 		return
 	}
 
@@ -160,6 +170,7 @@ func (s *server) verifyHandler(w http.ResponseWriter, r *http.Request) {
 	case s.sem <- struct{}{}:
 		defer func() { <-s.sem }()
 	default:
+		s.metrics.recordLimitRejection(limitConcurrency)
 		w.Header().Set("Retry-After", "1")
 		s.writeError(w, r, http.StatusServiceUnavailable,
 			"service is at its concurrent-request limit; retry shortly")
@@ -174,6 +185,7 @@ func (s *server) verifyHandler(w http.ResponseWriter, r *http.Request) {
 		// succeed and the caller should know why at a glance.
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
+			s.metrics.recordLimitRejection(limitBody)
 			s.writeError(w, r, http.StatusRequestEntityTooLarge,
 				fmt.Sprintf("request body exceeds the %d-byte limit", s.cfg.MaxBodyBytes))
 			return
@@ -273,16 +285,39 @@ func (s *server) recordVerdicts(report soroauth.VerificationReport) {
 	}
 }
 
-// authorized applies the bearer-token check. With no configured token the
-// check is a no-op, which loadConfig only permits on a loopback bind.
-func (s *server) authorized(r *http.Request) bool {
-	if s.cfg.AuthToken == "" {
-		return true
+// authenticate applies the bearer-token check and returns the caller identity
+// the rate limiter keys on. With no configured token the check is a no-op,
+// which loadConfig only permits on a loopback bind, and the peer address is the
+// identity. Every configured token is compared in constant time so a caller
+// cannot recover one by timing guesses, and the matched token — not its
+// position in the list — determines the identity.
+func (s *server) authenticate(r *http.Request) (string, bool) {
+	if len(s.cfg.AuthTokens) == 0 {
+		return callerIdentity(r, ""), true
 	}
 	got := r.Header.Get("Authorization")
-	want := "Bearer " + s.cfg.AuthToken
-	// Constant time so a caller cannot recover the token by timing guesses.
-	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+	for _, token := range s.cfg.AuthTokens {
+		want := "Bearer " + token
+		if subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1 {
+			return callerIdentity(r, token), true
+		}
+	}
+	return "", false
+}
+
+// allowRate sheds a request before its body is read. A refused caller gets 429
+// and a Retry-After hint, and the rejection is counted under the rate label so
+// the refusals metric and the limit metric agree on what happened.
+func (s *server) allowRate(w http.ResponseWriter, r *http.Request, identity string) bool {
+	ok, retry := s.limiter.allow(identity)
+	if ok {
+		return true
+	}
+	s.metrics.recordLimitRejection(limitRate)
+	w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(retry)))
+	s.writeError(w, r, http.StatusTooManyRequests,
+		"request rate limit exceeded; retry after the indicated delay")
+	return false
 }
 
 // writeError writes the JSON error body and counts it. The status is the only
