@@ -107,18 +107,34 @@ func TestVerifyEntryGoldenVectors(t *testing.T) {
 				if wantVerified[node.Address] {
 					want = VerdictVerified
 				}
+				// A node addressed to a contract is always cannot_check,
+				// whatever it holds: only that contract's __check_auth defines
+				// whether its signature is valid, and verify.go decides this
+				// before the unsigned check. Vectors covering contract
+				// delegates (#307) are the first to exercise it.
+				if strings.HasPrefix(node.Address, "C") {
+					want = VerdictCannotCheck
+				}
 				if node.Verdict != want {
 					t.Errorf("node %d (%s) verdict %q (%s), want %q",
 						i, node.Address, node.Verdict, node.Reason, want)
 				}
 			}
 
-			// The report must never call a golden vector invalid or
-			// cannot-check: every vector's nodes are classic account signatures.
+			// The report must never call a golden vector's node invalid.
+			// cannot_check is allowed only for a contract node, where it is the
+			// correct answer rather than a gap: this assertion used to forbid it
+			// outright because every vector's nodes were classic account
+			// signatures, which stopped being true once contract delegates were
+			// covered (#307). A G… node must still never be cannot_check.
 			for i, node := range report.Nodes {
-				if node.Verdict == VerdictInvalid || node.Verdict == VerdictCannotCheck {
-					t.Errorf("node %d (%s) verdict %q (%s); a golden vector must never be %q or %q",
-						i, node.Address, node.Verdict, node.Reason, VerdictInvalid, VerdictCannotCheck)
+				if node.Verdict == VerdictInvalid {
+					t.Errorf("node %d (%s) verdict %q (%s); a golden vector must never be %q",
+						i, node.Address, node.Verdict, node.Reason, VerdictInvalid)
+				}
+				if node.Verdict == VerdictCannotCheck && !strings.HasPrefix(node.Address, "C") {
+					t.Errorf("node %d (%s) verdict %q (%s); only a contract node may be %q",
+						i, node.Address, node.Verdict, node.Reason, VerdictCannotCheck)
 				}
 			}
 
@@ -877,4 +893,138 @@ func TestVerificationReportStringDoesNotPanic(t *testing.T) {
 	// Empty report
 	empty := VerificationReport{}
 	_ = empty.String() // Should not panic
+}
+
+// TestVerifyEntryContractDelegateIsCannotCheck verifies that a C… contract as
+// a top-level delegate is always reported cannot_check, never unsigned — even
+// when its signature field holds a placeholder (Void or empty vector).
+//
+// A placeholder handed to __check_auth may itself be meaningful (the contract
+// decides), so the engine must not classify it as unsigned. Issue #307.
+func TestVerifyEntryContractDelegateIsCannotCheck(t *testing.T) {
+	contractAddr := testContractAddress(t, "verify-contract-delegate")
+
+	top := NewEd25519Signer(testKeypair(t, "soroauth-preimage-signer"))
+
+	unsigned := entryForArm(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 55)
+	wrapped, err := WithDelegates(unsigned, testValidUntilLedger, []Delegate{
+		{Address: contractAddr},
+	}, nil)
+	if err != nil {
+		t.Fatalf("WithDelegates: %v", err)
+	}
+
+	// Sign only the top-level account; the contract delegate stays scvVoid.
+	signed, err := AuthorizeEntry(context.Background(), wrapped, top, testValidUntilLedger, network.TestNetworkPassphrase)
+	if err != nil {
+		t.Fatalf("AuthorizeEntry: %v", err)
+	}
+
+	report, err := VerifyEntry(signed, network.TestNetworkPassphrase)
+	if err != nil {
+		t.Fatalf("VerifyEntry: %v", err)
+	}
+
+	// Two nodes: top-level account + contract delegate.
+	if len(report.Nodes) != 2 {
+		t.Fatalf("got %d nodes, want 2: %+v", len(report.Nodes), report.Nodes)
+	}
+
+	// Find the contract node.
+	var contractNode *NodeVerdict
+	for i := range report.Nodes {
+		if report.Nodes[i].Address == contractAddr {
+			contractNode = &report.Nodes[i]
+			break
+		}
+	}
+	if contractNode == nil {
+		t.Fatalf("contract address %q not found in nodes: %+v", contractAddr, report.Nodes)
+	}
+
+	if contractNode.Verdict != VerdictCannotCheck {
+		t.Errorf("contract delegate verdict = %q, want %q (reason: %s)",
+			contractNode.Verdict, VerdictCannotCheck, contractNode.Reason)
+	}
+	if report.HasUnsignedNodes() {
+		t.Error("HasUnsignedNodes() = true; the contract node must be cannot_check, not unsigned")
+	}
+}
+
+// TestVerifyEntryMixedAccountContractDelegates checks a level that has both a
+// G… account delegate and a C… contract delegate. Proves that:
+//   - The account delegate is verified (signed correctly).
+//   - The contract delegate is cannot_check (regardless of its signature).
+//   - The XDR byte ordering rule places the account before the contract because
+//     ScAddress discriminates account (0) before contract (1).
+func TestVerifyEntryMixedAccountContractDelegates(t *testing.T) {
+	top := NewEd25519Signer(testKeypair(t, "soroauth-preimage-signer"))
+	delegate1 := NewEd25519Signer(testKeypair(t, "verify-mixed-delegate"))
+	contractAddr := testContractAddress(t, "verify-mixed-contract")
+
+	unsigned := entryForArm(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2, 77)
+	// Pass [contract, account] in input order; WithDelegates will sort them so
+	// the account (discriminant 0) comes before the contract (discriminant 1).
+	wrapped, err := WithDelegates(unsigned, testValidUntilLedger, []Delegate{
+		{Address: contractAddr},
+		{Address: delegate1.Address()},
+	}, nil)
+	if err != nil {
+		t.Fatalf("WithDelegates: %v", err)
+	}
+
+	// Sign the top-level and the account delegate.
+	signed := wrapped
+	for _, signer := range []Signer{top, delegate1} {
+		signed, err = AuthorizeEntry(context.Background(), signed, signer, testValidUntilLedger, network.TestNetworkPassphrase)
+		if err != nil {
+			t.Fatalf("AuthorizeEntry(%s): %v", signer.Address(), err)
+		}
+	}
+
+	report, err := VerifyEntry(signed, network.TestNetworkPassphrase)
+	if err != nil {
+		t.Fatalf("VerifyEntry: %v", err)
+	}
+
+	// Three nodes: top-level + account delegate + contract delegate.
+	if len(report.Nodes) != 3 {
+		t.Fatalf("got %d nodes, want 3: %+v", len(report.Nodes), report.Nodes)
+	}
+
+	for _, node := range report.Nodes {
+		if node.Address == contractAddr {
+			if node.Verdict != VerdictCannotCheck {
+				t.Errorf("contract node: verdict = %q, want %q", node.Verdict, VerdictCannotCheck)
+			}
+		} else {
+			if node.Verdict != VerdictVerified {
+				t.Errorf("account node %s: verdict = %q (%s), want %q",
+					node.Address, node.Verdict, node.Reason, VerdictVerified)
+			}
+		}
+	}
+
+	// Verify that the XDR-ordered delegates array has the account before the contract.
+	// We confirm this by checking the signed entry's delegates array directly.
+	wd := signed.Credentials.AddressWithDelegates
+	if wd == nil || len(wd.Delegates) != 2 {
+		t.Fatalf("unexpected delegates structure")
+	}
+	firstAddr, err := FormatAddress(wd.Delegates[0].Address)
+	if err != nil {
+		t.Fatalf("FormatAddress delegates[0]: %v", err)
+	}
+	secondAddr, err := FormatAddress(wd.Delegates[1].Address)
+	if err != nil {
+		t.Fatalf("FormatAddress delegates[1]: %v", err)
+	}
+	// Account (G...) must come first because ScAddress discriminant for account = 0
+	// is less than the discriminant for contract = 1.
+	if firstAddr[0] != 'G' {
+		t.Errorf("first delegate = %s, want G... (account before contract in XDR byte order)", firstAddr)
+	}
+	if secondAddr[0] != 'C' {
+		t.Errorf("second delegate = %s, want C... (account before contract in XDR byte order)", secondAddr)
+	}
 }
