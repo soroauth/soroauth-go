@@ -79,11 +79,24 @@ type config struct {
 	// MetricsAddr is the Prometheus listen address. "off", "none" or "-"
 	// disables the metrics server.
 	MetricsAddr string
-	// AuthTokens are the bearer tokens /verify and /risk accept. A comma in
-	// AUTH_TOKEN separates several: each token is a separate caller identity
-	// for the rate limiter, so distinct clients get distinct quotas. Empty
-	// means no authentication, which is only allowed on a loopback bind.
+	// AuthToken is the raw AUTH_TOKEN value. Used directly when the value
+	// contains the richer id:token:ops;... syntax (set by a library caller
+	// or a test, never from loadConfig's environment parsing).
+	AuthToken string
+	// AuthTokens are the bearer tokens /verify and /risk accept, parsed from
+	// AUTH_TOKEN by loadConfig via splitTokens. A comma in AUTH_TOKEN separates
+	// several plain tokens: each gets a distinct caller identity for the rate
+	// limiter. Empty means no authentication, which is only allowed on a
+	// loopback bind.
 	AuthTokens []string
+
+	// Authenticator decides whether a request may invoke an operation.
+	// loadConfig installs either openLoopbackAuthenticator (unauthenticated
+	// loopback binds) or a bearerTokenAuthenticator parsed from AuthToken.
+	// A caller using this package as a library may replace it with any
+	// Authenticator — mTLS, OIDC, HMAC — by setting it on the config
+	// before calling newServer.
+	Authenticator Authenticator
 
 	ReadTimeout       time.Duration
 	ReadHeaderTimeout time.Duration
@@ -137,8 +150,10 @@ func loadConfig(getenv func(string) string) (config, error) {
 	cfg := defaultConfig()
 	cfg.Addr = valueOr(getenv("ADDR"), cfg.Addr)
 	cfg.MetricsAddr = valueOr(getenv("METRICS_ADDR"), cfg.MetricsAddr)
+	raw := getenv("AUTH_TOKEN")
+	cfg.AuthToken = raw
 	var err error
-	if cfg.AuthTokens, err = splitTokens(getenv("AUTH_TOKEN")); err != nil {
+	if cfg.AuthTokens, err = splitTokens(raw); err != nil {
 		return config{}, err
 	}
 	if cfg.ReadTimeout, err = durationEnv(getenv, "READ_TIMEOUT", cfg.ReadTimeout); err != nil {
@@ -184,10 +199,24 @@ func loadConfig(getenv func(string) string) (config, error) {
 	}
 	// Fail closed rather than warn: a warning nobody reads is how a service
 	// ends up on a public interface with no authentication.
-	if !isLoopbackAddr(cfg.Addr) && len(cfg.AuthTokens) == 0 {
+	if !isLoopbackAddr(cfg.Addr) && cfg.AuthToken == "" {
 		return config{}, fmt.Errorf(
 			"refusing to bind %q without AUTH_TOKEN: set a bearer token, or bind a loopback address such as 127.0.0.1:8080",
 			cfg.Addr)
+	}
+
+	// Install the Authenticator the handlers will use. A bind with tokens
+	// gets the bearer-token scheme; a loopback bind with no token keeps the
+	// open behaviour, behind a named authenticator so a reader can see which
+	// path it took.
+	if len(cfg.AuthTokens) > 0 {
+		a, err := newBearerTokenAuthenticatorFromTokens(cfg.AuthTokens)
+		if err != nil {
+			return config{}, fmt.Errorf("AUTH_TOKEN: %w", err)
+		}
+		cfg.Authenticator = a
+	} else {
+		cfg.Authenticator = openLoopbackAuthenticator{}
 	}
 	return cfg, nil
 }
@@ -222,11 +251,9 @@ func metricsDisabled(addr string) bool {
 }
 
 // splitTokens parses AUTH_TOKEN. One token is the common case; commas allow a
-// deployment to give each caller its own credential, which is what makes the
-// per-caller rate limit a fairness boundary rather than a global one. Empty
-// entries are rejected rather than skipped: a leading or trailing comma is a
-// configuration mistake, and silently accepting it would authenticate a caller
-// with the empty string.
+// deployment to give each caller its own credential for per-caller rate limits.
+// Empty entries are rejected: a leading or trailing comma is a configuration
+// mistake, not a request to authenticate with the empty string.
 func splitTokens(raw string) ([]string, error) {
 	if strings.TrimSpace(raw) == "" {
 		return nil, nil

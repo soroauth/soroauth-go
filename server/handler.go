@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -77,9 +76,37 @@ type server struct {
 
 // newServer builds a server from a resolved configuration. Every dependency the
 // handlers need is on the struct, so no handler reads the environment.
+//
+// When the caller did not set cfg.Authenticator, one is installed from the
+// AuthToken field so a test (or any library caller) that only sets AuthToken
+// still gets the same behaviour it had before the Authenticator interface
+// existed: an empty AuthToken is the loopback open path, a set AuthToken is
+// bearer-token auth with every operation. Setting cfg.Authenticator
+// explicitly overrides this default.
 func newServer(cfg config) *server {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	if cfg.Authenticator == nil {
+		if cfg.AuthToken != "" {
+			// Richer id:token:ops;... format set directly by a library caller or test.
+			if a, err := newBearerTokenAuthenticator(cfg.AuthToken); err == nil {
+				cfg.Authenticator = a
+			} else {
+				cfg.Logger.Error("AUTH_TOKEN parsed but is malformed; refusing every request", "error", err)
+				cfg.Authenticator = denyAll{}
+			}
+		} else if len(cfg.AuthTokens) > 0 {
+			// Plain token list populated by loadConfig.
+			if a, err := newBearerTokenAuthenticatorFromTokens(cfg.AuthTokens); err == nil {
+				cfg.Authenticator = a
+			} else {
+				cfg.Logger.Error("AUTH_TOKEN is malformed; refusing every request", "error", err)
+				cfg.Authenticator = denyAll{}
+			}
+		} else {
+			cfg.Authenticator = openLoopbackAuthenticator{}
+		}
 	}
 	return &server{
 		cfg:     cfg,
@@ -154,9 +181,8 @@ func (s *server) verifyHandler(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	identity, ok := s.authenticate(r)
+	identity, ok := s.authorize(w, r, OpVerify)
 	if !ok {
-		s.writeError(w, r, http.StatusUnauthorized, "missing or invalid bearer token")
 		return
 	}
 	if !s.allowRate(w, r, identity) {
@@ -283,26 +309,6 @@ func (s *server) recordVerdicts(report soroauth.VerificationReport) {
 			s.metrics.recordRefusal(refusalUnsigned)
 		}
 	}
-}
-
-// authenticate applies the bearer-token check and returns the caller identity
-// the rate limiter keys on. With no configured token the check is a no-op,
-// which loadConfig only permits on a loopback bind, and the peer address is the
-// identity. Every configured token is compared in constant time so a caller
-// cannot recover one by timing guesses, and the matched token — not its
-// position in the list — determines the identity.
-func (s *server) authenticate(r *http.Request) (string, bool) {
-	if len(s.cfg.AuthTokens) == 0 {
-		return callerIdentity(r, ""), true
-	}
-	got := r.Header.Get("Authorization")
-	for _, token := range s.cfg.AuthTokens {
-		want := "Bearer " + token
-		if subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1 {
-			return callerIdentity(r, token), true
-		}
-	}
-	return "", false
 }
 
 // allowRate sheds a request before its body is read. A refused caller gets 429

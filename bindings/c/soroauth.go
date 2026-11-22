@@ -39,13 +39,69 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"runtime/debug"
 	"strings"
 	"unsafe"
 
 	"github.com/soroauth/soroauth-go"
+	"github.com/soroauth/soroauth-go/bindings/c/panicguard"
 	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
+
+// catchPanic is deferred at the top of every //export function that returns
+// *C.char. It converts a Go panic into the ABI's error envelope so a host
+// process (Node, JVM, Python, Rust) sees a terminal error for that call
+// instead of being taken down by the unwinding goroutine.
+//
+// Recovery is not a licence to continue: the error is terminal for the call,
+// no partial result is written, and the envelope carries no Go stack. The
+// stack is written to stderr so an operator still has it, but it never
+// crosses the boundary into untrusted caller data.
+//
+// The *C.char the normal path already produced (if any) is leaked when a
+// panic replaces it, which is acceptable: encode allocates exactly once per
+// call and the process has already failed at that call.
+func catchPanic(out **C.char) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	logRecoveredPanic(r)
+	*out = encode(result{OK: false, Error: panicguard.Message(r), Kind: panicguard.Kind})
+}
+
+// catchPanicInt is the variant for //export functions that return C.int. A
+// panic there replaces the return value with 0, which SoroauthAbiVersion's
+// contract documents as the sentinel for "could not determine": a caller that
+// sees 0 falls back to assuming the library is unusable rather than acting on
+// a wrong version.
+func catchPanicInt(out *C.int) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	logRecoveredPanic(r)
+	*out = 0
+}
+
+// catchPanicVoid is the variant for //export functions with no return value
+// (SoroauthFree). A panic there is still logged and swallowed, since
+// unwinding through cgo would crash the host process.
+func catchPanicVoid() {
+	if r := recover(); r != nil {
+		logRecoveredPanic(r)
+	}
+}
+
+// logRecoveredPanic writes the recovered panic and its Go stack to stderr so
+// an operator still has the stack for diagnosis. The stack deliberately does
+// not cross the ABI boundary into a caller's string, which would be a classic
+// exfiltration channel.
+func logRecoveredPanic(r any) {
+	fmt.Fprintf(os.Stderr, "soroauth: c abi: recovered panic: %v\n%s\n", r, debug.Stack())
+}
 
 // version is the only source of the string SoroauthVersion reports. It is also
 // reported by the JSON envelope's callers so a binding can assert the ABI it
@@ -162,7 +218,8 @@ func options(forAddress string) []soroauth.AuthorizeOption {
 // envelope schema. Adding a new function is not a breaking change.
 //
 //export SoroauthAbiVersion
-func SoroauthAbiVersion() C.int {
+func SoroauthAbiVersion() (ret C.int) {
+	defer catchPanicInt(&ret)
 	return 1
 }
 
@@ -170,7 +227,8 @@ func SoroauthAbiVersion() C.int {
 // every other string is; free it with SoroauthFree.
 //
 //export SoroauthVersion
-func SoroauthVersion() *C.char {
+func SoroauthVersion() (ret *C.char) {
+	defer catchPanic(&ret)
 	return C.CString(version)
 }
 
@@ -179,6 +237,7 @@ func SoroauthVersion() *C.char {
 //
 //export SoroauthFree
 func SoroauthFree(ptr *C.char) {
+	defer catchPanicVoid()
 	if ptr != nil {
 		C.free(unsafe.Pointer(ptr))
 	}
@@ -188,7 +247,8 @@ func SoroauthFree(ptr *C.char) {
 // address-credential entry.
 //
 //export SoroauthPreimage
-func SoroauthPreimage(entryB64 *C.char, validUntilLedger C.longlong, networkPassphrase *C.char) *C.char {
+func SoroauthPreimage(entryB64 *C.char, validUntilLedger C.longlong, networkPassphrase *C.char) (ret *C.char) {
+	defer catchPanic(&ret)
 	entry, err := decodeEntry(goString(entryB64))
 	if err != nil {
 		return failResult(err)
@@ -227,7 +287,8 @@ func SoroauthPreimage(entryB64 *C.char, validUntilLedger C.longlong, networkPass
 // authorization entries and transaction envelopes.
 //
 //export SoroauthPayload
-func SoroauthPayload(preimageB64 *C.char) *C.char {
+func SoroauthPayload(preimageB64 *C.char) (ret *C.char) {
+	defer catchPanic(&ret)
 	var preimage xdr.HashIdPreimage
 	if err := xdr.SafeUnmarshalBase64(goString(preimageB64), &preimage); err != nil {
 		return failResult(fmt.Errorf("soroauth: c abi: decoding preimage: %w", err))
@@ -253,7 +314,8 @@ func SoroauthPayload(preimageB64 *C.char) *C.char {
 // authorization entries and transaction envelopes.
 //
 //export SoroauthWriteSignature
-func SoroauthWriteSignature(entryB64 *C.char, validUntilLedger C.longlong, networkPassphrase *C.char, forAddress *C.char, signatureScvalB64 *C.char) *C.char {
+func SoroauthWriteSignature(entryB64 *C.char, validUntilLedger C.longlong, networkPassphrase *C.char, forAddress *C.char, signatureScvalB64 *C.char) (ret *C.char) {
+	defer catchPanic(&ret)
 	entry, err := decodeEntry(goString(entryB64))
 	if err != nil {
 		return failResult(err)
@@ -311,7 +373,8 @@ func decodeSeed(seedHex string) (*keypair.Full, error) {
 // production caller with a remote signer uses SoroauthWriteSignature instead.
 //
 //export SoroauthAuthorizeWithSeed
-func SoroauthAuthorizeWithSeed(entryB64 *C.char, validUntilLedger C.longlong, networkPassphrase *C.char, seedHex *C.char, forAddress *C.char) *C.char {
+func SoroauthAuthorizeWithSeed(entryB64 *C.char, validUntilLedger C.longlong, networkPassphrase *C.char, seedHex *C.char, forAddress *C.char) (ret *C.char) {
+	defer catchPanic(&ret)
 	entry, err := decodeEntry(goString(entryB64))
 	if err != nil {
 		return failResult(err)
@@ -347,7 +410,8 @@ func SoroauthAuthorizeWithSeed(entryB64 *C.char, validUntilLedger C.longlong, ne
 // forAddress argument when given, otherwise the entry's own top-level address.
 //
 //export SoroauthAuthorizeWithSeeds
-func SoroauthAuthorizeWithSeeds(entryB64 *C.char, validUntilLedger C.longlong, networkPassphrase *C.char, seedsCSV *C.char, forAddress *C.char) *C.char {
+func SoroauthAuthorizeWithSeeds(entryB64 *C.char, validUntilLedger C.longlong, networkPassphrase *C.char, seedsCSV *C.char, forAddress *C.char) (ret *C.char) {
+	defer catchPanic(&ret)
 	entry, err := decodeEntry(goString(entryB64))
 	if err != nil {
 		return failResult(err)
@@ -400,7 +464,8 @@ func SoroauthAuthorizeWithSeeds(entryB64 *C.char, validUntilLedger C.longlong, n
 // SoroauthInspect reports an entry's structure as JSON (soroauth.EntryInfo).
 //
 //export SoroauthInspect
-func SoroauthInspect(entryB64 *C.char) *C.char {
+func SoroauthInspect(entryB64 *C.char) (ret *C.char) {
+	defer catchPanic(&ret)
 	entry, err := decodeEntry(goString(entryB64))
 	if err != nil {
 		return failResult(err)
@@ -419,7 +484,8 @@ func SoroauthInspect(entryB64 *C.char) *C.char {
 // SoroauthAnalyze runs the risk analyzer and returns its findings as JSON.
 //
 //export SoroauthAnalyze
-func SoroauthAnalyze(entryB64 *C.char, currentLedger C.longlong) *C.char {
+func SoroauthAnalyze(entryB64 *C.char, currentLedger C.longlong) (ret *C.char) {
+	defer catchPanic(&ret)
 	entry, err := decodeEntry(goString(entryB64))
 	if err != nil {
 		return failResult(err)
@@ -443,7 +509,8 @@ func SoroauthAnalyze(entryB64 *C.char, currentLedger C.longlong) *C.char {
 // SoroauthRenderInvocations renders the invocation tree as ASCII.
 //
 //export SoroauthRenderInvocations
-func SoroauthRenderInvocations(entryB64 *C.char) *C.char {
+func SoroauthRenderInvocations(entryB64 *C.char) (ret *C.char) {
+	defer catchPanic(&ret)
 	entry, err := decodeEntry(goString(entryB64))
 	if err != nil {
 		return failResult(err)
@@ -458,7 +525,8 @@ func SoroauthRenderInvocations(entryB64 *C.char) *C.char {
 // SoroauthRenderTree renders the credential/delegate tree as ASCII.
 //
 //export SoroauthRenderTree
-func SoroauthRenderTree(entryB64 *C.char) *C.char {
+func SoroauthRenderTree(entryB64 *C.char) (ret *C.char) {
+	defer catchPanic(&ret)
 	entry, err := decodeEntry(goString(entryB64))
 	if err != nil {
 		return failResult(err)
