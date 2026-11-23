@@ -1,0 +1,168 @@
+name: pre-release
+
+on:
+  push:
+    tags:
+      - 'v*-alpha*'
+      - 'v*-beta*'
+      - 'v*-rc*'
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  record-tool-versions:
+    name: record tool versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2 # v4.0.0
+      - uses: actions/setup-go@4d34df0c2316fe8122ab82dc22947d607c0c91f9 # v4.0.0
+        with:
+          go-version-file: go.mod
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
+      - name: record node versions
+        uses: actions/setup-node@8f152de45cc393bb48ce5d89d36b731f54556e65 # v4.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: testdata/gen/package-lock.json
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+      - run: bash .github/scripts/record-tool-versions.sh node testdata/gen/package-lock.json
+
+  container-image:
+    name: publish container image (non-latest)
+    needs: record-tool-versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2 # v4.0.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@4d34df0c2316fe8122ab82dc22947d607c0c91f9 # v4.0.0
+        with:
+          go-version-file: go.mod
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
+      - name: set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: log in to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: derive image tags
+        id: tags
+        run: |
+          # Strip the pre-release suffix for the image tag but keep it in metadata
+          version="${GITHUB_REF_NAME#v}"
+          # For pre-releases, we publish without touching 'latest'
+          echo "version=${version}-pre" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+      - name: build and push pre-release image
+        run: |
+          version="${{ steps.tags.outputs.version }}-pre"
+          docker build -t ghcr.io/soroauth/soroauth-go:${version} .
+          docker push ghcr.io/soroauth/soroauth-go:${version}
+      - name: annotate image with pre-release marker
+        run: |
+          version="${{ steps.tags.outputs.version }}-pre"
+          # Add pre-release annotation so consumers can identify it
+          docker buildx imagetag \
+            --annotate label=pre-release=true \
+            ghcr.io/soroauth/soroauth-go:${version}
+
+  npm:
+    name: publish npm package (prerelease only)
+    needs: record-tool-versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2 # v4.0.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@4d34df0c2316fe8122ab82dc22947d607c0c91f9 # v4.0.0
+        with:
+          go-version-file: go.mod
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
+      - uses: actions/setup-node@8f152de45cc393bb48ce5d89d36b731f54556e65 # v4.0.0
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+          cache-dependency-path: wasm/ts/package-lock.json
+      - name: record node versions
+        run: bash .github/scripts/record-tool-versions.sh node wasm/ts/package-lock.json
+      - name: refuse to publish anything but a pre-release tag
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "refusing to publish: GITHUB_REF_TYPE=${GITHUB_REF_TYPE}, expected 'tag'" >&2
+            exit 1
+          fi
+          # Only allow pre-release tags (containing -alpha, -beta, or -rc)
+          if echo "${GITHUB_REF_NAME}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-alpha|-beta|-rc)'; then
+            echo "pre-release tag detected: ${GITHUB_REF_NAME}"
+          else
+            echo "refusing to publish: ${GITHUB_REF_NAME} is not a pre-release tag" >&2
+            exit 1
+          fi
+      - name: derive the package version from the tag
+        working-directory: wasm/ts
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          npm version "$version" --no-git-tag-version --access public
+          echo "publishing @soroauth/wasm@${version} (pre-release)"
+      - name: build the wasm module from the tagged commit
+        working-directory: wasm/ts
+        run: ./wasm/build.sh
+      - name: publish with provenance (pre-release)
+        working-directory: wasm/ts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
+
+  docs-site:
+    name: build and publish docs (prerelease only)
+    needs: record-tool-versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2 # v4.0.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@4d34df0c2316fe8122ab82dc22947d607c0c91f9 # v4.0.0
+        with:
+          go-version-file: go.mod
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
+      - name: build and verify documentation site
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          go run ./scripts/docsite --out _site --version "${VERSION}"
+      - name: publish site to gh-pages (prerelease branch)
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          # Always create a worktree, even if gh-pages branch doesn't exist
+          git worktree add --detach "$work"
+          git -C "$work" checkout --orphan gh-pages 2>/dev/null || true
+          git -C "$work" rm -rf . >/dev/null 2>&1 || true
+          rm -rf "${work}/${VERSION}"
+          mkdir -p "${work}/${VERSION}"
+          cp -R _site/. "${work}/${VERSION}/"
+          cp -R _site/. "${work}/"
+          git -C "$work" config user.name "github-actions[bot]"
+          git -C "$work" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$work" add -A
+          if ! git -C "$work" diff --cached --quiet; then
+            git -C "$work" commit -m "docs: publish site for ${VERSION} (pre-release)"
+            git -C "$work" push origin gh-pages
+          fi
