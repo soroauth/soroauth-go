@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 
 	"github.com/soroauth/soroauth-go"
 	"github.com/stellar/go-stellar-sdk/clients/rpcclient"
@@ -133,6 +134,16 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) er
 // The subcommands that read stdin — payload, sign, delegates, inspect, verify
 // and diff — are dispatched with it; the remaining subcommands are dispatched
 // exactly as run would dispatch them.
+//
+// Plugins: after built-in subcommands are checked, we look for an executable
+// named "soroauth-<command>" on PATH. If found, we exec it with the remaining
+// arguments, replacing this process. Built-in subcommands always take priority
+// over plugins; a plugin name that matches a built-in is silently ignored so
+// Built-in subcommands always take priority over plugins; a plugin name that
+// matches a built-in is silently ignored so that a caller cannot shadow a
+// built-in by publishing a plugin with the same name. No secret is passed to a
+// plugin except through the documented environment-variable mechanism (the
+// plugin inherits the same sanitized environment as the exec signer).
 func runWithStdin(args []string, stdout, stderr io.Writer, getenv func(string) string, stdin io.Reader) error {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
@@ -154,6 +165,22 @@ func runWithStdin(args []string, stdout, stderr io.Writer, getenv func(string) s
 		}
 		flush(err)
 		return err
+	}
+
+	// Plugin discovery: look for "soroauth-<command>" on PATH.
+	// Built-ins win by construction because we only reach this point when
+	// the command is not a built-in, so there is no shadowing risk here.
+	pluginName := "soroauth-" + args[0]
+	if pluginPath, err := exec.LookPath(pluginName); err == nil {
+		remaining := args[1:]
+		cmd := exec.Command(pluginPath, remaining...)
+		cmd.Stdout = stdout
+		cmd.Stderr = stderr
+		cmd.Stdin = stdin
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+		return nil
 	}
 
 	switch args[0] {

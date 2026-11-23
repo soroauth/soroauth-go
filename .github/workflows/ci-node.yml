@@ -76,3 +76,4 @@ jobs:
           name: node-prebuild-${{ matrix.os }}-${{ runner.arch }}
           path: bindings/node/prebuilds/
           if-no-files-found: error
+          retention-days: 7

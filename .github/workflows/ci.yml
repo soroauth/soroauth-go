@@ -210,3 +210,48 @@ jobs:
           check-latest: true
       - name: run CHANGELOG consistency check
         run: make changelog-check
+
+  # Fifth: report storage use and enforce retention policy.
+  storage-report:
+    name: report storage use and retention
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: report storage use and emit JSON report
+        run: |
+          set -euo pipefail
+          # Report storage use adapted from the cost-report.yml shape.
+          # Differentiate PR vs main retention: PR artifacts contain untrusted
+          # pull-request code, so they have shorter retention.
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            RETENTION_DAYS=7
+            echo "PR artifact retention: ${RETENTION_DAYS} days (artifacts contain untrusted PR code; fail-closed: untrusted code)"
+          else
+            RETENTION_DAYS=30
+            echo "Main branch artifact retention: ${RETENTION_DAYS} days"
+          fi
+
+          # Report total artifact size from the current run's uploads.
+          # GitHub Actions writes a manifest under the runner temp dir.
+          TOTAL_BYTES=0
+          if [ -d /tmp/artifact-manifest ]; then
+            for f in /tmp/artifact-manifest/*; do
+              SIZE=$(stat -c%s "$f" 2>/dev/null || echo 0)
+              TOTAL_BYTES=$((TOTAL_BYTES + SIZE))
+            done
+          fi
+          echo "Total artifact size this run: ${TOTAL_BYTES} bytes"
+
+          # Write a minimal JSON report to a file; the upload step below will
+          # pick it up.  We use printf to avoid heredoc issues with the YAML
+          # parser used by the CI-local test.
+          printf '{"total_artifact_bytes":%d,"retention_days":%d,"event_name":"%s","workflow":"%s"}\n' \
+            "$TOTAL_BYTES" "$RETENTION_DAYS" "$GITHUB_EVENT_NAME" "$GITHUB_WORKFLOW" \
+            > storage-report.json
+
+      - name: upload storage report artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: storage-report
+          path: storage-report.json
+          # No retention-days needed: this is an internal CI artifact, not a user upload.

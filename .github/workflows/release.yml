@@ -329,8 +329,9 @@ jobs:
       - name: upload the rendered formula
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: soroauth-formula
+          name: sorauth-formula
           path: soroauth.rb
+          retention-days: 30
       # The flake reads its default version from this file when not fetched at
       # a tag, so a main install reports the newest release rather than a stale
       # value. Rewrite it from the tag.
