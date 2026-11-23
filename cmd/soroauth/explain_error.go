@@ -22,6 +22,7 @@ plain text by default, or JSON when --json is given.
 
 exit codes:
   0  success
+  1  general error (the entry decoded but could not be inspected)
   2  usage error (invalid flags, missing required flags, malformed input)
 `
 
@@ -199,11 +200,10 @@ func runExplainError(args []string, stdout, stderr io.Writer) error {
 	// Inspect the entry to get credential type
 	entryInfo, inspectErr := soroauth.Inspect(entry)
 	if inspectErr != nil {
-		if jsonOutput {
-			return writeJSONError(stdout, true, withField("--entry", newErrorf(ExitGeneralError, "inspecting --entry: %w", inspectErr)))
-		}
-		fmt.Fprintln(stderr, inspectErr.Error())
-		return nil
+		// An entry that cannot be inspected cannot be explained, so this is a
+		// failure in both modes. Text mode used to print the error and exit 0,
+		// which a script would read as success.
+		return writeJSONError(stdout, jsonOutput, withField("--entry", newErrorf(ExitGeneralError, "inspecting --entry: %w", inspectErr)))
 	}
 
 	// Generate explanations based on the entry info
