@@ -292,6 +292,13 @@ mutable tag like `@v7`. A major-version tag can be retagged to point at a
 different commit; pinning to the SHA means a compromised or retagged action
 cannot silently start running with this repository's CI permissions.
 
+`TestWorkflowActionsArePinnedBySHA` in
+[`internal/doccheck/workflows_test.go`](internal/doccheck/workflows_test.go)
+enforces this: any remote reference without a 40-character SHA and a `# vX.Y.Z`
+comment fails `go test ./...` with the workflow file and line named. Local `./…`
+actions and reusable workflows are exempt, since they resolve to this
+repository's own checkout.
+
 Dependabot (`.github/dependabot.yml`) watches the `github-actions` ecosystem and
 opens a PR updating both the SHA and its version comment together when a new
 release comes out, so the two can never drift apart. To pin a new action by
