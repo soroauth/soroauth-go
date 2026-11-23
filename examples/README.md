@@ -14,7 +14,7 @@ drift from the code.
 | ----------------------------------- | ----------------------------------------------------------------------- | ----------------------------- |
 | [browser-passkey](browser-passkey/) | Signing in a browser with a WebAuthn passkey, via the WASM signing core | A browser, a passkey, testnet |
 | [remote-signer](remote-signer/)     | A signer behind HTTP, where the key never reaches the calling process   | Go, loopback only             |
-| [opentelemetry](opentelemetry/)     | Observing signing operations through the `Hook` interface               | Go, nothing else              |
+| [opentelemetry](opentelemetry/)     | The whole sign-and-submit flow as one OpenTelemetry trace               | Go, testnet                   |
 
 ## browser-passkey
 
@@ -46,13 +46,19 @@ transport.
 
 ## opentelemetry
 
-Wires a hook for signing operations using only the standard library and the
-`soroauth.Hook` interface, with stub implementations where a real OpenTelemetry
-SDK would go.
+Runs `rpcflow.SignAndSubmit` on testnet as one OpenTelemetry trace: record pass,
+signing, enforcing pass, submission and polling, one span each, with the
+resource-fee difference between the two passes as an attribute.
 
-It is deliberately not a dependency on OpenTelemetry. The library takes no
-observability dependency at all, so this shows the seam rather than shipping a
-choice — swap the stubs for your own OTel imports.
+```sh
+cd examples/opentelemetry && go run ./cmd/trace-transfer
+```
+
+It is its own Go module, so OpenTelemetry never becomes a dependency of the
+library. The README there shows a real captured trace, and a test asserts that
+no span carries a secret, an entry or a signature. The narrower `Hook` seam,
+which observes the phases inside one `AuthorizeEntry` call with only the
+standard library, is in the same package.
 
 ## What none of them do
 

@@ -110,7 +110,6 @@
   },
   "excluded": {
     "github.com/soroauth/soroauth-go/cmd/gencorpus": "dev tool, exercised by CI itself: CI regenerates the fuzz seed corpus and fails on drift",
-    "github.com/soroauth/soroauth-go/examples/opentelemetry": "no tests by design: examples are documentation and are exercised by golden/e2e runs",
     "github.com/soroauth/soroauth-go/examples/remote-signer": "no tests by design: examples are documentation and are exercised by golden/e2e runs",
     "github.com/soroauth/soroauth-go/internal/readmesnippets": "no tests by design: its snippets are owned by the root package's README/docs drift tests",
     "github.com/soroauth/soroauth-go/scripts/checkbench": "dev tool, exercised by CI itself: the bench job runs it on every push to main",

@@ -1,12 +1,16 @@
-// Package opentelemetry demonstrates how to wire an
-// OpenTelemetry-style hook for soroauth signing operations.
+// Package opentelemetry traces soroauth with OpenTelemetry.
 //
-// The hook implementation uses only the standard library
-// and the soroauth.Hook interface. Callers with a real
-// OpenTelemetry SDK can replace the stub implementations
-// with their OTel imports.
+// SignAndSubmit (flow.go) runs rpcflow.SignAndSubmit as one trace spanning
+// the record pass, signing, the enforcing pass, submission and polling, by
+// wrapping the rpcflow.Client and every soroauth.Signer. cmd/trace-transfer
+// runs it on testnet. This is its own module, so OpenTelemetry is a
+// dependency of the example and never of the root module.
 //
-// Example usage:
+// Hook (this file) is the narrower seam: it observes the phases inside one
+// AuthorizeEntry call through the soroauth.Hook interface, using only the
+// standard library.
+//
+// Example usage of Hook:
 //
 //	hook := opentelemetry.NewHook("soroauth-authorize")
 //	entry, err := soroauth.AuthorizeEntry(ctx, entry, signer, ledger, passphrase, soroauth.WithHook(hook))

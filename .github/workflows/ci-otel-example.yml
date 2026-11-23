@@ -1,0 +1,68 @@
+# OpenTelemetry example: its own module, so OpenTelemetry never enters the
+# root go.mod. Runs when the example, or the library and rpcflow it traces,
+# change.
+name: ci / otel example
+
+on:
+  # Advisory checks do not run on pull requests. Only the two jobs the
+  # branch ruleset requires do, so a contributor sees two checks and not a
+  # wall of them. These run when the change reaches main, and can be run
+  # by hand from the Actions tab at any time.
+  push:
+    branches: [main]
+    paths:
+      - "examples/opentelemetry/**"
+      - "*.go"
+      - "go.mod"
+      - "go.sum"
+      - "internal/**"
+      - "rpcflow/**"
+      # A workflow's own definition is in its paths, so an edit to this
+      # file re-runs it. Without this line a change to this workflow
+      # cannot validate itself.
+      - ".github/workflows/ci-otel-example.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  otel-example:
+    name: opentelemetry full-flow example
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: examples/opentelemetry/go.mod
+          check-latest: true
+          cache-dependency-path: examples/opentelemetry/go.sum
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go examples/opentelemetry
+      - name: gofmt
+        working-directory: examples/opentelemetry
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "these files are not gofmt clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: go.mod is tidy
+        working-directory: examples/opentelemetry
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+      # OpenTelemetry stays an example dependency: the root module must not
+      # pick it up as a direct requirement.
+      - name: root module carries no opentelemetry requirement
+        run: |
+          if grep -n 'go.opentelemetry.io' go.mod | grep -v '// indirect'; then
+            echo "the root go.mod requires OpenTelemetry directly; keep it in examples/opentelemetry"
+            exit 1
+          fi
+      - name: vet and test
+        working-directory: examples/opentelemetry
+        run: |
+          go vet ./...
+          go test -race ./...

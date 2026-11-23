@@ -13,6 +13,7 @@
     "ci-jvm.yml",
     "ci-node.yml",
     "ci-grpc.yml",
+    "ci-otel-example.yml",
     "ci-openapi.yml",
     "ci-deploy.yml",
     "ci-browser-offline.yml",
@@ -139,6 +140,7 @@
         "install buf": { "bookkeeping": "downloads a pinned Linux x86-64 buf into the runner; locally buf is a prerequisite of this job, listed under requires" }
       }
     },
+    "ci-otel-example.yml/otel-example": { "requires": ["go", "git"], "os": ["linux", "darwin"] },
     "ci-openapi.yml/openapi": { "requires": ["go"], "os": ["linux", "darwin"] },
     "ci-freighter.yml/freighter": { "requires": ["node"] },
 
