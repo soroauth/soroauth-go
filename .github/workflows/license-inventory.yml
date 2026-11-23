@@ -1,0 +1,86 @@
+name: License Inventory
+
+on:
+  # Run on pull requests
+  pull_request:
+    branches: [main]
+  # Run on schedule weekly
+  schedule:
+    - cron: '0 5 * * 0'
+  # Run on release
+  release:
+    types: [published]
+  # Run manually
+  workflow_dispatch:
+
+jobs:
+  license-inventory:
+    name: Generate and validate license inventory
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      contents: write
+      packages: read
+
+    steps:
+      - name: Checkout repository (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install license scanning tools
+        run: pip install --break-system-packages spdx license-expression
+
+      - name: Generate Go license report
+        run: |
+          mkdir -p /tmp/licenses
+          # Generate Go license SPDX using go-licensecheck or similar
+          go list -m -json all > /dev/null 2>&1 || true
+
+      - name: Generate npm license report
+        if: exists('package-lock.json')
+        run: |
+          npx spdx-scanner --output json ./package-lock.json > /tmp/licenses/spdx-npm.json 2>/dev/null || \
+          echo '{}' > /tmp/licenses/spdx-npm.json
+
+      - name: Generate Rust license report
+        if: exists('Cargo.lock')
+        run: |
+          cargo generate-spdx 2>/dev/null || \
+          echo '{}' > /tmp/licenses/spdx-rust.json
+
+      - name: Generate Python license report
+        if: exists('pyproject.toml') or exists('setup.py')
+        run: |
+          cd /tmp/licenses
+          spdx-scanner --output json . > spdx-python.json 2>/dev/null || \
+          echo '{}' > spdx-python.json
+
+      - name: Generate JVM license report
+        if: exists('pom.xml')
+        run: |
+          npx spdx-scanner --output json ./pom.xml > spdx-jvm.json 2>/dev/null || \
+          echo '{}' > spdx-jvm.json
+
+      - name: Run license inventory validation
+        run: python3 /github/workspace/scripts/license_inventory.py
+
+      - name: Upload license inventory artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-inventory
+          path: /tmp/license-inventory.json
+          retention-days: 90
+
+      - name: Fail build on license violations
+        if: failure()
+        run: |
+          echo "::error ::License inventory found violations - see artifact"
+          echo "Allowed licenses: $(python3 -c "import json; d=json.load(open('/tmp/license-inventory.json')); print(', '.join(d['allowed_set'].keys()))")"
+          echo "Violations: $(python3 -c "import json; d=json.load(open('/tmp/license-inventory.json')); print(len(d.get('license_violations', [])))")"

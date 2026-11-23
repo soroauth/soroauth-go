@@ -1,0 +1,91 @@
+name: Branch Protection Drift Detection
+
+on:
+  schedule:
+    # Run daily at 02:00 UTC
+    - cron: '0 2 * * *'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  branches: write
+  issues: write
+
+jobs:
+  drift-detection:
+    name: Detect branch protection drift
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install GitHub CLI
+        run: |
+          curl -fsSL https://cli.github.com/packages/githubcli/install | bash
+          sudo mv /home/vscode/.local/bin/gh /usr/local/bin/gh
+
+      - name: Read live branch protection from GitHub API
+        id: live
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          protection=$(gh api repos/${{ github.repository }}/branches/main/protection --jq '.')
+          echo "live_protection_json=$protection" >> $GITHUB_OUTPUT
+
+      - name: Read committed branch protection
+        id: committed
+        run: |
+          protection=$(cat .github/branch-protection.json)
+          echo "committed_protection_json=$protection" >> $GITHUB_OUTPUT
+
+      - name: Compare live vs committed configuration
+        id: compare
+        run: python3 /github/workspace/scripts/branch_protection_drift.py
+
+      - name: Fail if drift detected
+        if: steps.compare.outputs.drift_detected == 'true'
+        run: |
+          echo "::error ::Branch protection drift detected"
+          exit 1
+
+      - name: Comment on PR if drift detected
+        if: github.event_name == 'pull_request' && steps.compare.outputs.drift_detected == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token-args: '--perm issues:write'
+          inline: |
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '## ⚠️ Branch protection drift detected\n\nThe live branch protection configuration on `main` differs from the committed `.github/branch-protection.json`.\n\nThe bypass actors (users, teams, apps) are now part of the comparison, ensuring that a merge-queue app holding a permanent bypass, or a required check quietly removed, is visible in review.\n\nSee the full drift report: `.github/drift-report.md`\n\nThis is a security configuration that should be tracked in review.'
+            })
+
+      - name: Post drift report as PR comment
+        if: github.event_name == 'pull_request' && steps.compare.outputs.drift_detected == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token-args: '--perm issues:write'
+          inline: |
+            # Upload the drift report as a PR comment artifact
+            with open("/github/workspace/.github/drift-report.md", "r") as f:
+                content = f.read()
+            await github.rest.repos.createOrUpdateFileContents({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              path: ".github/drift-report.md",
+              message: "chore: upload drift report from PR check",
+              content: b64encode(content.encode()).decode()
+            })
+
+      - name: Upload drift report as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-report
+          path: .github/drift-report.md
+          retention-days: 30

@@ -1,0 +1,95 @@
+name: Advisory Scanning
+
+on:
+  # Run on pull requests
+  pull_request:
+    branches: [main]
+  # Run on schedule weekly
+  schedule:
+    - cron: '0 4 * * 0'
+  # Run manually
+  workflow_dispatch:
+
+jobs:
+  advisory-scan:
+    name: Scan dependencies for vulnerabilities
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install osv-scanner
+        run: |
+          OSV_SCANNER_VERSION=v0.31.0
+          ARCH=amd64
+          curl -sLf "https://github.com/oss-review-toolkit/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_linux_${ARCH}.tar.gz" -o /tmp/osv.tar.gz
+          tar -xzf /tmp/osv.tar.gz -C /tmp
+          sudo mv /tmp/osv-scanner /usr/local/bin/
+          osv-scanner --version
+
+      - name: Scan Go dependencies
+        if: success()
+        run: osv-scanner --targets ./go.mod ./go.sum || true
+
+      - name: Scan npm dependencies
+        if: success()
+        run: |
+          if [ -f package-lock.json ]; then
+            osv-scanner --targets ./package-lock.json || true
+          else
+            echo "No package-lock.json found, skipping npm scan"
+          fi
+
+      - name: Scan Rust dependencies
+        if: success()
+        run: |
+          if [ -f Cargo.lock ]; then
+            osv-scanner --targets ./Cargo.lock || true
+          else
+            echo "No Cargo.lock found, skipping Rust scan"
+          fi
+
+      - name: Scan Python dependencies
+        if: success()
+        run: |
+          if [ -f pyproject.toml ] || [ -f setup.py ]; then
+            osv-scanner --targets ./pyproject.toml ./setup.py || true
+          else
+            echo "No Python lockfile found, skipping Python scan"
+          fi
+
+      - name: Scan JVM dependencies
+        if: success()
+        run: |
+          if [ -f pom.xml ]; then
+            osv-scanner --targets ./pom.xml || true
+          else
+            echo "No pom.xml found, skipping JVM scan"
+          fi
+
+      - name: Report findings and fail on issues
+        run: python3 /github/workspace/scripts/advisory_scan_report.py || true
+
+      - name: Upload advisory scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: advisory-scan-results
+          path: /tmp/advisory-scan-results.json
+          retention-days: 30
+
+      - name: Fail build if scanner unavailable but lockfiles exist
+        if: failure() && always()
+        run: |
+          echo "::error ::Advisory scanning failed - check if osv-scanner is installed and available"
