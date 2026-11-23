@@ -31,7 +31,8 @@ func WithMaxWorkers(n int) AuthorizeBatchOption {
 // unexported struct behind AuthorizeBatchOption, the same shape
 // AuthorizeAll uses for its options.
 type batchConfig struct {
-	maxWorkers int
+	maxWorkers         int
+	usePresenceBatcher bool
 }
 
 // AuthorizeBatch signs every entry in a batch, or none of them.
@@ -68,6 +69,10 @@ func AuthorizeBatch(
 	var config batchConfig
 	for _, opt := range opts {
 		opt(&config)
+	}
+
+	if config.usePresenceBatcher {
+		return presenceBatch(ctx, entries, signers, validUntilLedger, networkPassphrase)
 	}
 
 	workers := config.maxWorkers

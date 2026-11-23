@@ -17,6 +17,8 @@ they do not carry the same threat model or the same level of evidence.
 | `NewAccountMultiSigner` | Multi-signature classic accounts | Unit-tested and live testnet scenario C proves a 2-of-2 threshold works | Use for multi-party classic accounts |
 | `NewPasskeySigner`      | Passkey / WebAuthn contract authentication | Unit tests and passkey vector checks prove the built-in shape | Use for passkey wallet contracts |
 | `NewLedgerSigner`       | Hardware-backed ed25519 signing via Ledger | Unit tests cover the APDU protocol; **no live transaction proof in this repo** | Use for hardware wallet integration |
+| `adapters/pkcs11` `NewSigner` | On-premise HSMs, YubiKey PIV, and any PKCS#11 token | Unit tests with fake P11Ctx; tested against SoftHSM2 v2.6.1; **no YubiKey or hardware HSM proof in this repo**; PIN never stored or logged | Use when a cloud KMS is unavailable and the operator owns the token |
+| `adapters/trezor` `NewSigner` | Trezor hardware wallet (Model One/T) | Unit tests with fake transport cover all three device error types; **no real Trezor proof in this repo; record firmware version and on-screen confirmation in your runbook** | Use when the user holds a Trezor device |
 
 ## Short answer
 

@@ -14,6 +14,7 @@ legacy_single_testnet_0
 source_account_public_0
 source_account_testnet_0
 v2_account_multisig_20_signatures_0
+v2_all_scval_types_boundaries_0
 v2_create_contract_0
 v2_empty_args_0
 v2_expiration_boundary_1_0
