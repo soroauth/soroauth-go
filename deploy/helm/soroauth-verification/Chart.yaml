@@ -1,0 +1,15 @@
+apiVersion: v2
+name: soroauth-verification
+description: The soroauth offline verification service, with bounded body size, concurrency and per-caller request rate.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/soroauth/soroauth-go
+sources:
+  - https://github.com/soroauth/soroauth-go
+keywords:
+  - stellar
+  - soroban
+  - soroauth
+  - verification

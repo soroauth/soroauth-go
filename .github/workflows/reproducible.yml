@@ -97,3 +97,74 @@ jobs:
             exit 1
           fi
           echo "every target reproduced byte-for-byte from ${{ steps.tag.outputs.tag }}"
+
+  # The wasm counterpart to the job above. The npm package is the artifact a
+  # browser consumer is least able to audit for themselves, so its bytes get the
+  # same independent rebuild: archive the tag, build it twice with
+  # scripts/reproduce-wasm.sh, and diff the digest against the asset the release
+  # published. The script fails first if the two local builds differ, so a
+  # non-deterministic source is reported as such rather than as "published
+  # bytes differ".
+  reproduce-wasm:
+    name: rebuild wasm and compare its digest
+    runs-on: ubuntu-latest
+    steps:
+      - name: resolve the release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-}"
+          if [ -z "$tag" ]; then
+            tag="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)"
+          fi
+          if [ -z "$tag" ]; then
+            echo "could not resolve a release tag" >&2
+            exit 1
+          fi
+          echo "verifying wasm for ${tag}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      # Full history so `git archive <tag>` can resolve the tag and its commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+      # The same toolchain the release's wasm-digest job used; Go stamps the
+      # compiler version into the module, so a different patch release
+      # legitimately produces a different digest.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
+
+      - name: rebuild the wasm twice from the tag
+        run: bash scripts/reproduce-wasm.sh "${{ steps.tag.outputs.tag }}" "$PWD/rebuilt-wasm"
+
+      - name: download the published digest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p published-wasm
+          gh release download "${{ steps.tag.outputs.tag }}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern 'soroauth-wasm-checksums.txt' \
+            --dir published-wasm
+
+      - name: compare
+        run: |
+          set -euo pipefail
+          if ! diff -u \
+            published-wasm/soroauth-wasm-checksums.txt \
+            rebuilt-wasm/soroauth-wasm-checksums.txt; then
+            echo >&2
+            echo "The published wasm artifacts differ from a clean rebuild of the tag." >&2
+            echo "See docs/reproducibility.md. Do not edit a checksum to make this pass." >&2
+            exit 1
+          fi
+          echo "the wasm artifacts reproduced byte-for-byte from ${{ steps.tag.outputs.tag }}"

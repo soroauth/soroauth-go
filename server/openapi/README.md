@@ -38,6 +38,10 @@ as a client would:
   both the single-entry object and the envelope array;
 - at the end, every operation in the spec must have been visited, so a newly
   declared endpoint without a case fails rather than going untested;
+- a test asserts the check itself bites: responses with an extra field, a
+  renamed field, an undeclared status and the wrong body shape are each fed to
+  the validator and must fail, so a green run cannot mean the validator was
+  never given anything wrong.
 - a test asserts the verdict enum still carries `cannot_check` as a distinct
   value, so the honesty boundary cannot be flattened to a boolean by a spec
   edit.

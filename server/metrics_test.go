@@ -22,6 +22,7 @@ var knownMetrics = map[string]struct{}{
 	metricVerdicts:        {},
 	metricRefusals:        {},
 	metricSignerDuration:  {},
+	metricLimitRejections: {},
 }
 
 // allowedLabels maps every label name the service may emit to the closed set of
@@ -37,6 +38,7 @@ var allowedLabels = map[string]map[string]struct{}{
 	"verdict":         labelVerdicts,
 	"reason":          labelRefusalReasons,
 	"phase":           labelPhases,
+	"limit":           labelLimits,
 }
 
 // exerciseMetrics drives the service through the paths that emit every metric,
@@ -57,6 +59,8 @@ func exerciseMetrics(t *testing.T) *server {
 	if status, _ := postVerifyRaw(t, ts.URL, "", `{"network":"testnet"}`); status != 400 {
 		t.Fatalf("malformed request status = %d, want 400", status)
 	}
+	// A shed request so the limit metric has a sample.
+	srv.metrics.recordLimitRejection(limitRate)
 	// A hook event so the signer histogram has an observation.
 	hook := srv.hook()
 	if err := hook.Event(context.Background(), soroauth.HookEvent{
@@ -147,6 +151,10 @@ func TestMetricsRecordVerdictsAndRefusals(t *testing.T) {
 	badRequest := counterValue(t, families, metricRefusals, map[string]string{"reason": refusalBadRequest})
 	if badRequest < 1 {
 		t.Errorf("bad_request refusals = %v, want at least 1", badRequest)
+	}
+	rateLimited := counterValue(t, families, metricLimitRejections, map[string]string{"limit": limitRate})
+	if rateLimited != 1 {
+		t.Errorf("rate-limit rejections = %v, want 1", rateLimited)
 	}
 	requests := counterValue(t, families, metricRequests, map[string]string{
 		"route": routeVerify, "status": "400",

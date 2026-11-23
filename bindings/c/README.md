@@ -16,6 +16,22 @@ stages its own copy). `soroauth.go` carries a `//go:build ignore` tag because
 cross-compile matrix does not have; naming the file explicitly, as `build.sh`
 does, compiles it anyway.
 
+## Platform Support
+
+- **Operating systems**: Linux and macOS. Windows is not supported (the C ABI
+  relies on `dlopen` and `c-shared` builds).
+- **Architectures**: `x86_64`, `aarch64` / `arm64`.
+- **Runtime / Toolchain**: C toolchain (GCC or Clang) with cgo support for the
+  target platform.
+
+## Threading
+
+See [THREADING.md](THREADING.md) for the committed concurrency contract and what
+the test `TestABIThreadingContract` in the repository root proves. In short:
+every function in this header is safe to call concurrently from any thread; the
+caller owns each returned pointer and must free it with `SoroauthFree` exactly
+once.
+
 ## Why it is string-based JSON
 
 Every function takes UTF-8 C strings, returns a heap-allocated UTF-8 JSON

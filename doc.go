@@ -44,6 +44,10 @@
 //
 // # Exported constants
 //
+// Library release version (stable — reports the library's release tag)
+//
+//	Version = "v0.1.0"
+//
 // The following constants are the values a caller switches on. They are grouped
 // by the type or decision each belongs to. Strings marked "stable" are safe to
 // persist in config, logs, or databases; strings not marked stable are

@@ -20,6 +20,29 @@ const (
 	SeverityCritical FindingSeverity = "critical"
 )
 
+// Finding code identifiers. They are the stable names consumers match on, so
+// they are exported and must not be renamed: a rename is a breaking change for
+// every dashboard and policy that keys off a finding. The prose next to each
+// one may change; the identifier may not.
+const (
+	FindingCodeSourceAccountWithDelegates       = "SOURCE_ACCOUNT_WITH_DELEGATES"
+	FindingCodeDelegateDepthExceeded            = "DELEGATE_DEPTH_EXCEEDED"
+	FindingCodeDelegateCountHigh                = "DELEGATE_COUNT_HIGH"
+	FindingCodeSubInvocationCountHigh           = "SUB_INVOCATION_COUNT_HIGH"
+	FindingCodeExpirationFarFuture              = "EXPIRATION_FAR_FUTURE"
+	FindingCodeExpirationZero                   = "EXPIRATION_ZERO"
+	FindingCodeContractUnknown                  = "CONTRACT_UNKNOWN"
+	FindingCodeUnsignedDelegates                = "UNSIGNED_DELEGATES"
+	FindingCodeLegacyCredentialsNotAddressBound = "LEGACY_CREDENTIALS_NOT_ADDRESS_BOUND"
+)
+
+// FindingNote is the caveat that belongs wherever findings are shown. A clean
+// result means no heuristic fired, which is not the same as safe: the analyzer
+// does not decode contract arguments or verify contract behaviour. The limits
+// are documented in docs/analyzer-heuristics.md.
+const FindingNote = "Findings are structural heuristics, not a safety guarantee. " +
+	"A clean result means no heuristic fired; see docs/analyzer-heuristics.md for what the analyzer cannot see."
+
 // Finding represents a single risk finding from analyzing an authorization entry.
 type Finding struct {
 	Code        string          `json:"code"`
@@ -106,7 +129,7 @@ func Analyze(entry xdr.SorobanAuthorizationEntry, cfg *RiskConfig) ([]Finding, e
 		entry.Credentials.AddressWithDelegates != nil &&
 		len(entry.Credentials.AddressWithDelegates.Delegates) > 0 {
 		findings = append(findings, Finding{
-			Code:        "SOURCE_ACCOUNT_WITH_DELEGATES",
+			Code:        FindingCodeSourceAccountWithDelegates,
 			Severity:    SeverityCritical,
 			Title:       "Source account credentials with delegates",
 			Description: "Source account arm does not support delegates; this entry is malformed",
@@ -121,7 +144,7 @@ func Analyze(entry xdr.SorobanAuthorizationEntry, cfg *RiskConfig) ([]Finding, e
 	totalDelegates := countTotalDelegates(info.Delegates)
 	if totalDelegates > cfg.MaxTotalDelegates {
 		findings = append(findings, Finding{
-			Code:        "DELEGATE_COUNT_HIGH",
+			Code:        FindingCodeDelegateCountHigh,
 			Severity:    SeverityWarning,
 			Title:       "High number of delegate signers",
 			Description: fmt.Sprintf("Entry has %d total delegate nodes (limit: %d)", totalDelegates, cfg.MaxTotalDelegates),
@@ -132,7 +155,7 @@ func Analyze(entry xdr.SorobanAuthorizationEntry, cfg *RiskConfig) ([]Finding, e
 	// Check sub-invocation count
 	if info.SubInvocations > cfg.MaxSubInvocations {
 		findings = append(findings, Finding{
-			Code:        "SUB_INVOCATION_COUNT_HIGH",
+			Code:        FindingCodeSubInvocationCountHigh,
 			Severity:    SeverityWarning,
 			Title:       "Deep or broad invocation tree",
 			Description: fmt.Sprintf("Entry authorizes %d sub-invocations (limit: %d)", info.SubInvocations, cfg.MaxSubInvocations),
@@ -145,7 +168,7 @@ func Analyze(entry xdr.SorobanAuthorizationEntry, cfg *RiskConfig) ([]Finding, e
 		delta := info.ValidUntilLedger - cfg.CurrentLedger
 		if delta > cfg.MaxValidUntilLedgerDelta {
 			findings = append(findings, Finding{
-				Code:        "EXPIRATION_FAR_FUTURE",
+				Code:        FindingCodeExpirationFarFuture,
 				Severity:    SeverityWarning,
 				Title:       "Signature expiration far in the future",
 				Description: fmt.Sprintf("Valid until ledger %d (current: %d, delta: %d, limit: %d)", info.ValidUntilLedger, cfg.CurrentLedger, delta, cfg.MaxValidUntilLedgerDelta),
@@ -158,7 +181,7 @@ func Analyze(entry xdr.SorobanAuthorizationEntry, cfg *RiskConfig) ([]Finding, e
 	if info.RootContract != "" && len(cfg.KnownContracts) > 0 {
 		if !cfg.KnownContracts[info.RootContract] {
 			findings = append(findings, Finding{
-				Code:        "CONTRACT_UNKNOWN",
+				Code:        FindingCodeContractUnknown,
 				Severity:    SeverityWarning,
 				Title:       "Unfamiliar contract address",
 				Description: fmt.Sprintf("Root contract %s is not in the known contracts list", info.RootContract),
@@ -172,7 +195,7 @@ func Analyze(entry xdr.SorobanAuthorizationEntry, cfg *RiskConfig) ([]Finding, e
 		unsignedCount := countUnsignedDelegates(info.Delegates)
 		if unsignedCount > 0 {
 			findings = append(findings, Finding{
-				Code:        "UNSIGNED_DELEGATES",
+				Code:        FindingCodeUnsignedDelegates,
 				Severity:    SeverityInfo,
 				Title:       "Some delegates not yet signed",
 				Description: fmt.Sprintf("%d of %d delegate nodes are unsigned", unsignedCount, totalDelegates),
@@ -184,7 +207,7 @@ func Analyze(entry xdr.SorobanAuthorizationEntry, cfg *RiskConfig) ([]Finding, e
 	// Check for zero expiration (already expired)
 	if info.ValidUntilLedger == 0 && info.CredentialType != CredentialTypeSourceAccount {
 		findings = append(findings, Finding{
-			Code:        "EXPIRATION_ZERO",
+			Code:        FindingCodeExpirationZero,
 			Severity:    SeverityCritical,
 			Title:       "Signature expiration is zero (already expired)",
 			Description: "ValidUntilLedger is 0, which the host treats as already expired",
@@ -195,7 +218,7 @@ func Analyze(entry xdr.SorobanAuthorizationEntry, cfg *RiskConfig) ([]Finding, e
 	// Check for source account credentials with delegates (shouldn't happen but validate)
 	if info.CredentialType == CredentialTypeSourceAccount && len(info.Delegates) > 0 {
 		findings = append(findings, Finding{
-			Code:        "SOURCE_ACCOUNT_WITH_DELEGATES",
+			Code:        FindingCodeSourceAccountWithDelegates,
 			Severity:    SeverityCritical,
 			Title:       "Source account credentials with delegates",
 			Description: "Source account arm does not support delegates; this entry is malformed",
@@ -206,7 +229,7 @@ func Analyze(entry xdr.SorobanAuthorizationEntry, cfg *RiskConfig) ([]Finding, e
 	// Check for legacy address credentials (not address-bound)
 	if info.CredentialType == CredentialTypeAddress && !info.AddressBound {
 		findings = append(findings, Finding{
-			Code:        "LEGACY_CREDENTIALS_NOT_ADDRESS_BOUND",
+			Code:        FindingCodeLegacyCredentialsNotAddressBound,
 			Severity:    SeverityInfo,
 			Title:       "Legacy address credentials (not address-bound)",
 			Description: "Entry uses SOROBAN_CREDENTIALS_ADDRESS which does not bind the signer address into the payload",
@@ -237,7 +260,7 @@ func analyzeDelegates(delegates []NodeInfo, depth int, cfg *RiskConfig) []Findin
 	for _, d := range delegates {
 		if depth > cfg.MaxDelegateDepth {
 			findings = append(findings, Finding{
-				Code:        "DELEGATE_DEPTH_EXCEEDED",
+				Code:        FindingCodeDelegateDepthExceeded,
 				Severity:    SeverityWarning,
 				Title:       "Delegate nesting exceeds recommended depth",
 				Description: fmt.Sprintf("Delegate %s at depth %d (max recommended: %d)", d.Address, depth, cfg.MaxDelegateDepth),

@@ -47,6 +47,16 @@ include = ["soroauth*"]
 [tool.setuptools.package-dir]
 "" = "."
 
+# Ship the py.typed marker, the stub file and the bundled native library
+# inside the installed package. Without py.typed and the .pyi, every
+# consumer sees Any. Without lib/libsoroauth.*, a wheel-install sees no
+# shared library and the package only works in a dev checkout. The release
+# workflow (`release-python.yml`) stages the platform's shared library into
+# `soroauth/lib/` before the wheel is built, so a wheel from CI always
+# ships a library and an sdist build from source ships none.
+[tool.setuptools.package-data]
+soroauth = ["py.typed", "*.pyi", "lib/libsoroauth.so", "lib/libsoroauth.dylib"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

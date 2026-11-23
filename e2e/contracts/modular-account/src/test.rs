@@ -74,6 +74,21 @@ fn constructor_stores_the_signer_set() {
 }
 
 #[test]
+fn require_all_requires_every_account() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract = env.register(ModularAccount, ModularAccountArgs::__constructor(&Vec::new(&env)));
+    let first = Address::generate(&env);
+    let second = Address::generate(&env);
+    let third = Address::generate(&env);
+
+    let client = ModularAccountClient::new(&env, &contract);
+    let count = client.require_all(&vec![&env, first, second, third]);
+    assert_eq!(count, 3);
+}
+
+#[test]
 fn check_auth_refuses_when_no_delegates_are_attached() {
     let env = Env::default();
 

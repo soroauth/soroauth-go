@@ -12,18 +12,20 @@
 //     credential nodes, maintaining strict isolation of signing keys.
 //   - authorizeWithSeed: provides a deterministic test and local demo path using
 //     an in-memory raw ed25519 seed.
+//   - passkeySignature: builds the {public_key, signature} ScVal a passkey
+//     wallet contract decodes, so an offline page needs no second XDR encoder.
 //
 // Why this exists: passkey signing happens in the browser, and the browser
 // should derive the bytes it signs rather than trust a server to hand them
 // over. This binary is the smallest surface that makes that possible -- build a
 // preimage, hash it to a payload, and write an externally produced signature
-// back onto an entry. It is not a second implementation: every function here
-// calls the same code the native library and CLI call, so the bytes cannot
-// drift between the two.
+// back onto an entry. It is not a second implementation: the body of every
+// function lives in internal/wasmcore, which the WASI target calls too, so the
+// bytes cannot drift between targets or from the native library.
 //
 // The whole package is behind `//go:build js && wasm`, so it is not compiled
 // for any other target and `go build ./...` skips it on the host. CI builds it
-// for js/wasm explicitly (see the wasm job in .github/workflows/ci.yml).
+// for js/wasm explicitly (see the wasm job in .github/workflows/ci-wasm.yml).
 //
 // Calling convention: every exported function returns an object
 //
@@ -35,16 +37,10 @@
 package main
 
 import (
-	"context"
-	"encoding/base64"
-	"encoding/hex"
 	"fmt"
-	"strings"
 	"syscall/js"
 
-	"github.com/soroauth/soroauth-go"
-	"github.com/stellar/go-stellar-sdk/keypair"
-	"github.com/stellar/go-stellar-sdk/xdr"
+	"github.com/soroauth/soroauth-go/internal/wasmcore"
 )
 
 func main() {
@@ -56,6 +52,7 @@ func main() {
 		js.FuncOf(payload),
 		js.FuncOf(writeSignature),
 		js.FuncOf(authorizeWithSeed),
+		js.FuncOf(passkeySignature),
 	}
 	bindings = functions
 
@@ -64,6 +61,7 @@ func main() {
 		"payload":           functions[1],
 		"writeSignature":    functions[2],
 		"authorizeWithSeed": functions[3],
+		"passkeySignature":  functions[4],
 	}))
 
 	// Keep the program alive so the callbacks remain callable from JS.
@@ -89,83 +87,33 @@ func fail(err error) map[string]any {
 	return map[string]any{"ok": false, "error": err.Error()}
 }
 
-// decodeEntry parses a base64 XDR SorobanAuthorizationEntry.
-func decodeEntry(b64 string) (xdr.SorobanAuthorizationEntry, error) {
-	var entry xdr.SorobanAuthorizationEntry
-	if err := xdr.SafeUnmarshalBase64(b64, &entry); err != nil {
-		return xdr.SorobanAuthorizationEntry{}, fmt.Errorf("soroauth: wasm: decoding entry: %w", err)
-	}
-	return entry, nil
-}
-
-// encodeEntry marshals an entry to base64 XDR.
-func encodeEntry(entry xdr.SorobanAuthorizationEntry) (string, error) {
-	raw, err := entry.MarshalBinary()
-	if err != nil {
-		return "", fmt.Errorf("soroauth: wasm: encoding entry: %w", err)
-	}
-	return base64.StdEncoding.EncodeToString(raw), nil
-}
-
-// options turns an optional target address into AuthorizeEntry options.
-func options(forAddress string) []soroauth.AuthorizeOption {
-	if forAddress == "" {
-		return nil
-	}
-	return []soroauth.AuthorizeOption{soroauth.ForAddress(forAddress)}
-}
-
 // preimage(entryB64, validUntilLedger, networkPassphrase) ->
 //
 //	{ok, preimageXdr, payloadHex} | {ok:false, error}
-//
-// Source-account entries have no preimage (the envelope authenticates them), so
-// they come back as a failure naming that, rather than an empty-but-successful
-// result a caller might sign accidentally.
 func preimage(this js.Value, args []js.Value) any {
 	if len(args) != 3 {
 		return fail(fmt.Errorf("soroauth: wasm: preimage expects 3 arguments"))
 	}
-	entry, err := decodeEntry(args[0].String())
-	if err != nil {
-		return fail(err)
-	}
-	p, err := soroauth.Preimage(entry, uint32(args[1].Int()), args[2].String())
-	if err != nil {
-		return fail(err)
-	}
-	raw, err := p.MarshalBinary()
-	if err != nil {
-		return fail(fmt.Errorf("soroauth: wasm: marshalling preimage: %w", err))
-	}
-	payload, err := soroauth.Payload(p)
+	result, err := wasmcore.Preimage(args[0].String(), uint32(args[1].Int()), args[2].String())
 	if err != nil {
 		return fail(err)
 	}
 	return ok(map[string]any{
-		"preimageXdr": base64.StdEncoding.EncodeToString(raw),
-		"payloadHex":  hex.EncodeToString(payload[:]),
+		"preimageXdr": result.PreimageXDR,
+		"payloadHex":  result.PayloadHex,
 	})
 }
 
 // payload(preimageXdrBase64) -> {ok, payloadHex} | {ok:false, error}
-//
-// The separate entry point matters for remote signers: a service that receives
-// only a preimage can return the exact bytes it expects to be signed without
-// reconstructing the entry.
 func payload(this js.Value, args []js.Value) any {
 	if len(args) != 1 {
 		return fail(fmt.Errorf("soroauth: wasm: payload expects 1 argument"))
 	}
-	var p xdr.HashIdPreimage
-	if err := xdr.SafeUnmarshalBase64(args[0].String(), &p); err != nil {
-		return fail(fmt.Errorf("soroauth: wasm: decoding preimage: %w", err))
-	}
-	digest, err := soroauth.Payload(p)
+	digest, err := wasmcore.Payload(args[0].String())
 	if err != nil {
 		return fail(err)
 	}
-	return ok(map[string]any{"payloadHex": hex.EncodeToString(digest[:])})
+	return ok(map[string]any{"payloadHex": digest})
 }
 
 // writeSignature(entryB64, validUntilLedger, networkPassphrase, forAddress,
@@ -179,37 +127,10 @@ func writeSignature(this js.Value, args []js.Value) any {
 	if len(args) != 5 {
 		return fail(fmt.Errorf("soroauth: wasm: writeSignature expects 5 arguments"))
 	}
-	entry, err := decodeEntry(args[0].String())
-	if err != nil {
-		return fail(err)
-	}
-	var signature xdr.ScVal
-	if err := xdr.SafeUnmarshalBase64(args[4].String(), &signature); err != nil {
-		return fail(fmt.Errorf("soroauth: wasm: decoding signature scval: %w", err))
-	}
-
-	forAddress := args[3].String()
-	signerAddress := forAddress
-	if signerAddress == "" {
-		signerAddress, err = topLevelAddress(entry)
-		if err != nil {
-			return fail(err)
-		}
-	}
-	signer := soroauth.SignerFunc(signerAddress, func(
-		context.Context, xdr.HashIdPreimage, [32]byte,
-	) (xdr.ScVal, error) {
-		return signature, nil
-	})
-
-	signed, err := soroauth.AuthorizeEntry(
-		context.Background(), entry, signer,
-		uint32(args[1].Int()), args[2].String(), options(forAddress)...,
+	encoded, err := wasmcore.WriteSignature(
+		args[0].String(), uint32(args[1].Int()), args[2].String(),
+		args[3].String(), args[4].String(),
 	)
-	if err != nil {
-		return fail(err)
-	}
-	encoded, err := encodeEntry(signed)
 	if err != nil {
 		return fail(err)
 	}
@@ -226,57 +147,29 @@ func authorizeWithSeed(this js.Value, args []js.Value) any {
 	if len(args) != 5 {
 		return fail(fmt.Errorf("soroauth: wasm: authorizeWithSeed expects 5 arguments"))
 	}
-	entry, err := decodeEntry(args[0].String())
-	if err != nil {
-		return fail(err)
-	}
-	seedBytes, err := hex.DecodeString(strings.TrimSpace(args[3].String()))
-	if err != nil {
-		return fail(fmt.Errorf("soroauth: wasm: decoding seed: %w", err))
-	}
-	if len(seedBytes) != 32 {
-		return fail(fmt.Errorf("soroauth: wasm: seed must be 32 bytes, got %d", len(seedBytes)))
-	}
-	var seed [32]byte
-	copy(seed[:], seedBytes)
-	kp, err := keypair.FromRawSeed(seed)
-	if err != nil {
-		return fail(fmt.Errorf("soroauth: wasm: deriving keypair: %w", err))
-	}
-
-	signed, err := soroauth.AuthorizeEntry(
-		context.Background(), entry, soroauth.NewEd25519Signer(kp),
-		uint32(args[1].Int()), args[2].String(), options(args[4].String())...,
+	encoded, err := wasmcore.AuthorizeWithSeed(
+		args[0].String(), uint32(args[1].Int()), args[2].String(),
+		args[3].String(), args[4].String(),
 	)
-	if err != nil {
-		return fail(err)
-	}
-	encoded, err := encodeEntry(signed)
 	if err != nil {
 		return fail(err)
 	}
 	return ok(map[string]any{"entryB64": encoded})
 }
 
-// topLevelAddress returns the credential address of an address-based entry.
-func topLevelAddress(entry xdr.SorobanAuthorizationEntry) (string, error) {
-	switch entry.Credentials.Type {
-	case xdr.SorobanCredentialsTypeSorobanCredentialsAddress:
-		if entry.Credentials.Address == nil {
-			return "", fmt.Errorf("soroauth: wasm: entry has no address")
-		}
-		return soroauth.FormatAddress(entry.Credentials.Address.Address)
-	case xdr.SorobanCredentialsTypeSorobanCredentialsAddressV2:
-		if entry.Credentials.AddressV2 == nil {
-			return "", fmt.Errorf("soroauth: wasm: entry has no v2 address")
-		}
-		return soroauth.FormatAddress(entry.Credentials.AddressV2.Address)
-	case xdr.SorobanCredentialsTypeSorobanCredentialsAddressWithDelegates:
-		if entry.Credentials.AddressWithDelegates == nil {
-			return "", fmt.Errorf("soroauth: wasm: entry has no delegate address")
-		}
-		return soroauth.FormatAddress(entry.Credentials.AddressWithDelegates.AddressCredentials.Address)
-	default:
-		return "", fmt.Errorf("soroauth: wasm: unsupported credential type")
+// passkeySignature(publicKeyHex, signatureHex) ->
+//
+//	{ok, signatureScvalB64} | {ok:false, error}
+//
+// The body lives in wasmcore with the rest of the signing flow, so the js/wasm
+// and WASI targets cannot diverge.
+func passkeySignature(this js.Value, args []js.Value) any {
+	if len(args) != 2 {
+		return fail(fmt.Errorf("soroauth: wasm: passkeySignature expects 2 arguments"))
 	}
+	encoded, err := wasmcore.PasskeySignature(args[0].String(), args[1].String())
+	if err != nil {
+		return fail(err)
+	}
+	return ok(map[string]any{"signatureScvalB64": encoded})
 }

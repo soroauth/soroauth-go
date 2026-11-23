@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/xdr"
 
 	"github.com/soroauth/soroauth-go/internal/xdrcopy"
@@ -48,6 +49,35 @@ type Coordinator struct {
 	networkPassphrase string
 	nodes             []trackedNode
 	signedMap         map[string]bool // encoded address -> signed
+
+	// transcript records the session when WithSessionTranscript supplied a
+	// coordinator key. It is nil otherwise, and every transcript path checks
+	// for that rather than inventing a key or an unsigned record.
+	transcript         *TranscriptRecorder
+	finalTranscript    SessionTranscript
+	hasFinalTranscript bool
+}
+
+// CoordinatorOption configures optional coordinator behaviour without changing
+// the constructor's positional arguments.
+type CoordinatorOption func(*coordinatorConfig)
+
+type coordinatorConfig struct {
+	transcriptKey *keypair.Full
+}
+
+// WithSessionTranscript makes the coordinator record a signed transcript for
+// the session. The transcript covers every round the coordinator records, its
+// outcome, and the audit records for the signing calls; it is signed by
+// coordinator and verifiable with VerifyTranscript alone.
+//
+// Recording is opt-in because a transcript signature requires a coordinator
+// key, and soroauth never generates or stores a signing key on the caller's
+// behalf. A coordinator without this option keeps no transcript.
+func WithSessionTranscript(coordinator *keypair.Full) CoordinatorOption {
+	return func(c *coordinatorConfig) {
+		c.transcriptKey = coordinator
+	}
 }
 
 // trackedNode is an internal representation of a delegate node with
@@ -65,7 +95,7 @@ type trackedNode struct {
 //
 // Returns ErrUnsupportedCredentials if entry is not a delegates-arm
 // entry, or ErrInvalidExpiration if validUntilLedger is zero.
-func NewCoordinator(entry xdr.SorobanAuthorizationEntry, validUntilLedger uint32, networkPassphrase string) (*Coordinator, error) {
+func NewCoordinator(entry xdr.SorobanAuthorizationEntry, validUntilLedger uint32, networkPassphrase string, opts ...CoordinatorOption) (*Coordinator, error) {
 	if entry.Credentials.Type != xdr.SorobanCredentialsTypeSorobanCredentialsAddressWithDelegates {
 		return nil, fmt.Errorf("soroauth: new coordinator: %w", ErrUnsupportedCredentials)
 	}
@@ -74,6 +104,13 @@ func NewCoordinator(entry xdr.SorobanAuthorizationEntry, validUntilLedger uint32
 	}
 	if entry.Credentials.AddressWithDelegates == nil {
 		return nil, fmt.Errorf("soroauth: new coordinator: address_with_delegates credentials arm is empty: %w", ErrUnsupportedCredentials)
+	}
+
+	var cfg coordinatorConfig
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&cfg)
+		}
 	}
 
 	c := &Coordinator{
@@ -85,6 +122,18 @@ func NewCoordinator(entry xdr.SorobanAuthorizationEntry, validUntilLedger uint32
 
 	if err := c.buildNodes(); err != nil {
 		return nil, fmt.Errorf("soroauth: new coordinator: %w", err)
+	}
+	if cfg.transcriptKey != nil {
+		recorder, err := NewTranscriptRecorder(TranscriptConfig{
+			Entry:             entry,
+			ValidUntilLedger:  validUntilLedger,
+			NetworkPassphrase: networkPassphrase,
+			Coordinator:       cfg.transcriptKey,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("soroauth: new coordinator: %w", err)
+		}
+		c.transcript = recorder
 	}
 
 	return c, nil
@@ -191,10 +240,20 @@ func (c *Coordinator) Remaining() []string {
 // cannot be used to bypass it.
 //
 // ctx is checked and passed to AuthorizeEntry.
-func (c *Coordinator) Record(ctx context.Context, target string, signer Signer) error {
+//
+// When a transcript is attached, every successful call records a round and an
+// audit record, a failed call closes the transcript as failed with the error as
+// its reason, and the call that completes the tree closes it as complete. A
+// transcript is signed exactly once and is never rewritten.
+func (c *Coordinator) Record(ctx context.Context, target string, signer Signer) (err error) {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("soroauth: coordinator record: %w", err)
 	}
+	defer func() {
+		if err != nil {
+			c.finishTranscriptOnError(err)
+		}
+	}()
 
 	signed, err := xdrcopy.Copy(c.entry)
 	if err != nil {
@@ -229,7 +288,102 @@ func (c *Coordinator) Record(ctx context.Context, target string, signer Signer) 
 	c.signedMap[string(targetEncoded)] = true
 	c.entry = signed
 
+	if err := c.recordTranscriptSuccess(target); err != nil {
+		return fmt.Errorf("soroauth: coordinator record: %w", err)
+	}
 	return nil
+}
+
+// recordTranscriptSuccess appends the round and audit record for one successful
+// signing call, and closes the transcript when the tree is complete.
+func (c *Coordinator) recordTranscriptSuccess(target string) error {
+	if c.transcript == nil || c.transcript.Finished() {
+		return nil
+	}
+
+	preimage, err := Preimage(c.entry, c.validUntilLedger, c.networkPassphrase)
+	if err != nil {
+		return err
+	}
+	payload, err := Payload(preimage)
+	if err != nil {
+		return err
+	}
+	record, err := newAuditRecord(c.entry, target, c.validUntilLedger, c.networkPassphrase,
+		payload, auditNodeCount(c.entry), AuditDecisionSigned, nil)
+	if err == nil {
+		if err := c.transcript.RecordAudit(record); err != nil {
+			return err
+		}
+	}
+	signed, total := c.delegateProgress()
+	if err := c.transcript.RecordRound([]string{target}, signed, total); err != nil {
+		return err
+	}
+	if !c.IsComplete() {
+		return nil
+	}
+
+	transcript, err := c.transcript.Finish(SessionOutcomeComplete, "")
+	if err != nil {
+		return err
+	}
+	c.finalTranscript = transcript
+	c.hasFinalTranscript = true
+	return nil
+}
+
+// delegateProgress counts the signed delegate nodes and the total delegate
+// nodes, excluding the top-level node, so a transcript's round progress matches
+// the tree the coordinator exposes in State.
+func (c *Coordinator) delegateProgress() (signed, total int) {
+	for _, node := range c.nodes {
+		if c.signedMap[string(node.encoded)] {
+			signed++
+		}
+	}
+	return signed, len(c.nodes)
+}
+
+// finishTranscriptOnError closes the transcript as failed when a recording call
+// fails. A transcript failure never replaces the signing error the caller is
+// already being told about.
+func (c *Coordinator) finishTranscriptOnError(cause error) {
+	if c.transcript == nil || c.transcript.Finished() {
+		return
+	}
+	transcript, err := c.transcript.Finish(SessionOutcomeFailed, cause.Error())
+	if err != nil {
+		return
+	}
+	c.finalTranscript = transcript
+	c.hasFinalTranscript = true
+}
+
+// AbortTranscript closes an attached transcript as aborted with a reason. It
+// refuses an empty reason because an aborted session with no explanation is the
+// case an audit is meant to answer.
+func (c *Coordinator) AbortTranscript(reason string) error {
+	if c.transcript == nil {
+		return fmt.Errorf("soroauth: coordinator: no transcript attached")
+	}
+	if reason == "" {
+		return fmt.Errorf("soroauth: coordinator: an aborted session requires a reason")
+	}
+	transcript, err := c.transcript.Abort(reason)
+	if err != nil {
+		return fmt.Errorf("soroauth: coordinator: %w", err)
+	}
+	c.finalTranscript = transcript
+	c.hasFinalTranscript = true
+	return nil
+}
+
+// FinalizedTranscript returns the signed transcript once the session has ended.
+// The second return value is false while the session is still running or when
+// the coordinator has no transcript attached.
+func (c *Coordinator) FinalizedTranscript() (SessionTranscript, bool) {
+	return c.finalTranscript, c.hasFinalTranscript
 }
 
 // addressBytesFromStr is a helper to get encoded bytes from a string address.

@@ -3,6 +3,14 @@
 A Rust crate exposing the same operations the Go library exposes, for tooling
 that already depends on `stellar-xdr` and `soroban-sdk`.
 
+## Platform Support
+
+- **Operating systems**: Linux, macOS, and Windows (pure native Rust; no shared
+  library or C ABI dependency).
+- **Architectures**: Any target supported by `stellar-xdr` (`x86_64`, `aarch64`,
+  `wasm32`).
+- **Runtime / Toolchain**: Rust 2021 edition (MSRV 1.70+).
+
 ## Native implementation, deliberately
 
 A native Rust implementation and a binding over the C ABI are different projects

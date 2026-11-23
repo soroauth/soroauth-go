@@ -63,6 +63,21 @@ impl ModularAccount {
             .get(&DataKey::Signers)
             .unwrap_or_else(|| Vec::new(&env))
     }
+
+    /// Test entry point that requires authorization from every address in
+    /// `accounts`, in order, and returns how many it required.
+    ///
+    /// The mixed-arm scenario calls this so one invocation needs all four
+    /// credential arms at once: the transaction source (source-account), two
+    /// classic accounts (legacy and V2), and a modular account (delegates).
+    /// This contract is the called contract here, not the authorizer; it stores
+    /// no state and has no effect beyond the authorization checks.
+    pub fn require_all(env: Env, accounts: Vec<Address>) -> u32 {
+        for account in accounts.iter() {
+            account.require_auth();
+        }
+        accounts.len()
+    }
 }
 
 #[contractimpl]

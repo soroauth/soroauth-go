@@ -114,9 +114,28 @@ func emitAuditRecord(
 		return nil
 	}
 
-	credentials, err := addressCredentials(entry.Credentials)
+	record, err := newAuditRecord(entry, target, validUntilLedger, networkPassphrase, payloadHash, nodeCount, decision, signErr)
 	if err != nil {
 		return nil
+	}
+	return sink.Record(ctx, record)
+}
+
+// newAuditRecord builds the record emitAuditRecord hands to a sink. It is also
+// what a session transcript reuses, so both carry the same vocabulary.
+func newAuditRecord(
+	entry xdr.SorobanAuthorizationEntry,
+	target string,
+	validUntilLedger uint32,
+	networkPassphrase string,
+	payloadHash [32]byte,
+	nodeCount int,
+	decision AuditDecision,
+	signErr error,
+) (AuditRecord, error) {
+	credentials, err := addressCredentials(entry.Credentials)
+	if err != nil {
+		return AuditRecord{}, err
 	}
 
 	invocationBytes, err := entry.RootInvocation.MarshalBinary()
@@ -140,8 +159,7 @@ func emitAuditRecord(
 	if signErr != nil {
 		record.Error = signErr.Error()
 	}
-
-	return sink.Record(ctx, record)
+	return record, nil
 }
 
 // auditNodeCount returns the number of credential nodes in the entry.

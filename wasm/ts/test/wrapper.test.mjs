@@ -40,6 +40,10 @@ const okBindings = {
     ok: true,
     entryB64: forAddress === "" ? "SIGNED-DEFAULT" : `SIGNED-${forAddress}`,
   }),
+  passkeySignature: (publicKeyHex, signatureHex) => ({
+    ok: true,
+    signatureScvalB64: `SCVAL-${publicKeyHex}-${signatureHex}`,
+  }),
 };
 
 let dom;
@@ -81,6 +85,7 @@ describe("loadSoroauth", () => {
       api.authorizeWithSeed("ENTRY", 42, "net", "seed", "GADDR"),
       "SIGNED-GADDR",
     );
+    assert.equal(api.passkeySignature("04aa", "bbcc"), "SCVAL-04aa-bbcc");
   });
 
   it("throws SoroauthError carrying the module's message", async () => {

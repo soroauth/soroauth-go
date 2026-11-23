@@ -18,10 +18,30 @@ import (
 
 // Defines values for EntryReportCredentialType.
 const (
-	Address              EntryReportCredentialType = "address"
-	AddressV2            EntryReportCredentialType = "address_v2"
-	AddressWithDelegates EntryReportCredentialType = "address_with_delegates"
-	SourceAccount        EntryReportCredentialType = "source_account"
+	EntryReportCredentialTypeAddress              EntryReportCredentialType = "address"
+	EntryReportCredentialTypeAddressV2            EntryReportCredentialType = "address_v2"
+	EntryReportCredentialTypeAddressWithDelegates EntryReportCredentialType = "address_with_delegates"
+	EntryReportCredentialTypeSourceAccount        EntryReportCredentialType = "source_account"
+)
+
+// Defines values for FindingCode.
+const (
+	CONTRACTUNKNOWN                  FindingCode = "CONTRACT_UNKNOWN"
+	DELEGATECOUNTHIGH                FindingCode = "DELEGATE_COUNT_HIGH"
+	DELEGATEDEPTHEXCEEDED            FindingCode = "DELEGATE_DEPTH_EXCEEDED"
+	EXPIRATIONFARFUTURE              FindingCode = "EXPIRATION_FAR_FUTURE"
+	EXPIRATIONZERO                   FindingCode = "EXPIRATION_ZERO"
+	LEGACYCREDENTIALSNOTADDRESSBOUND FindingCode = "LEGACY_CREDENTIALS_NOT_ADDRESS_BOUND"
+	SOURCEACCOUNTWITHDELEGATES       FindingCode = "SOURCE_ACCOUNT_WITH_DELEGATES"
+	SUBINVOCATIONCOUNTHIGH           FindingCode = "SUB_INVOCATION_COUNT_HIGH"
+	UNSIGNEDDELEGATES                FindingCode = "UNSIGNED_DELEGATES"
+)
+
+// Defines values for FindingSeverity.
+const (
+	Critical FindingSeverity = "critical"
+	Info     FindingSeverity = "info"
+	Warning  FindingSeverity = "warning"
 )
 
 // Defines values for NodeVerdictVerdict.
@@ -30,6 +50,14 @@ const (
 	Invalid     NodeVerdictVerdict = "invalid"
 	Unsigned    NodeVerdictVerdict = "unsigned"
 	Verified    NodeVerdictVerdict = "verified"
+)
+
+// Defines values for RiskReportCredentialType.
+const (
+	RiskReportCredentialTypeAddress              RiskReportCredentialType = "address"
+	RiskReportCredentialTypeAddressV2            RiskReportCredentialType = "address_v2"
+	RiskReportCredentialTypeAddressWithDelegates RiskReportCredentialType = "address_with_delegates"
+	RiskReportCredentialTypeSourceAccount        RiskReportCredentialType = "source_account"
 )
 
 // EntryReport defines model for EntryReport.
@@ -66,6 +94,24 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+// Finding defines model for Finding.
+type Finding struct {
+	// Code Stable identifier for the finding type. Consumers match on this value,
+	// so it does not change when the prose does.
+	Code        FindingCode     `json:"code"`
+	Description string          `json:"description"`
+	Rationale   string          `json:"rationale"`
+	Severity    FindingSeverity `json:"severity"`
+	Title       string          `json:"title"`
+}
+
+// FindingCode Stable identifier for the finding type. Consumers match on this value,
+// so it does not change when the prose does.
+type FindingCode string
+
+// FindingSeverity defines model for Finding.Severity.
+type FindingSeverity string
+
 // HealthStatus defines model for HealthStatus.
 type HealthStatus struct {
 	Status  string `json:"status"`
@@ -86,6 +132,42 @@ type NodeVerdict struct {
 
 // NodeVerdictVerdict `cannot_check` is a distinct value, never `verified`.
 type NodeVerdictVerdict string
+
+// RiskReport defines model for RiskReport.
+type RiskReport struct {
+	// Address The entry's address, for the three address arms.
+	Address        *string                  `json:"address,omitempty"`
+	CredentialType RiskReportCredentialType `json:"credential_type"`
+
+	// EntryIndex One-based authorization-entry index, present only for an envelope entry.
+	EntryIndex *int      `json:"entry_index,omitempty"`
+	Findings   []Finding `json:"findings"`
+
+	// Note The analyzer's caveat. A clean report means no heuristic fired, not
+	// that the entry is safe.
+	Note string `json:"note"`
+
+	// OperationIndex One-based operation index, present only for an envelope entry.
+	OperationIndex *int `json:"operation_index,omitempty"`
+}
+
+// RiskReportCredentialType defines model for RiskReport.CredentialType.
+type RiskReportCredentialType string
+
+// RiskRequest defines model for RiskRequest.
+type RiskRequest struct {
+	// Entry Base64 XDR of an authorization entry or a transaction envelope. It is
+	// public data: it carries signatures, never a secret seed.
+	Entry string `json:"entry"`
+}
+
+// RiskResult One entry's findings, or an array of them when the input was an envelope.
+type RiskResult struct {
+	union json.RawMessage
+}
+
+// RiskResult1 defines model for .
+type RiskResult1 = []RiskReport
 
 // VerifyRequest defines model for VerifyRequest.
 type VerifyRequest struct {
@@ -110,8 +192,73 @@ type VerifyResult struct {
 // VerifyResult1 defines model for .
 type VerifyResult1 = []EntryReport
 
+// RiskJSONRequestBody defines body for Risk for application/json ContentType.
+type RiskJSONRequestBody = RiskRequest
+
 // VerifyJSONRequestBody defines body for Verify for application/json ContentType.
 type VerifyJSONRequestBody = VerifyRequest
+
+// AsRiskReport returns the union data inside the RiskResult as a RiskReport
+func (t RiskResult) AsRiskReport() (RiskReport, error) {
+	var body RiskReport
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromRiskReport overwrites any union data inside the RiskResult as the provided RiskReport
+func (t *RiskResult) FromRiskReport(v RiskReport) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeRiskReport performs a merge with any union data inside the RiskResult, using the provided RiskReport
+func (t *RiskResult) MergeRiskReport(v RiskReport) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsRiskResult1 returns the union data inside the RiskResult as a RiskResult1
+func (t RiskResult) AsRiskResult1() (RiskResult1, error) {
+	var body RiskResult1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromRiskResult1 overwrites any union data inside the RiskResult as the provided RiskResult1
+func (t *RiskResult) FromRiskResult1(v RiskResult1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeRiskResult1 performs a merge with any union data inside the RiskResult, using the provided RiskResult1
+func (t *RiskResult) MergeRiskResult1(v RiskResult1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t RiskResult) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *RiskResult) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // AsEntryReport returns the union data inside the VerifyResult as a EntryReport
 func (t VerifyResult) AsEntryReport() (EntryReport, error) {
@@ -251,6 +398,11 @@ type ClientInterface interface {
 	// Healthz request
 	Healthz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// RiskWithBody request with any body
+	RiskWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	Risk(ctx context.Context, body RiskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// VerifyWithBody request with any body
 	VerifyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -259,6 +411,30 @@ type ClientInterface interface {
 
 func (c *Client) Healthz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewHealthzRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RiskWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRiskRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) Risk(ctx context.Context, body RiskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRiskRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -316,6 +492,46 @@ func NewHealthzRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewRiskRequest calls the generic Risk builder with application/json body
+func NewRiskRequest(server string, body RiskJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRiskRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewRiskRequestWithBody generates requests for Risk with any type of body
+func NewRiskRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/risk")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -406,6 +622,11 @@ type ClientWithResponsesInterface interface {
 	// HealthzWithResponse request
 	HealthzWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthzResponse, error)
 
+	// RiskWithBodyWithResponse request with any body
+	RiskWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RiskResponse, error)
+
+	RiskWithResponse(ctx context.Context, body RiskJSONRequestBody, reqEditors ...RequestEditorFn) (*RiskResponse, error)
+
 	// VerifyWithBodyWithResponse request with any body
 	VerifyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*VerifyResponse, error)
 
@@ -435,6 +656,35 @@ func (r HealthzResponse) StatusCode() int {
 	return 0
 }
 
+type RiskResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *RiskResult
+	JSON400      *ErrorResponse
+	JSON401      *ErrorResponse
+	JSON405      *ErrorResponse
+	JSON413      *ErrorResponse
+	JSON429      *ErrorResponse
+	JSON500      *ErrorResponse
+	JSON503      *ErrorResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r RiskResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RiskResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type VerifyResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -443,6 +693,7 @@ type VerifyResponse struct {
 	JSON401      *ErrorResponse
 	JSON405      *ErrorResponse
 	JSON413      *ErrorResponse
+	JSON429      *ErrorResponse
 	JSON500      *ErrorResponse
 	JSON503      *ErrorResponse
 }
@@ -470,6 +721,23 @@ func (c *ClientWithResponses) HealthzWithResponse(ctx context.Context, reqEditor
 		return nil, err
 	}
 	return ParseHealthzResponse(rsp)
+}
+
+// RiskWithBodyWithResponse request with arbitrary body returning *RiskResponse
+func (c *ClientWithResponses) RiskWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RiskResponse, error) {
+	rsp, err := c.RiskWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRiskResponse(rsp)
+}
+
+func (c *ClientWithResponses) RiskWithResponse(ctx context.Context, body RiskJSONRequestBody, reqEditors ...RequestEditorFn) (*RiskResponse, error) {
+	rsp, err := c.Risk(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRiskResponse(rsp)
 }
 
 // VerifyWithBodyWithResponse request with arbitrary body returning *VerifyResponse
@@ -516,6 +784,81 @@ func ParseHealthzResponse(rsp *http.Response) (*HealthzResponse, error) {
 			return nil, err
 		}
 		response.JSON405 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRiskResponse parses an HTTP response from a RiskWithResponse call
+func ParseRiskResponse(rsp *http.Response) (*RiskResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RiskResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RiskResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
 
 	}
 
@@ -570,6 +913,13 @@ func ParseVerifyResponse(rsp *http.Response) (*VerifyResponse, error) {
 			return nil, err
 		}
 		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest ErrorResponse

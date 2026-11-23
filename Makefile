@@ -43,7 +43,8 @@ FUZZTIME ?= 30s
 # soak is not a replacement for it.
 SOAKTIME ?= 2m
 
-.PHONY: all help check-index ci-local ci-local-check fmt vet test coverage fuzz soak build server man site md-check md-format vectors vectors-check demo-check diagrams diagrams-check e2e clean parity parity-rust differential wasm wasm-check wasm-budget ts-test jvm-test jvm-native rust-test grpc-test grpc-check freighter-check openapi-test openapi-check action-test
+# Internal targets: help check-index
+.PHONY: all help check-index ci-local ci-local-check fmt vet test coverage fuzz soak build server man site md-check md-format vectors vectors-check demo-check diagrams diagrams-check e2e clean parity parity-rust differential wasm wasm-check wasi-check wasm-budget ts-test jvm-test jvm-native rust-test grpc-test grpc-check freighter-check openapi-test openapi-check action-test
 
 define CI_CHECK_INDEX
 Required: ci / vet and test
@@ -130,6 +131,7 @@ help:
 	@echo "  make differential  regenerate the differential corpus and check it with JS and Python"
 	@echo "  make wasm          build the js/wasm signing core into wasm/dist/"
 	@echo "  make wasm-check    build the wasm core and prove it matches the golden, differential and fuzz corpora"
+	@echo "  make wasi-check    replay the golden vectors through the wasip1 build under Node WASI"
 	@echo "  make wasm-budget   build the wasm core and fail if it is over its size ceiling"
 	@echo "  make ts-test       typecheck and test the TypeScript wrapper package"
 	@echo "  make jvm-test      test the JVM binding (golden replay, exceptions, loader)"
@@ -388,6 +390,13 @@ wasm:
 # byte-identical output against the native build.
 wasm-check: wasm
 	$(NODE) wasm/parity.mjs
+	$(NODE) wasm/wasi-parity.mjs
+
+# The wasip1 build replayed through a real WASI runtime (Node's). Separate from
+# wasm-check because it needs a runtime rather than wasm_exec.js, and because a
+# failure here names the sandbox target rather than the browser one.
+wasi-check: wasm
+	$(NODE) wasm/wasi-parity.mjs
 
 ts-test: wasm
 	cd wasm/ts && $(NPM) ci && $(NPM) run typecheck && $(NPM) test
@@ -480,7 +489,8 @@ action-test:
 # over. The core is downloaded by a browser, so its size is a property worth
 # failing on rather than noticing later.
 wasm-budget: build wasm
-	$(BIN_DIR)/soroauth wasm-budget --out wasm/dist/soroauth.wasm
+	$(BIN_DIR)/soroauth wasm-budget --target browser
+	$(BIN_DIR)/soroauth wasm-budget --target wasi
 
 changelog-check:
 	go run ./scripts/changelog-check/main.go CHANGELOG.md

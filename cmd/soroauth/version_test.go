@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/soroauth/soroauth-go"
 )
 
 // TestVersionFlagReportsBuildMetadata drives --version through the dispatcher
@@ -62,18 +64,25 @@ func TestVersionTextRendersInjectedMetadata(t *testing.T) {
 }
 
 // TestVersionDefaultsAreSelfDescribing pins the no-ldflags defaults. An empty
-// string would read as a parsing bug in a bug report; "dev" and "unknown" say
-// what actually happened, which is that the binary was not built by the release
-// workflow.
+// string would read as a parsing bug in a bug report; "unknown" says what
+// actually happened, while version defaults to soroauth.Version.
 func TestVersionDefaultsAreSelfDescribing(t *testing.T) {
-	if version != "dev" {
-		t.Errorf("default version = %q, want %q", version, "dev")
+	if version != soroauth.Version {
+		t.Errorf("default version = %q, want %q", version, soroauth.Version)
 	}
 	if commit != "unknown" {
 		t.Errorf("default commit = %q, want %q", commit, "unknown")
 	}
 	if date != "unknown" {
 		t.Errorf("default date = %q, want %q", date, "unknown")
+	}
+}
+
+// TestVersionMatchesLibraryVersionByDefault asserts that the CLI default
+// version agrees with the library version constant.
+func TestVersionMatchesLibraryVersionByDefault(t *testing.T) {
+	if version != soroauth.Version {
+		t.Errorf("CLI default version = %q, want soroauth.Version = %q", version, soroauth.Version)
 	}
 }
 

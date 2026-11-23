@@ -1470,6 +1470,7 @@ reports the structure; it does not replace the rest of the Stellar toolchain.
 | man           | --json              | —       | output as JSON                                                                                        |
 | man           | --quiet             | —       | print nothing on success; the exit code is the result                                                 |
 | man           | --verbose           | —       | explain the verdict on stderr without printing the entry or a secret                                  |
+| wasm-budget   | --target            | <value> | which artifact to measure by default: browser or wasi                                                 |
 | wasm-budget   | --out               | <value> | path to the wasm artifact to measure                                                                  |
 | wasm-budget   | --budget            | <value> | maximum allowed size in bytes                                                                         |
 | wasm-budget   | --prev-size         | <value> | previous release's size, for a delta                                                                  |

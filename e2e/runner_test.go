@@ -89,6 +89,12 @@ type scenarioSpec struct {
 	// rewrite.
 	prepare prepareFunc
 
+	// afterSign runs after AuthorizeAll and before the enforcing simulation.
+	// It exists for a scenario whose point is a malformed submission — the
+	// mixed-arm control removes one already-produced signature — without
+	// having to copy the record/sign/enforce/submit flow.
+	afterSign func(t *testing.T, entries []xdr.SorobanAuthorizationEntry) []xdr.SorobanAuthorizationEntry
+
 	// expectFailure marks a run whose point is an on-chain refusal. The
 	// enforcing simulation is skipped — it would fail locally for the very
 	// reason under test — and the submission is sized from the recording
@@ -139,6 +145,9 @@ func runScenario(t *testing.T, h *harness, spec scenarioSpec) submission {
 	signedEntries, err := soroauth.AuthorizeAll(context.Background(), entries, spec.signers, validUntil, h.passphrase)
 	if err != nil {
 		t.Fatalf("AuthorizeAll: %v", err)
+	}
+	if spec.afterSign != nil {
+		signedEntries = spec.afterSign(t, signedEntries)
 	}
 	logSignedEntries(t, signedEntries)
 

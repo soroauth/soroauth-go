@@ -166,6 +166,27 @@
           "legendFormat": "{{phase}} p95"
         }
       ]
+    },
+    {
+      "id": 7,
+      "title": "Requests shed by availability limits",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (limit) (rate(soroauth_http_limit_rejections_total[5m]))",
+          "legendFormat": "{{limit}}"
+        }
+      ]
     }
   ],
   "refresh": "30s",

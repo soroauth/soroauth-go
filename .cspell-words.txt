@@ -16,6 +16,7 @@ cli
 denylist
 docsite
 ed25519
+schnorr
 e2e
 envelope
 esbuild
@@ -407,3 +408,10 @@ slowloris
 oapi
 codegen
 openapi
+
+# Python and JVM binding distribution
+auditwheel
+delocate
+manylinux
+initialisation
+GOMAXPROCS

@@ -14,24 +14,30 @@
     "ci-node.yml",
     "ci-grpc.yml",
     "ci-openapi.yml",
+    "ci-deploy.yml",
+    "ci-browser-offline.yml",
     "ci-freighter.yml",
     "ci-action.yml",
     "ci-image.yml",
     "ci-packaging.yml",
     "ci-sdk-main.yml",
     "ci-devcontainer.yml",
+    "ci-python.yml",
     "e2e.yml",
     "fuzz.yml",
     "cost-report.yml",
     "reproducible.yml",
     "verify-release.yml",
-    "release.yml"
+    "release.yml",
+    "release-python.yml",
+    "release-jvm.yml"
   ],
   "plumbing": [
     "actions/checkout",
     "actions/setup-go",
     "actions/setup-node",
     "actions/setup-java",
+    "actions/setup-python",
     "actions/cache",
     "actions/upload-artifact",
     "actions/download-artifact",
@@ -39,7 +45,8 @@
     "docker/setup-buildx-action",
     "docker/login-action",
     "DeterminateSystems/nix-installer-action",
-    "sigstore/cosign-installer"
+    "sigstore/cosign-installer",
+    "pypa/gh-action-pypi-publish"
   ],
   "jobs": {
     "ci.yml/build": { "requires": ["go", "node", "npm", "npx", "make", "git"] },
@@ -111,6 +118,20 @@
     "ci-jvm.yml/jvm": { "requires": ["go", "mvn", "java", "gcc"], "os": ["linux", "darwin"] },
     "ci-node.yml/node": { "requires": ["node", "npm"] },
 
+    "ci-browser-offline.yml/offline": { "skip": "needs a Chromium install with root-level system libraries and a CDP virtual authenticator, which this runner does not provision" },
+
+    "ci-deploy.yml/helm": { "requires": ["go", "helm", "docker", "kubectl"] },
+    "ci-deploy.yml/smoke": {
+      "requires": ["go", "helm", "kind", "docker", "kubectl"],
+      "os": ["linux"],
+      "steps": {
+        "delete the cluster": {
+          "command": "kind delete cluster --name soroauth || true",
+          "why": "CI runs this cleanup step regardless of earlier failures; locally it removes the cluster the smoke job created"
+        }
+      }
+    },
+
     "ci-grpc.yml/grpc": {
       "requires": ["go", "buf"],
       "os": ["linux", "darwin"],
@@ -148,11 +169,13 @@
     "cost-report.yml/report": { "skip": "reads the repository's Actions usage through the GitHub API" },
 
     "reproducible.yml/reproduce": { "skip": "rebuilds a published release and compares it with the checksums attached to that release" },
+    "reproducible.yml/reproduce-wasm": { "skip": "rebuilds the wasm artifacts of a published release and compares them with the published digest" },
     "verify-release.yml/verify": { "skip": "verifies the signatures and attestations of a published release with cosign and the GitHub API" },
     "verify-release.yml/self-test": { "skip": "by hand only: keyless-signs a throwaway binary with the workflow's GitHub OIDC identity" },
 
     "release.yml/release-preflight": { "skip": "release workflow: runs when a version tag is pushed" },
     "release.yml/golden-drift": { "skip": "release workflow: runs when a version tag is pushed (ci.yml/golden-drift is the same check)" },
+    "release.yml/wasm-digest": { "skip": "release workflow: rebuilds the wasm twice from the tag and publishes its digest when a version tag is pushed" },
     "release.yml/build": { "skip": "release workflow: builds and keyless-signs the release binaries when a version tag is pushed" },
     "release.yml/image": { "skip": "release workflow: pushes and signs the container image when a version tag is pushed" },
     "release.yml/image-smoke": { "skip": "release workflow: pulls the image it just published" },
@@ -162,6 +185,20 @@
     "release.yml/docs-site": { "skip": "release workflow: publishes the documentation site to gh-pages" },
     "release.yml/release": { "skip": "release workflow: creates the GitHub release and attests its assets" },
     "release.yml/verify-release": { "skip": "release workflow: verifies the release it just published" },
-    "release.yml/install-check": { "skip": "release workflow: installs the CLI from the Go module proxy after the tag is published" }
+    "release.yml/install-check": { "skip": "release workflow: installs the CLI from the Go module proxy after the tag is published" },
+
+    "ci-python.yml/typecheck": { "requires": ["python3"], "os": ["linux", "darwin"] },
+
+    "release-python.yml/guard": { "skip": "release workflow: runs when a version tag is pushed" },
+    "release-python.yml/sdist": { "skip": "release workflow: builds the Python sdist when a version tag is pushed" },
+    "release-python.yml/wheels": { "skip": "release workflow: builds per-platform wheels when a version tag is pushed" },
+    "release-python.yml/smoke": { "skip": "release workflow: installs the built wheels in a clean venv and replays goldens" },
+    "release-python.yml/publish": { "skip": "release workflow: publishes to PyPI with trusted publishing when a version tag is pushed" },
+    "release-python.yml/verify-published": { "skip": "release workflow: installs the published wheel from PyPI and replays goldens" },
+
+    "release-jvm.yml/guard": { "skip": "release workflow: runs when a version tag is pushed" },
+    "release-jvm.yml/native": { "skip": "release workflow: builds per-platform native libraries for the Maven artifact" },
+    "release-jvm.yml/deploy": { "skip": "release workflow: signs and publishes the JVM artifact to Maven Central" },
+    "release-jvm.yml/verify-consumer": { "skip": "release workflow: resolves the published artifact from Central and replays goldens" }
   }
 }

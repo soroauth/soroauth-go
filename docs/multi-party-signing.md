@@ -173,3 +173,84 @@ After collecting signatures, the transaction coordinator must run an enforce
 simulation with the signed entry, then assemble and submit the transaction using
 that simulation's result. Signing changes the resources required; the
 record-mode simulation is not ready to submit.
+
+## Distributed key generation (FROST)
+
+`frost.TrustedDealerKeygen` is for tests: one process holds the whole key while
+it splits it. For a real group, use the DKG ceremony, where no participant and
+no coordinator ever holds the full private key.
+
+```go
+cfg := frost.DKGConfig{Threshold: 2, MaxSigners: 3}
+participant, err := frost.NewDKGParticipant(cfg, 1) // 1-indexed
+round1, err := participant.Start()                  // broadcast this
+// Every participant broadcasts its round-one package. Then:
+round2, err := participant.Continue(allRound1)      // deliver round2[recipient]
+// Each recipient collects the packages addressed to it. Then:
+share, err := participant.Finalize(allRound1, sharesAddressedToMe)
+```
+
+Every package is verified before it is accepted. A participant that aborts, or
+sends a commitment or share that does not verify, is named in a
+`*frost.DKGError` and no usable share is produced. `Finalize` checks the
+participant's public key share against the commitments and the group
+verification key against every other participant's derivation before returning
+anything.
+
+`frost.NewDKGTranscript(cfg, allRound1)` returns the public transcript: every
+commitment, every proof of knowledge, and the group verification key. It carries
+no secret and `Verify()` re-checks it without participant state, which is what
+lets a third party confirm the ceremony completed correctly. The verification
+rules are RFC 9591 Appendix C.2 (commitments and `vss_verify`, with a failure
+requiring the participant to abort); RFC 9591 Section 4 leaves the DKG
+construction itself out of scope, and the Schnorr proof of knowledge is the one
+the `bytemare/dkg` protocol defines.
+
+The returned `frost.DKGShare` is the representation the FROST signer already
+uses, so it goes straight into `frost.NewFROSTCoordinator` and
+`frost.NewFROSTParticipant`.
+
+## Refreshing shares
+
+A group public key is the Stellar account address, so it cannot change. When
+shares must stop being useful to an attacker who took one, refresh them instead
+of re-keying:
+
+```go
+cfg := frost.RefreshConfig{Threshold: 2, MaxSigners: 3, Epoch: 1}
+participant, err := frost.NewRefreshParticipant(cfg, 1)
+commitment := participant.Commitment()      // public; broadcast
+shares, err := participant.Shares(allCommitments) // private; one per recipient
+next, err := participant.Apply(currentShare, sharesAddressedToMe, allCommitments)
+```
+
+Each participant contributes a random polynomial whose constant term is the
+identity, so the sum of the contributions changes every share without changing
+the group secret. `Apply` refuses a contribution with a non-zero constant term,
+a share that fails `vss_verify`, a missing participant, or an epoch that is not
+exactly one more than the current share's. The group verification key and the
+account address are unchanged; the secret shares, public key shares and epoch
+all move forward. A stale share combined with a refreshed share fails FROST
+signature-share verification rather than producing a signature, and a
+participant that misses the ceremony is named.
+
+## Session transcripts
+
+A coordinator can record a signed transcript of a delegates signing session:
+
+```go
+coord, err := soroauth.NewCoordinator(entry, validUntil, networkPassphrase,
+    soroauth.WithSessionTranscript(coordinatorKey))
+// ... coord.Record(ctx, address, signer) for each node ...
+transcript, ok := coord.FinalizedTranscript()
+err = soroauth.VerifyTranscript(transcript) // needs only the transcript
+```
+
+The transcript records the participants, the payload hash, each round, the
+outcome (`complete`, `failed` or `aborted`), the audit records for the signing
+calls, and the failure reason when the session did not complete. A failed
+`Record` closes it as failed; `AbortTranscript` closes it deliberately; both
+produce a verifiable transcript. It carries no seed, key share, nonce or
+signature share, and only the payload hash rather than the payload. The
+coordinator signs it once with Ed25519, and the public key travels inside it, so
+verification needs no coordinator cooperation.

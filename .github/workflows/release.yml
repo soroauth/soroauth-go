@@ -73,6 +73,34 @@ jobs:
             exit 1
           fi
 
+  # The wasm artifact gets the same treatment as the binaries: rebuilt twice
+  # from the tag, the two builds compared, and the digest published as a
+  # release asset. scripts/reproduce-wasm.sh is also the command reproducible.yml
+  # runs against the published release, so the producer and the verifier use one
+  # implementation rather than two that can drift.
+  wasm-digest:
+    name: reproducible wasm digest
+    needs: [golden-drift, release-preflight]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: record tool versions
+        run: bash .github/scripts/record-tool-versions.sh go .
+      - name: rebuild the wasm twice from the tag and write its digest
+        run: bash scripts/reproduce-wasm.sh "${GITHUB_REF_NAME}" "$PWD/reproduced-wasm"
+      - name: upload the published digest
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: soroauth-wasm-checksums
+          path: reproduced-wasm/soroauth-wasm-checksums.txt
+          retention-days: 1
+
   build:
     name: build binaries
     needs: [golden-drift, release-preflight]
@@ -359,6 +387,8 @@ jobs:
         run: ./wasm/build.sh
       - name: wasm byte parity against the golden vectors
         run: node wasm/parity.mjs
+      - name: wasi byte parity against the golden vectors
+        run: node wasm/wasi-parity.mjs
       - name: typescript wrapper tests
         working-directory: wasm/ts
         run: |
@@ -474,8 +504,9 @@ jobs:
     name: create release
     # Waits for the image too, so `needs.image.outputs.digest` exists: a release
     # is only created once every artifact it names — binaries, SBOMs, Sigstore
-    # bundles and the image digest — has been produced, attested and signed.
-    needs: [build, image, image-smoke, packaging]
+    # bundles, the image digest and the wasm digest — has been produced,
+    # attested and signed.
+    needs: [build, image, image-smoke, packaging, wasm-digest]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -507,6 +538,15 @@ jobs:
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: soroauth-formula
+          path: dist
+      # The wasm digest is published beside the binaries so a consumer of the
+      # npm package can check the bytes they downloaded against the same file
+      # the release names. reproducible.yml downloads this exact asset and
+      # compares a fresh rebuild against it.
+      - name: download the wasm digest
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: soroauth-wasm-checksums
           path: dist
       - name: prepare release notes
         id: notes

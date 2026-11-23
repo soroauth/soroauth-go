@@ -6,12 +6,11 @@
 name: ci / openapi
 
 on:
-  # Advisory checks do not run on pull requests. Only the two jobs the branch
-  # ruleset requires do, so a contributor sees two checks and not a wall of
-  # them. This runs when the change reaches main, and can be run by hand from
-  # the Actions tab at any time.
-  push:
-    branches: [main]
+  # This check runs on a pull request when one of its inputs changes, as well as
+  # when the change reaches main: a spec change that breaks the generated client
+  # or the conformance check should fail before merge, not after. The path filter
+  # keeps it off unrelated pull requests.
+  pull_request:
     paths:
       - "server/openapi.yaml"
       - "server/openapi/**"
@@ -26,6 +25,17 @@ on:
       # A workflow's own definition is in its paths, so an edit to this file
       # re-runs it. Without this line a change to this workflow cannot
       # validate itself.
+      - ".github/workflows/ci-openapi.yml"
+  push:
+    branches: [main]
+    paths:
+      - "server/openapi.yaml"
+      - "server/openapi/**"
+      - "server/**"
+      - "*.go"
+      - "go.mod"
+      - "go.sum"
+      - "testdata/vectors/**"
       - ".github/workflows/ci-openapi.yml"
   workflow_dispatch:
 

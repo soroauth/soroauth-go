@@ -3,6 +3,10 @@ module github.com/soroauth/soroauth-go
 go 1.26.3
 
 require (
+	github.com/bytemare/dkg v0.0.0-20260615011009-183ce3f7e6d0
+	github.com/bytemare/ecc v0.10.0
+	github.com/bytemare/frost v0.0.0-20260616005703-316cadd937fd
+	github.com/bytemare/secret-sharing v0.8.1-0.20260608010144-f8126702fd4d
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/leanovate/gopter v0.2.11
@@ -19,11 +23,8 @@ require (
 	filippo.io/nistec v0.0.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bytemare/ecc v0.10.0 // indirect
-	github.com/bytemare/frost v0.0.0-20260616005703-316cadd937fd // indirect
 	github.com/bytemare/hash v0.6.3 // indirect
 	github.com/bytemare/secp256k1 v0.5.0 // indirect
-	github.com/bytemare/secret-sharing v0.8.1-0.20260608010144-f8126702fd4d // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect

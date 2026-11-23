@@ -18,6 +18,7 @@
     },
     "./soroauth.wasm": "./dist/soroauth.wasm",
     "./wasm_exec.js": "./dist/wasm_exec.js",
+    "./SHA256SUMS": "./dist/SHA256SUMS",
     "./package.json": "./package.json"
   },
   "files": [

@@ -14,6 +14,20 @@
  *     returns) on any breaking ABI change: a removed function, a changed
  *     signature, or a changed envelope schema.
  *   - Adding a new function is not a breaking change: the version stays.
+ *
+ * Threading contract:
+ *   - Every function in this header is safe to call concurrently from any
+ *     thread, including simultaneous calls to the same function.
+ *   - Each returned char* is owned by the caller. Free it with SoroauthFree
+ *     exactly once. SoroauthFree(NULL) is a no-op. Reading or freeing the
+ *     same pointer from more than one thread without the caller's own
+ *     synchronisation is a use-after-free in the caller's code.
+ *   - No SoroauthInit entry point; no library-wide lock; no OS-thread
+ *     affinity.
+ *   - The library is not signal-safe. Calls from a POSIX signal handler
+ *     are not supported.
+ *   - The full contract lives in bindings/c/THREADING.md; the Go-side
+ *     evidence is the test TestABIThreadingContract at the repo root.
  */
 
 #ifndef LIBSOROAUTH_H

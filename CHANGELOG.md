@@ -10,24 +10,121 @@ this project adheres to
 
 ### Added
 
-- Add `CheckBatchNonces`, which refuses a batch where one address reuses a
-  nonce. `AuthorizeAll` now runs it before any signer is called, so a hardware
-  wallet is never asked to approve a batch the host would reject on chain.
-  (#312)
+- Add a per-caller token-bucket rate limit to the verification service, checked
+  before the body is read and before a concurrency slot is taken. A refusal is
+  `429` with `Retry-After`; `AUTH_TOKEN` accepts a comma-separated list so
+  distinct clients get distinct quotas, and a new limit-rejection metric splits
+  sheds by rate, concurrency and body. (#549)
 
-- Add offline account-policy evaluation: `EvaluateAccountPolicy` reports a
-  `PolicyEvalResult` with `PolicyViolation` entries for an entry against an
-  `AccountPolicy`, with `RequiredSigner` as a built-in policy. This answers
-  whether an entry as it stands satisfies a policy, which `AuthorizeAll`
-  deliberately cannot know. (#314)
+- Run the OpenAPI conformance check on pull requests when its inputs change, and
+  prove the check rejects an extra field, a renamed field, an undeclared status
+  and the wrong body shape rather than only passing on a correct response.
+  (#552)
 
-- Add the `VersionedSigner` interface, which reports the key version behind each
-  signature so a mid-batch key rotation is detected and refused rather than
-  producing a batch signed by two different keys. `Address` is unchanged by
-  rotation: it identifies the account, not the key material. (#328)
+- Add an offline browser signing page whose assets are all local: it derives the
+  payload in the WASM core, signs with a passkey, verifies the assertion
+  locally, builds the signature ScVal with a new wasm binding, and makes no
+  request after load. A Playwright test aborts and records every request after
+  load so a CDN import or font fetch fails the run. (#557)
 
-- Cover authorization entries spread across a multi-operation transaction in the
-  envelope tests. (#311)
+- Add a Helm chart and plain Kubernetes manifests for the verification service.
+  The chart runs the server from the published image, uses `/healthz` for all
+  probes, separates metrics onto their own Service, and refuses to render
+  without an existing token Secret. CI lints and validates both, then deploys
+  the chart in kind and verifies a golden vector through the service. (#560)
+
+- Make the WebAssembly signing core reproducible: both targets are built with
+  `-trimpath -buildvcs=false`, `scripts/reproduce-wasm.sh` rebuilds a tag twice
+  and writes `soroauth-wasm-checksums.txt`, and the release and npm package
+  publish that digest. A `reproduce-wasm` CI job rebuilds the published tag and
+  fails on any difference. (#558)
+
+- Add a WASI build of the signing core (`cmd/soroauthwasi`, `GOOS=wasip1`) that
+  speaks one JSON request over stdin and one response over stdout, needs no
+  JavaScript host, and replays the golden vectors under Node's WASI runtime.
+  Both wasm targets share `internal/wasmcore`. (#565)
+
+- Extend the composite action with `envelope` and `envelope-file` inputs, which
+  report every authorization entry by operation, index and address in the job
+  summary, plus a `fail-on` input for envelope-wide verdict conditions. (#559)
+
+- Add the mixed-arm e2e scenario: one transaction carries source-account,
+  legacy, V2 and delegates entries, and a negative control removes the V2
+  signature and requires the host to refuse it. The `modular-account` fixture
+  gains a `require_all` entry point for it. (#566)
+
+- Publish the Python binding to PyPI on each `v*` tag: a per-platform wheel
+  matrix (linux-x86\_64, linux-aarch64, darwin-x86\_64, darwin-aarch64) bundles
+  the `libsoroauth` native library, auditwheel / delocate repair satisfies the
+  manylinux and macOS policies, and PyPI trusted publishing (OIDC) replaces any
+  long-lived token. A golden-vector smoke test runs before and after publish.
+  (#540)
+
+- Add PEP 561 `py.typed` marker and `__init__.pyi` stubs to the Python binding:
+  all public symbols, exception classes, and result types are typed, a mypy
+  harness in `bindings/python/typecheck/` verifies the stubs, and
+  `ci-python.yml` runs `mypy --strict` on every push to `main`. (#541)
+
+- Publish the JVM binding to Maven Central on each `v*` tag: the pom now carries
+  all required Central metadata (licenses, developers, scm, issueManagement), a
+  `release` profile adds sources, Javadoc, and GPG signatures via the new
+  Central Portal (`central-publishing-maven-plugin`), a four-platform native
+  matrix builds and bundles `libsoroauth`, and a cross-platform consumer smoke
+  test resolves the published artifact from `repo1.maven.org` and replays all
+  golden vectors. (#544)
+
+- Document the C ABI threading contract in `bindings/c/THREADING.md`: every
+  exported symbol is concurrency-safe with no initialisation call and no
+  library-wide lock; the caller owns every returned `char *` and must call
+  `SoroauthFree` exactly once. `TestABIThreadingContract` proves the contract on
+  the Go side with `GOMAXPROCS*4` goroutines running 24 iterations each under
+  `go test -race`. (#547)
+
+- Expose `Version` constant in the root package and document it in package docs,
+  ensuring programmatic access to the library version and aligning CLI defaults
+  with the library version. (#676)
+
+- Report the exact `soroauth` build identity (tag, commit, build timestamp, Go
+  version) in the composite GitHub Action outputs (`version`) and job summary
+  (`$GITHUB_STEP_SUMMARY`), with tests and reproducible pinning documentation.
+  (#678)
+
+- Assert structured platform support documentation in each binding README across
+  supported operating systems and architectures. (#670)
+
+- Assert help lines for every public `.PHONY` target and establish documented
+  conventions for internal targets. (#672)
+
+- Add a FROST distributed key generation ceremony in `frost/dkg.go`: every
+  participant contributes a VSS commitment and proof of knowledge, verifies
+  every peer's contributions, and finishes with exactly the `DKGShare` the FROST
+  signer consumes. No participant or coordinator ever holds the full key.
+  `DKGTranscript` is the public, independently verifiable record of the
+  ceremony; a participant that aborts or sends a malformed contribution is named
+  in a `*DKGError` and the ceremony fails closed. (#569)
+
+- Add proactive share refresh in `frost/refresh.go`: every participant
+  contributes a zero-constant-term polynomial, so the group verification key and
+  account address are unchanged while every secret share and public key share
+  moves to a new epoch. Old shares cannot be combined with refreshed ones to
+  sign, a missed refresh is named, and a contribution that fails `vss_verify` or
+  changes the constant term is refused. (#570)
+
+- Add signed session transcripts: `SessionTranscript`, `TranscriptRecorder` and
+  `VerifyTranscript`, attached to a `Coordinator` with `WithSessionTranscript`.
+  Every session records its participants, payload hash, rounds, outcome and
+  audit records; failed and aborted sessions record their reason. The
+  coordinator signs the transcript once with Ed25519 and the public key travels
+  inside it, so verification needs no coordinator cooperation. A transcript
+  carries no key share, seed, nonce or signature value. (#572)
+
+- Add `POST /risk` to the verification service and the OpenAPI document: it
+  returns the structural analyzer's findings with their exported, stable `code`s
+  and severities, under the same authentication and concurrency bound as
+  `/verify`. Every report carries the analyzer's note that findings are
+  heuristics, not a safety guarantee. The finding identifiers are now exported
+  as `FindingCode*` constants. (#564)
+
 - Add a structured audit record for every signing decision: `AuditRecord` and
   the `AuditSink` interface, attached with the `WithAudit` option. A record is
   written whether the decision was to sign or to refuse, and an audit write

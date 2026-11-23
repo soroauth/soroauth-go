@@ -4,7 +4,8 @@ info:
   description: |
     The contract served by `server/` (see `docs/verification-service.md`): offline
     verification of Soroban authorization entries, with the same verdicts and the
-    same JSON shape as `soroauth verify --json`.
+    same JSON shape as `soroauth verify --json`, plus the structural risk analyzer
+    behind `soroauth.Analyze`.
 
     A verification that completes is HTTP 200 whatever the verdicts say — a body
     reporting `invalid` is the answer, not a transport failure. Only a request the
@@ -100,6 +101,111 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "413":
           description: The request body is past the configured size limit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: |
+            The caller is past its request-rate limit. The limit is enforced
+            before the body is read, so the request did no decoding work. Retry,
+            honouring the `Retry-After` header.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: An unexpected internal error; the handler panicked and was recovered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: |
+            The service is at its concurrent-request bound. Retry, honouring the
+            `Retry-After` header.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /risk:
+    post:
+      operationId: risk
+      summary: Report structural risk findings for one entry or every entry in an envelope
+      description: |
+        Runs `soroauth.Analyze` and returns its findings with their stable `code`
+        identifiers and severities. A single authorization entry answers with a
+        `RiskReport`; a transaction envelope answers with an array of them, each
+        carrying the one-based `operation_index` and `entry_index` it came from.
+
+        Findings are heuristics, not a safety guarantee. A report with no findings
+        means no heuristic fired, not that the entry is safe; every report carries
+        a `note` saying so and the analyzer's limits are documented in
+        `docs/analyzer-heuristics.md` rather than restated here.
+
+        A request that completes is HTTP 200 whatever the findings say. Only a
+        request the service cannot analyze is a 4xx with an `ErrorResponse` body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RiskRequest"
+      responses:
+        "200":
+          description: |
+            Analysis completed. Read the findings: an object for one entry, an
+            array for an envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiskResult"
+        "400":
+          description: |
+            Malformed JSON, a missing field, or an entry the service cannot
+            decode or inspect.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid bearer token, when AUTH_TOKEN is configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: The endpoint is POST-only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: The request body is past the configured size limit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: |
+            The caller is past its request-rate limit. The limit is enforced
+            before the body is read, so the request did no decoding work. Retry,
+            honouring the `Retry-After` header.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -217,6 +323,79 @@ components:
         reason:
           type: string
           description: Plain-language explanation when the verdict is not a bare pass.
+    RiskRequest:
+      type: object
+      additionalProperties: false
+      required: [entry]
+      properties:
+        entry:
+          type: string
+          description: |
+            Base64 XDR of an authorization entry or a transaction envelope. It is
+            public data: it carries signatures, never a secret seed.
+    RiskResult:
+      description: |
+        One entry's findings, or an array of them when the input was an envelope.
+      oneOf:
+        - $ref: "#/components/schemas/RiskReport"
+        - type: array
+          items:
+            $ref: "#/components/schemas/RiskReport"
+    RiskReport:
+      type: object
+      additionalProperties: false
+      required: [credential_type, findings, note]
+      properties:
+        operation_index:
+          type: integer
+          description: One-based operation index, present only for an envelope entry.
+        entry_index:
+          type: integer
+          description: One-based authorization-entry index, present only for an envelope entry.
+        credential_type:
+          type: string
+          enum: [source_account, address, address_v2, address_with_delegates]
+        address:
+          type: string
+          description: The entry's address, for the three address arms.
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Finding"
+        note:
+          type: string
+          description: |
+            The analyzer's caveat. A clean report means no heuristic fired, not
+            that the entry is safe.
+    Finding:
+      type: object
+      additionalProperties: false
+      required: [code, severity, title, description, rationale]
+      properties:
+        code:
+          type: string
+          description: |
+            Stable identifier for the finding type. Consumers match on this value,
+            so it does not change when the prose does.
+          enum:
+            - SOURCE_ACCOUNT_WITH_DELEGATES
+            - DELEGATE_DEPTH_EXCEEDED
+            - DELEGATE_COUNT_HIGH
+            - SUB_INVOCATION_COUNT_HIGH
+            - EXPIRATION_FAR_FUTURE
+            - EXPIRATION_ZERO
+            - CONTRACT_UNKNOWN
+            - UNSIGNED_DELEGATES
+            - LEGACY_CREDENTIALS_NOT_ADDRESS_BOUND
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        title:
+          type: string
+        description:
+          type: string
+        rationale:
+          type: string
     ErrorResponse:
       type: object
       additionalProperties: false

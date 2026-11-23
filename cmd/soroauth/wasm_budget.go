@@ -32,6 +32,19 @@ import (
 // the core links, not tightening this number.
 const WASMBudget = 7 * 1024 * 1024 // 7 MiB
 
+// WASIBudget is the default maximum size, in bytes, for the wasip1 signing
+// core. It is a separate ceiling from WASMBudget because the WASI runtime is
+// linked in too: the two artifacts are not the same program.
+//
+// Measured 2026-11-20 with go1.27.3 on linux/amd64:
+//
+//	$ GOOS=wasip1 GOARCH=wasm go build -trimpath -buildvcs=false -o wasm/dist/soroauth.wasi.wasm ./cmd/soroauthwasi
+//	8387940 wasm/dist/soroauth.wasi.wasm
+//
+// 10 MiB leaves 2097820 bytes of headroom, so a toolchain that grows the
+// runtime a little does not turn into a red build unrelated to the change.
+const WASIBudget = 10 * 1024 * 1024 // 10 MiB
+
 // WASMBudgetResult is the wasm-budget subcommand's result, and the shape of its
 // --json output.
 //
@@ -58,12 +71,14 @@ type WASMBudgetResult struct {
 const wasmBudgetUsage = `soroauth wasm-budget — measure the wasm core against a size ceiling.
 
 usage:
-  soroauth wasm-budget [--out <path>] [--budget <bytes>] [--prev-size <bytes>] \
-                       [--build-cmd <command>] [--json]
+  soroauth wasm-budget [--target browser|wasi] [--out <path>] [--budget <bytes>] \
+                       [--prev-size <bytes>] [--build-cmd <command>] [--json]
 
 Measures the file at --out and exits non-zero if it is larger than --budget.
-The default budget is 7 MiB (7340032 bytes); a binary exactly at the budget
-passes, and only one strictly larger fails.
+--target selects the defaults: browser measures wasm/dist/soroauth.wasm against
+7 MiB (7340032 bytes), wasi measures wasm/dist/soroauth.wasi.wasm against
+10 MiB (10485760 bytes). --out and --budget override either. A binary exactly at
+the budget passes, and only one strictly larger fails.
 
 With --prev-size, reports the delta against a previous release's size, so a
 build that grows can be seen growing rather than only when it crosses the line.
@@ -101,6 +116,7 @@ func runWASMBudget(args []string, stdout, stderr io.Writer) error {
 	}
 
 	jsonOutput := fs.Bool("json", false, "output the result as JSON")
+	target := fs.String("target", "browser", "which artifact to measure by default: browser or wasi")
 	wasmOut := fs.String("out", "wasm/dist/soroauth.wasm", "path to the wasm artifact to measure")
 	budgetBytes := fs.Int64("budget", WASMBudget, "maximum allowed size in bytes")
 	prevSize := fs.Int64("prev-size", 0, "previous release's size, for a delta")
@@ -109,6 +125,31 @@ func runWASMBudget(args []string, stdout, stderr io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return writeJSONError(stdout, *jsonOutput, newErrorf(ExitUsageError, "%w", err))
 	}
+
+	// The target changes the defaults, not what an explicit flag asked for. A
+	// caller measuring a copy somewhere else passes --out, and keeps it.
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	switch *target {
+	case "browser":
+		if !set["out"] {
+			*wasmOut = "wasm/dist/soroauth.wasm"
+		}
+		if !set["budget"] {
+			*budgetBytes = WASMBudget
+		}
+	case "wasi":
+		if !set["out"] {
+			*wasmOut = "wasm/dist/soroauth.wasi.wasm"
+		}
+		if !set["budget"] {
+			*budgetBytes = WASIBudget
+		}
+	default:
+		return writeJSONError(stdout, *jsonOutput,
+			withField("--target", newErrorf(ExitUsageError, "--target must be browser or wasi, got %q", *target)))
+	}
+
 	if *budgetBytes <= 0 {
 		return writeJSONError(stdout, *jsonOutput,
 			withField("--budget", newErrorf(ExitUsageError, "--budget must be greater than zero, got %d", *budgetBytes)))

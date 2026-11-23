@@ -19,6 +19,8 @@ protection because an attacker can submit expensive or malformed input.
 | `SHUTDOWN_TIMEOUT`        | `10s`            | Graceful shutdown deadline.                                                  |
 | `MAX_BODY_BYTES`          | `1048576`        | Request body cap.                                                            |
 | `MAX_CONCURRENT_REQUESTS` | `64`             | Simultaneous verification cap; excess requests receive 503.                  |
+| `RATE_LIMIT_PER_SECOND`   | `50`             | Sustained per-caller rate; excess requests receive 429 with `Retry-After`.   |
+| `RATE_LIMIT_BURST`        | `100`            | Per-caller burst depth; must be at least `RATE_LIMIT_PER_SECOND`.            |
 
 Health is `GET /healthz`; metrics are exposed on the metrics listener. The API
 contract and response shapes are in `server/openapi.yaml`. Startup refuses a
@@ -27,9 +29,11 @@ public bind without authentication, which is an intentional fail-closed rule.
 ## Signals and alerts
 
 Alert on process restarts, failure of `/healthz`, sustained 5xx responses, 503
-responses from the concurrency limit, and a sharp increase in request latency.
-Scrape the metrics listener from a trusted monitoring network only. Useful
-dimensions include route, HTTP status, verdict, refusal reason, and
+responses from the concurrency limit, a sustained 429 rate (a caller is being
+shed), and a sharp increase in request latency.
+`soroauth_http_limit_rejections_total` splits sheds by `rate`, `concurrency` and
+`body`. Scrape the metrics listener from a trusted monitoring network only.
+Useful dimensions include route, HTTP status, verdict, refusal reason, and
 signer/verification duration. Do not use request bodies, bearer tokens, or full
 entries as metric labels.
 
@@ -39,7 +43,9 @@ entries as metric labels.
    stderr logs. Confirm the metrics endpoint is still reachable.
 2. If 503s are rising, inspect caller volume and concurrency saturation before
    raising `MAX_CONCURRENT_REQUESTS`; a larger limit increases CPU and memory
-   exposure.
+   exposure. If 429s are rising for one token, that caller is over its own
+   quota: give it a distinct token or raise `RATE_LIMIT_PER_SECOND`, rather than
+   removing the bound for everyone.
 3. If requests are timing out, capture a redacted request shape and compare the
    verifier latency histogram. Do not copy authorization entries into a public
    ticket unless the entry is intentionally public.
@@ -62,9 +68,12 @@ operational dependency failure from an invalid entry.
 Run the API behind a process supervisor or container restart policy, bind it to
 loopback unless an authenticated private network is required, and terminate TLS
 at a trusted edge. If the API is exposed directly, set `AUTH_TOKEN` and protect
-the secret with the deployment platform's secret store. The service limits body
-size, timeouts, and concurrency, but it does not provide DDoS protection or
-replace network policy.
+the secret with the deployment platform's secret store. The reference deployment
+is the Helm chart in `deploy/helm/soroauth-verification/` (or the plain
+manifests in `deploy/kubernetes/`); it runs the server from the published image,
+points readiness and liveness at `/healthz`, and refuses to render without an
+existing token Secret. The service limits body size, timeouts, and concurrency,
+but it does not provide DDoS protection or replace network policy.
 
 Requests are untrusted and may be malformed; responses are advisory checks of
 the supplied entry, not proof that a transaction will succeed on a particular

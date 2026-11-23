@@ -17,7 +17,7 @@ import (
 // fixtures. RESULTS.md is only written when every one of them ran, so the
 // committed file can never be a partial record of a single-scenario run —
 // adding a scenario id here is what makes its omission impossible.
-var requiredScenarios = []string{"A", "B", "C", "C-control", "D", "E", "F", "G", "H", "I", "J", "K"}
+var requiredScenarios = []string{"A", "B", "C", "C-control", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "R-control"}
 
 var ranScenarios = map[string]struct{}{}
 var skippedScenarios int

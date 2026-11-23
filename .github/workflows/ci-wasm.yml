@@ -56,7 +56,12 @@ jobs:
       - name: wasm size budget
         run: |
           go build -o bin/soroauth ./cmd/soroauth
-          ./bin/soroauth wasm-budget --out wasm/dist/soroauth.wasm --json
+          ./bin/soroauth wasm-budget --target browser --json
+      # The WASI artifact is a separate program with a separate ceiling; it is
+      # measured in the same job, right after the build that produced it, so the
+      # two targets cannot drift apart in CI.
+      - name: wasi size budget
+        run: ./bin/soroauth wasm-budget --target wasi --json
       # Replays the golden vectors, the differential fuzzing corpus (and its
       # frozen regressions), and the fuzz seed corpus through the module. The
       # harness prints the case counts and the elapsed time and fails if the run
@@ -64,6 +69,10 @@ jobs:
       # second, so the budget only catches a build that hangs or thrashes.
       - name: wasm byte parity against the golden, differential and fuzz corpora
         run: node wasm/parity.mjs
+      # The same vectors through the wasip1 build under Node's built-in WASI
+      # runtime, with no JavaScript host and no capabilities beyond stdio.
+      - name: wasi byte parity against the golden vectors
+        run: node wasm/wasi-parity.mjs
       - name: typescript wrapper
         working-directory: wasm/ts
         run: |

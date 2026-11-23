@@ -12,14 +12,39 @@ branding:
 inputs:
   entry:
     description: >
-      A single base64 authorization entry or transaction envelope. Mutually
-      exclusive with entry-file. Public data, never a secret.
+      A single base64 authorization entry. A whole transaction envelope is also
+      accepted for backward compatibility and is routed through the envelope
+      path. Mutually exclusive with entry-file, envelope and envelope-file.
+      Public data, never a secret.
     required: false
   entry-file:
     description: >
       A path or glob to a file of base64 entries, one per line, blank lines
-      skipped. Mutually exclusive with entry. Public data, never a secret.
+      skipped. Mutually exclusive with entry, envelope and envelope-file.
+      Public data, never a secret.
     required: false
+  envelope:
+    description: >
+      A full base64 transaction envelope. Every authorization entry it carries
+      is reported by operation and entry index, with its address. Mutually
+      exclusive with the entry and envelope-file inputs. Public data, never a
+      secret.
+    required: false
+  envelope-file:
+    description: >
+      A path or glob to a file of base64 transaction envelopes, one per line,
+      blank lines skipped. Mutually exclusive with the entry and envelope
+      inputs. Public data, never a secret.
+    required: false
+  fail-on:
+    description: >
+      Comma-separated verdicts that fail the step, applied to every entry of an
+      envelope: any (default), invalid, unsigned, cannot-check, unknown, or
+      verified. allow-unsigned always accepts unsigned nodes. Example:
+      'unsigned' rejects any unsigned address entry while still accepting a
+      custom-account signature the action cannot decide offline.
+    required: false
+    default: 'any'
   network:
     description: >
       testnet, futurenet, public, or a literal network passphrase. Passed to
@@ -46,6 +71,13 @@ inputs:
     required: false
     default: 'ghcr.io/soroauth/soroauth-go:latest'
 
+outputs:
+  version:
+    description: >
+      The exact soroauth build identity (tag, commit, build timestamp, and Go toolchain)
+      used for verification.
+    value: ${{ steps.verify.outputs.version }}
+
 runs:
   using: composite
   steps:
@@ -54,6 +86,9 @@ runs:
       env:
         SOROAUTH_INPUT_ENTRY: ${{ inputs.entry }}
         SOROAUTH_INPUT_ENTRY_FILE: ${{ inputs.entry-file }}
+        SOROAUTH_INPUT_ENVELOPE: ${{ inputs.envelope }}
+        SOROAUTH_INPUT_ENVELOPE_FILE: ${{ inputs.envelope-file }}
+        SOROAUTH_INPUT_FAIL_ON: ${{ inputs.fail-on }}
         SOROAUTH_INPUT_NETWORK: ${{ inputs.network }}
         SOROAUTH_INPUT_EXPECTED_ARM: ${{ inputs.expected-arm }}
         SOROAUTH_INPUT_ALLOW_UNSIGNED: ${{ inputs.allow-unsigned }}

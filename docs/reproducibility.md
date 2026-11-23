@@ -71,14 +71,56 @@ so it is an independent check rather than the builder confirming itself.
 Locally, `make reproducible-check` builds every target twice from the same
 commit and fails if the two checksum lists differ.
 
+## The wasm artifacts
+
+The signing core ships twice: `soroauth.wasm` for a JavaScript host (browser or
+Node with `wasm_exec.js`) and `soroauth.wasi.wasm` for a WASI runtime with no
+JavaScript engine. Both are rebuilt from the tag and published with a digest,
+because the browser artifact is the one a consumer is least able to audit for
+themselves.
+
+The command is [`scripts/reproduce-wasm.sh`](../scripts/reproduce-wasm.sh):
+
+```sh
+scripts/reproduce-wasm.sh v0.5.0 reproduced-wasm   # <ref> [outdir]
+```
+
+It extracts `<ref>` with `git archive` (so a dirty checkout cannot contribute a
+byte), runs `wasm/build.sh` twice, and fails if the two builds differ before
+doing anything else. It then writes `soroauth-wasm-checksums.txt` beside copies
+of the artifacts. The release attaches that file as
+`soroauth-wasm-checksums.txt`, and the npm package ships the same `SHA256SUMS`
+inside `dist/`.
+
+`wasm/build.sh` builds both targets with:
+
+```sh
+GOOS=js     GOARCH=wasm go build -trimpath -buildvcs=false -o wasm/dist/soroauth.wasm      ./cmd/soroauthwasm
+GOOS=wasip1 GOARCH=wasm go build -trimpath -buildvcs=false -o wasm/dist/soroauth.wasi.wasm ./cmd/soroauthwasi
+```
+
+### What makes the wasm bytes reproducible
+
+| Source                   | Why it is non-deterministic                          | How it is neutralised                                                                                                              |
+| ------------------------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Absolute build paths     | Go records the directory it was built in             | `-trimpath`                                                                                                                        |
+| VCS stamping             | Go embeds the revision and a dirty bit by default    | `-buildvcs=false`                                                                                                                  |
+| `wasm_exec.js`           | It is copied from the toolchain, and changes with it | It is copied, never committed; the digest records which shim belongs to the artifact                                               |
+| Go toolchain             | The compiler version is embedded in the module       | The build, the release job and the verifier all install the version `go.mod` names; a different patch release legitimately differs |
+| Module contents          | A floating dependency could change between builds    | `go.sum` pins every module                                                                                                         |
+| Build ID                 | Derived from the inputs, now fixed                   | Left to Go; with the inputs fixed it is fixed                                                                                      |
+| Build timestamp / locale | Nothing in the build reads the clock or the locale   | Not read. There is no timestamp to neutralise                                                                                      |
+
+The `reproduce-wasm` job in
+[`.github/workflows/reproducible.yml`](../.github/workflows/reproducible.yml)
+runs on a published release, weekly, and on demand. It rebuilds from the tag
+with the script and diffs the result against the published
+`soroauth-wasm-checksums.txt`, so the check is against the artifact that was
+actually released rather than a local build.
+
 ## What this does not cover
 
 - **The container image.** It is built by `docker/build-push-action` from a base
   image, and layer timestamps and the base image digest are outside this
   command's control. The image is not claimed reproducible here; the released
-  CLI binaries are.
-- **The js/wasm signing core.** It is published to npm rather than attached to
-  the GitHub release, so it is not one of the five binaries above. Its
-  correctness is checked byte-for-byte against the golden vectors by
-  `make wasm-check`, but cross-machine reproducibility of the `.wasm` bytes is
-  not asserted by this document.
+  CLI binaries and wasm artifacts are.

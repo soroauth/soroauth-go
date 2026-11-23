@@ -1,0 +1,55 @@
+# Proves the offline browser signing page stays offline.
+#
+# The page builds its preimage and payload from the local WASM core and signs
+# with a virtual passkey; once it is loaded, the Playwright test aborts and
+# records every request, so a CDN import, font fetch or source map cannot slip
+# in unnoticed. The assets are built here rather than committed: the wasm binary
+# and the Go runtime shim are tied to the toolchain that produced them.
+name: ci / browser offline
+
+on:
+  pull_request:
+    paths:
+      - "examples/browser-passkey/**"
+      - "wasm/**"
+      - "cmd/soroauthwasm/**"
+      - "secp256r1.go"
+      - "testdata/vectors/passkey/**"
+      - ".github/workflows/ci-browser-offline.yml"
+  push:
+    branches: [main]
+    paths:
+      - "examples/browser-passkey/**"
+      - "wasm/**"
+      - "cmd/soroauthwasm/**"
+      - "secp256r1.go"
+      - "testdata/vectors/passkey/**"
+      - ".github/workflows/ci-browser-offline.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    name: no request after load
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22"
+      - name: install the browser and its system libraries
+        run: |
+          cd examples/browser-passkey
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: build the local wasm core and wrapper
+        run: ./examples/browser-passkey/build-offline.sh
+      - name: the page signs with no request after load
+        working-directory: examples/browser-passkey
+        run: node offline.test.mjs

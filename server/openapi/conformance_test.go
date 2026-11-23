@@ -85,6 +85,12 @@ func TestMain(m *testing.M) {
 		"METRICS_ADDR=off",
 		// A single slot makes the 503 path deterministic to reach.
 		"MAX_CONCURRENT_REQUESTS=1",
+		// The conformance check polls the service in tight loops while it
+		// waits for the concurrency bound. Keep the rate limit out of the way
+		// so a slow machine cannot turn that polling into a 429; the rate
+		// limit itself is exercised by the service's own tests.
+		"RATE_LIMIT_PER_SECOND=10000",
+		"RATE_LIMIT_BURST=10000",
 	)
 	serverCmd.Stdout = os.Stdout
 	serverCmd.Stderr = os.Stderr
@@ -147,10 +153,29 @@ func findRoute(t *testing.T, specMethod, path string) (*routers.Route, map[strin
 // fails here, naming the operation.
 func validateResponse(t *testing.T, specMethod, path string, status int, header http.Header, respBody []byte) {
 	t.Helper()
-	route, pathParams := findRoute(t, specMethod, path)
+	if err := responseMatchesSpec(specMethod, path, status, header, respBody); err != nil {
+		t.Errorf("%s %s response (status %d) does not match the spec: %v\nbody: %s",
+			specMethod, path, status, err, respBody)
+	}
+}
+
+// responseMatchesSpec is the conformance check without a *testing.T, so the
+// negative test can prove the check actually rejects a mismatch instead of only
+// observing it pass on a correct response.
+func responseMatchesSpec(specMethod, path string, status int, header http.Header, respBody []byte) error {
 	req, err := http.NewRequest(specMethod, baseURL+path, nil)
 	if err != nil {
-		t.Fatalf("building the validation request: %v", err)
+		return fmt.Errorf("building the validation request: %w", err)
+	}
+	route, pathParams, err := apiRouter.FindRoute(req)
+	if err != nil {
+		return fmt.Errorf("the spec has no route for %s %s: %w", specMethod, path, err)
+	}
+	// kin-openapi validates the body against a declared response but does not
+	// reject a status the operation never declared. That is exactly the drift
+	// this check exists to catch, so assert the status is declared first.
+	if route.Operation.Responses == nil || route.Operation.Responses.Value(strconv.Itoa(status)) == nil {
+		return fmt.Errorf("status %d is not declared for %s %s", status, specMethod, path)
 	}
 	respInput := &openapi3filter.ResponseValidationInput{
 		RequestValidationInput: &openapi3filter.RequestValidationInput{Request: req, PathParams: pathParams, Route: route},
@@ -158,10 +183,7 @@ func validateResponse(t *testing.T, specMethod, path string, status int, header 
 		Header:                 header,
 		Body:                   io.NopCloser(bytes.NewReader(respBody)),
 	}
-	if err := openapi3filter.ValidateResponse(context.Background(), respInput); err != nil {
-		t.Errorf("%s %s response (status %d) does not match the spec: %v\nbody: %s",
-			specMethod, path, status, err, respBody)
-	}
+	return openapi3filter.ValidateResponse(context.Background(), respInput)
 }
 
 // assertRequestMatchesSpec proves a well-formed request is one the spec
@@ -306,6 +328,14 @@ func TestServiceMatchesSpec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshalling the envelope body: %v", err)
 	}
+	riskBody, err := json.Marshal(map[string]string{"entry": signed})
+	if err != nil {
+		t.Fatalf("marshalling the risk body: %v", err)
+	}
+	riskEnvelopeBody, err := json.Marshal(map[string]string{"entry": envelope})
+	if err != nil {
+		t.Fatalf("marshalling the risk envelope body: %v", err)
+	}
 	oversize := `{"entry":"` + strings.Repeat("A", 2<<20) + `","network":"testnet"}`
 
 	cases := []struct {
@@ -331,6 +361,13 @@ func TestServiceMatchesSpec(t *testing.T) {
 		{"verify oversize body", "POST", "POST", "/verify", oversize, true, false, http.StatusRequestEntityTooLarge},
 		{"verify single entry", "POST", "POST", "/verify", string(validBody), true, true, http.StatusOK},
 		{"verify envelope", "POST", "POST", "/verify", string(envelopeBody), true, true, http.StatusOK},
+		{"risk wrong method", "GET", "POST", "/risk", "", false, false, http.StatusMethodNotAllowed},
+		{"risk unauthenticated", "POST", "POST", "/risk", string(riskBody), false, false, http.StatusUnauthorized},
+		{"risk malformed json", "POST", "POST", "/risk", "{", true, false, http.StatusBadRequest},
+		{"risk missing entry", "POST", "POST", "/risk", `{}`, true, false, http.StatusBadRequest},
+		{"risk undecodable entry", "POST", "POST", "/risk", `{"entry":"!!!"}`, true, false, http.StatusBadRequest},
+		{"risk single entry", "POST", "POST", "/risk", string(riskBody), true, true, http.StatusOK},
+		{"risk envelope", "POST", "POST", "/risk", string(riskEnvelopeBody), true, true, http.StatusOK},
 	}
 
 	visited := map[string]bool{}
@@ -472,6 +509,101 @@ func TestGeneratedClientAgainstRunningService(t *testing.T) {
 		t.Errorf("envelope report is missing operation_index 1: %+v", reports[0])
 	}
 	validateResponse(t, http.MethodPost, "/verify", env.StatusCode(), env.HTTPResponse.Header, env.Body)
+
+	risk, err := c.RiskWithResponse(context.Background(), client.RiskJSONRequestBody{Entry: signed})
+	if err != nil {
+		t.Fatalf("generated client Risk (single): %v", err)
+	}
+	if risk.StatusCode() != http.StatusOK || risk.JSON200 == nil {
+		t.Fatalf("generated client single risk = %d", risk.StatusCode())
+	}
+	riskReport, err := risk.JSON200.AsRiskReport()
+	if err != nil {
+		t.Fatalf("single risk did not decode as a RiskReport: %v", err)
+	}
+	if riskReport.Note == "" {
+		t.Error("the risk report does not carry the analyzer's caveat")
+	}
+	if riskReport.Findings == nil {
+		t.Error("the risk report's findings are null rather than an empty array")
+	}
+	validateResponse(t, http.MethodPost, "/risk", risk.StatusCode(), risk.HTTPResponse.Header, risk.Body)
+
+	riskEnv, err := c.RiskWithResponse(context.Background(), client.RiskJSONRequestBody{Entry: envelope})
+	if err != nil {
+		t.Fatalf("generated client Risk (envelope): %v", err)
+	}
+	if riskEnv.StatusCode() != http.StatusOK || riskEnv.JSON200 == nil {
+		t.Fatalf("generated client envelope risk = %d", riskEnv.StatusCode())
+	}
+	riskReports, err := riskEnv.JSON200.AsRiskResult1()
+	if err != nil {
+		t.Fatalf("envelope risk did not decode as an array: %v", err)
+	}
+	if len(riskReports) != 1 || riskReports[0].OperationIndex == nil || *riskReports[0].OperationIndex != 1 {
+		t.Fatalf("envelope risk reports = %+v", riskReports)
+	}
+	validateResponse(t, http.MethodPost, "/risk", riskEnv.StatusCode(), riskEnv.HTTPResponse.Header, riskEnv.Body)
+}
+
+// TestConformanceCheckRejectsADeliberatelyMismatchedResponse is the proof the
+// issue asks for: a handler that adds an undeclared field, renames one, or
+// returns a status the document does not describe must fail the check. Without
+// this, a green conformance job could mean only that the validator was never
+// given anything wrong.
+func TestConformanceCheckRejectsADeliberatelyMismatchedResponse(t *testing.T) {
+	status, header, body := send(t, http.MethodGet, "/healthz", "", false)
+	if status != http.StatusOK {
+		t.Fatalf("healthz status = %d, want 200", status)
+	}
+	if err := responseMatchesSpec(http.MethodGet, "/healthz", status, header, body); err != nil {
+		t.Fatalf("the undeformed health response did not match the spec: %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		status int
+		body   string
+	}{
+		{
+			name:   "an extra response field",
+			method: http.MethodGet,
+			path:   "/healthz",
+			status: http.StatusOK,
+			body:   `{"status":"ok","version":"test","unexpected":true}`,
+		},
+		{
+			name:   "a renamed response field",
+			method: http.MethodGet,
+			path:   "/healthz",
+			status: http.StatusOK,
+			body:   `{"state":"ok","version":"test"}`,
+		},
+		{
+			name:   "an undocumented status",
+			method: http.MethodGet,
+			path:   "/healthz",
+			status: http.StatusCreated,
+			body:   `{"status":"ok","version":"test"}`,
+		},
+		{
+			name:   "an error body on a success-only shape",
+			method: http.MethodPost,
+			path:   "/verify",
+			status: http.StatusOK,
+			body:   `{"error":"this is not an EntryReport"}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := responseMatchesSpec(tt.method, tt.path, tt.status, http.Header{"Content-Type": {"application/json"}}, []byte(tt.body))
+			if err == nil {
+				t.Fatalf("a deliberately mismatched %s %s response passed the spec check", tt.method, tt.path)
+			}
+		})
+	}
 }
 
 func mustJSON(t *testing.T, s string) string {

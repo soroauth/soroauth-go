@@ -15,7 +15,10 @@ const PACKAGE_ROOT = resolve(HERE, "..");
 const WASM_DIST = resolve(PACKAGE_ROOT, "..", "dist");
 const DEST = join(PACKAGE_ROOT, "dist");
 
-const artifacts = ["soroauth.wasm", "wasm_exec.js"];
+// SHA256SUMS is built by wasm/build.sh from the same artifacts and stages with
+// them, so a consumer can verify the bytes inside the tarball against the
+// digest published on the GitHub release without trusting this build.
+const artifacts = ["soroauth.wasm", "wasm_exec.js", "SHA256SUMS"];
 
 mkdirSync(DEST, { recursive: true });
 
