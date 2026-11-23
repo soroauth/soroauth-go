@@ -102,6 +102,117 @@ to be `Void` when it authenticates purely through its delegates. So an entry
 with nothing signed at the top can still be complete, which is why
 `AuthorizeAll` does not treat an unsigned top-level node as an error.
 
+## Threshold and multi-party signing
+
+A second vocabulary, added with the threshold and multi-party features. These
+words have textbook meanings; each entry gives the meaning _in this repository_
+and the file that uses it, and says where the two differ. Several of them are
+used in more than one place with different meanings, and those entries give
+every meaning rather than picking one. None of these terms comes from a CAP: the
+host sees only the finished signature.
+
+**Threshold signature** — a signature no single party can produce: _t_ of _n_
+parties each contribute, and the result verifies like an ordinary signature.
+Three things in this repository use the word, and only the first is a threshold
+signature in the cryptographic sense:
+
+- [`frost/`](../frost/frost.go) — real threshold Ed25519. `Threshold` in
+  `DKGConfig`, `RefreshConfig` and `NewFROSTCoordinator` is _t_, the number of
+  shares needed to sign; `MaxSigners` is _n_. The aggregated signature verifies
+  under the plain Ed25519 verifier, so to the host the group is an ordinary
+  single-key G-account.
+- [`threshold.go`](../threshold.go) — `ThresholdSigner` is an interface shape
+  for multi-round signing. Its reference implementation combines contributions
+  by XOR and is documented as a demonstration, not a cryptographic construction;
+  real MPC is meant to be wrapped with `SignerFunc`.
+- A classic account's **medium threshold** — Stellar's signer-weight rule,
+  satisfied by `NewAccountMultiSigner` ([`signer.go`](../signer.go)) putting
+  several _independent_ signatures in one vector. That is multisig, not a
+  threshold signature: the host sees and checks every key.
+
+**FROST** — Flexible Round-Optimized Schnorr Threshold signatures, RFC 9591,
+used through `bytemare/frost` with the Ed25519 ciphersuite
+(`frost.DefaultCiphersuite`). Two rounds per signature: every participant
+commits to fresh nonces, then sends a **signature share** over the payload, and
+the FROST coordinator aggregates the shares. Only the
+[`frost`](../frost/frost.go) package implements it, and that package is
+unaudited and says so. See
+[Distributed key generation](multi-party-signing.md#distributed-key-generation-frost).
+
+**Share** — in [`frost/`](../frost/dkg.go), one of three different things, and
+the field or type name says which:
+
+- a **secret share** (`DKGShare.SecretShare`) — one participant's 32-byte piece
+  of the group key. Private; never sent anywhere.
+- a **public key share** (`DKGShare.PublicKeyShare`) — its public counterpart,
+  used to check that participant's signature shares. Safe to publish.
+- a **signature share** (`FROSTCoordinator.AddSignatureShare`) — one
+  participant's round-two contribution for one payload. Useless alone, and valid
+  only with the commitments of the same round.
+
+In [`threshold.go`](../threshold.go), `ThresholdRound.Share` and the `share`
+passed to `Contribute` are opaque bytes a party contributes, whose first 32
+bytes double as the party's identifier. They are not shares in the
+secret-sharing sense. **Share refresh** (`frost.RefreshParticipant`,
+[`frost/refresh.go`](../frost/refresh.go)) replaces every secret share without
+changing the group key or the account address; `DKGShare.Epoch` counts
+refreshes. See [Refreshing shares](multi-party-signing.md#refreshing-shares).
+
+**DKG** — distributed key generation (`frost.DKGParticipant`,
+[`frost/dkg.go`](../frost/dkg.go)): the ceremony that gives each participant a
+secret share without any participant or coordinator ever holding the whole key.
+The alternative, `frost.TrustedDealerKeygen`, has one process generate and split
+the key, and exists for tests. RFC 9591 leaves DKG out of scope; the
+construction is `bytemare/dkg`'s, checked with the verification rules of RFC
+9591 Appendix C.2. A contribution that fails verification aborts the ceremony,
+names its sender in a `*frost.DKGError`, and produces no usable share.
+`DKGTranscript` is the public record a third party can re-verify.
+
+**Quorum** — used only in [`chain.go`](../chain.go) (`NewQuorumSigner`,
+`ErrQuorumNotMet`, `ErrQuorumDisagreement`), and it does **not** mean what _t_
+means in `frost/`. The two are easy to read as the same thing and have opposite
+security properties:
+
+- **Quorum, in `chain.go`** — _N_ of _M_ interchangeable signers, each holding
+  the **same complete key** (a KMS and an HSM replica, say), must each return a
+  whole signature, and the signatures must be byte-identical. It is
+  cross-checking for availability and integrity, not key splitting: every member
+  could sign alone, so one leaked member leaks the key. Two differing signatures
+  are refused even when a majority agrees, and because it needs identical bytes
+  it only works over deterministic signatures; a quorum of randomized (ECDSA)
+  signers always disagrees and is refused.
+- **Threshold, in `frost/`** — _t_ of _n_ participants each hold a **different
+  share** of a key nobody holds, and fewer than _t_ cannot sign. The package
+  never calls this a quorum; it calls it `Threshold`.
+
+**Coordinator** — two types and one human role, none of which holds a signing
+key:
+
+- `soroauth.Coordinator` ([`coordinator.go`](../coordinator.go)) — tracks which
+  nodes of a delegates-arm entry are signed and enforces their shared
+  expiration. With `WithSessionTranscript` it signs a `SessionTranscript` under
+  its own Ed25519 coordinator key. It never combines signatures: each delegate's
+  signature is written to that delegate's own node.
+- `frost.FROSTCoordinator` ([`frost/frost.go`](../frost/frost.go)) — collects
+  round-one commitments and signature shares and aggregates them into one
+  signature. It holds no secret share, but it chooses who takes part and can
+  abort a ceremony, which the package doc lists as outside FROST's protection.
+- In the [multi-party walkthrough](multi-party-signing.md), "the coordinator" is
+  the person who wraps the entry, fixes the expiration, and passes it from
+  signer to signer.
+
+**Participant** — who takes part, which depends on where the word appears:
+
+- In `frost/` (`FROSTParticipant`, `DKGParticipant`, `RefreshParticipant`) — the
+  holder of one share, identified by a 1-indexed `uint16` ID rather than a
+  Stellar address. All participants together act for one G-address.
+- In a `SessionTranscript` ([`transcript.go`](../transcript.go)) —
+  `participants` is the top-level address plus every delegate address, sorted
+  and de-duplicated, so an address at two nesting levels is one participant.
+  Each is a separate Stellar account signing its own node.
+- [`threshold.go`](../threshold.go) calls the same role a **party**, identified
+  by address.
+
 ## This project's own terms
 
 Not protocol vocabulary. Nothing below appears in a CAP.**Credential node** —
