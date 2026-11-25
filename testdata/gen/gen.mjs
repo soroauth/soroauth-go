@@ -214,6 +214,28 @@ const invocationCreateContract = () =>
     subInvocations: [],
   });
 
+// A create-contract invocation (V2 host function), which uses the V2 host function
+// arm entirely.
+const invocationCreateContractV2 = () =>
+  new xdr.SorobanAuthorizedInvocation({
+    function:
+      xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeCreateContractV2HostFn(
+        new xdr.CreateContractArgsV2({
+          contractIdPreimage: xdr.ContractIdPreimage.contractIdPreimageFromAddress(
+            new xdr.ContractIdPreimageFromAddress({
+              address: scAddress(SIGNER_1),
+              salt: sha256("soroauth-vector-salt-v2"),
+            }),
+          ),
+          executable: xdr.ContractExecutable.contractExecutableWasm(
+            sha256("soroauth-vector-wasm-hash-v2"),
+          ),
+          constructorArgs: [],
+        }),
+      ),
+    subInvocations: [],
+  });
+
 // A contract call with no arguments at all, the empty-list boundary the
 // encoder has to special-case.
 const invocationWithEmptyArgs = () =>
@@ -261,6 +283,8 @@ const delegate = (label, nested = []) => ({
   address: keypairFor(label).publicKey(),
   nested,
 });
+
+const delegateForMatrix = delegate(SIGNER_1);
 
 // The deepest delegate nesting all three layers agree on, and the depth the
 // vector's name records.
@@ -676,6 +700,170 @@ const CASES = [
         authV2: true,
       }),
     steps: [{ signerLabel: SIGNER_1, forAddress: null }],
+  },
+
+  // -------- Exhaustive arm × function-type combinations (Issue #620) --------
+
+  // --- source_account arm (credential type 0) ---
+  {
+    name: "sa_contract_fn_testnet",
+    networkPassphrase: Networks.TESTNET,
+    entry: () => sourceAccountEntry(SIGNER_1),
+    steps: [{ signerLabel: SIGNER_1, forAddress: null }],
+  },
+  {
+    name: "sa_create_contract_testnet",
+    networkPassphrase: Networks.TESTNET,
+    entry: () => sourceAccountEntry(SIGNER_1),
+    steps: [{ signerLabel: SIGNER_1, forAddress: null }],
+  },
+  {
+    name: "sa_create_contract_v2_testnet",
+    networkPassphrase: Networks.TESTNET,
+    entry: () => sourceAccountEntry(SIGNER_1),
+    steps: [{ signerLabel: SIGNER_1, forAddress: null }],
+  },
+
+  // --- legacy address arm (credential type 1) ---
+  {
+    name: "legacy_contract_fn_testnet",
+    networkPassphrase: Networks.TESTNET,
+    entry: () =>
+      unsignedEntry({
+        signerLabel: SIGNER_1,
+        nonce: NONCE_ORDINARY,
+        invocation: invocationWithManyArgTypes(),
+        authV2: false,
+      }),
+    steps: [{ signerLabel: SIGNER_1, forAddress: null }],
+  },
+  {
+    name: "legacy_create_contract_testnet",
+    networkPassphrase: Networks.TESTNET,
+    entry: () =>
+      unsignedEntry({
+        signerLabel: SIGNER_1,
+        nonce: NONCE_ORDINARY,
+        invocation: invocationCreateContract(),
+        authV2: false,
+      }),
+    steps: [{ signerLabel: SIGNER_1, forAddress: null }],
+  },
+  {
+    name: "legacy_create_contract_v2_testnet",
+    networkPassphrase: Networks.TESTNET,
+    entry: () =>
+      unsignedEntry({
+        signerLabel: SIGNER_1,
+        nonce: NONCE_ORDINARY,
+        invocation: invocationCreateContractV2(),
+        authV2: false,
+      }),
+    steps: [{ signerLabel: SIGNER_1, forAddress: null }],
+  },
+
+  // --- V2 address arm (credential type 2) ---
+  {
+    name: "v2_contract_fn_testnet",
+    networkPassphrase: Networks.TESTNET,
+    entry: () =>
+      unsignedEntry({
+        signerLabel: SIGNER_1,
+        nonce: NONCE_ORDINARY,
+        invocation: invocationWithManyArgTypes(),
+        authV2: true,
+      }),
+    steps: [{ signerLabel: SIGNER_1, forAddress: null }],
+  },
+  {
+    name: "v2_create_contract_fn_testnet",
+    networkPassphrase: Networks.TESTNET,
+    entry: () =>
+      unsignedEntry({
+        signerLabel: SIGNER_1,
+        nonce: NONCE_ORDINARY,
+        invocation: invocationCreateContract(),
+        authV2: true,
+      }),
+    steps: [{ signerLabel: SIGNER_1, forAddress: null }],
+  },
+  {
+    name: "v2_create_contract_v2_fn_testnet",
+    networkPassphrase: Networks.TESTNET,
+    entry: () =>
+      unsignedEntry({
+        signerLabel: SIGNER_1,
+        nonce: NONCE_ORDINARY,
+        invocation: invocationCreateContractV2(),
+        authV2: true,
+      }),
+    steps: [{ signerLabel: SIGNER_1, forAddress: null }],
+  },
+
+  // --- address_with_delegates arm (credential type 3) ---
+  // ENVELOPE_TYPE_SOROBAN_AUTHORIZATION_WITH_ADDRESS (binds top-level address).
+  // Each vector includes one delegate so the verification test can observe a
+  // top-level unsigned node and at least one signed delegate node, as
+  // CAP-71-01 requires for a delegates arm entry.
+  {
+    name: "delegates_contract_fn_testnet",
+    networkPassphrase: Networks.TESTNET,
+    entry: () => {
+      const preWrap = unsignedEntry({
+        signerLabel: SIGNER_1,
+        nonce: NONCE_ORDINARY,
+        invocation: invocationWithManyArgTypes(),
+        authV2: false,
+      });
+      return buildWithDelegatesEntry({
+        entry: preWrap,
+        validUntilLedgerSeq: VALID_UNTIL_LEDGER,
+        delegates: toSdkDelegates([delegateForMatrix]),
+      });
+    },
+    steps: [
+      { signerLabel: SIGNER_1, forAddress: keypairFor(SIGNER_1).publicKey() },
+    ],
+  },
+  {
+    name: "delegates_create_contract_testnet",
+    networkPassphrase: Networks.TESTNET,
+    entry: () => {
+      const preWrap = unsignedEntry({
+        signerLabel: SIGNER_1,
+        nonce: NONCE_ORDINARY,
+        invocation: invocationCreateContract(),
+        authV2: false,
+      });
+      return buildWithDelegatesEntry({
+        entry: preWrap,
+        validUntilLedgerSeq: VALID_UNTIL_LEDGER,
+        delegates: toSdkDelegates([delegateForMatrix]),
+      });
+    },
+    steps: [
+      { signerLabel: SIGNER_1, forAddress: keypairFor(SIGNER_1).publicKey() },
+    ],
+  },
+  {
+    name: "delegates_create_contract_v2_testnet",
+    networkPassphrase: Networks.TESTNET,
+    entry: () => {
+      const preWrap = unsignedEntry({
+        signerLabel: SIGNER_1,
+        nonce: NONCE_ORDINARY,
+        invocation: invocationCreateContractV2(),
+        authV2: false,
+      });
+      return buildWithDelegatesEntry({
+        entry: preWrap,
+        validUntilLedgerSeq: VALID_UNTIL_LEDGER,
+        delegates: toSdkDelegates([delegateForMatrix]),
+      });
+    },
+    steps: [
+      { signerLabel: SIGNER_1, forAddress: keypairFor(SIGNER_1).publicKey() },
+    ],
   },
 ];
 
