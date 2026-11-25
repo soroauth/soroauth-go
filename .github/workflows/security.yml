@@ -41,6 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      security-events: write
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -63,21 +65,41 @@ jobs:
           fi
 
       - name: scan the changed files
-        run: ./scripts/supply-chain-scan.sh "${{ steps.base.outputs.sha }}" "$GITHUB_SHA"
+        id: scan
+        run: ./scripts/supply-chain-scan.sh --sarif supply-chain-scan.sarif "${{ steps.base.outputs.sha }}" "$GITHUB_SHA"
+
+      - name: upload SARIF to code scanning
+        id: upload_sarif
+        if: always() && hashFiles('supply-chain-scan.sarif') != ''
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
+        with:
+          sarif_file: supply-chain-scan.sarif
+          category: /supply-chain
+
+      - name: report SARIF upload failure
+        if: failure() && steps.upload_sarif.outcome == 'failure'
+        run: |
+          {
+            echo "## Supply chain SARIF upload failed"
+            echo
+            echo "The scan ran, but uploading its SARIF to code scanning failed."
+            echo "Check the upload step logs and repository code scanning permissions."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: explain a failure in the job summary
-        if: failure()
+        if: failure() && steps.scan.outcome == 'failure'
         run: |
           {
             echo "## Supply chain scan found blocking issues"
             echo
             echo "The scan reports a pattern with no legitimate use in this repository."
             echo "Read the step log above: each finding names the file, the line and what matched."
+            echo "SARIF results are also uploaded to code scanning when upload succeeds."
             echo
             echo "Run it locally against your branch:"
             echo
             echo '```sh'
-            echo './scripts/supply-chain-scan.sh origin/main HEAD'
+            echo './scripts/supply-chain-scan.sh --sarif supply-chain-scan.sarif origin/main HEAD'
             echo '```'
             echo
             echo "A finding is not automatically malicious — but it has to be explained"

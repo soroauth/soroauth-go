@@ -34,6 +34,10 @@ Dynamic address completion only parses base64 XDR in memory; it never executes
 entry contents or runs a signer. --secret-env is completed by flag name only:
 the shells never see or complete a variable's value.
 
+PowerShell completions are not generated; use bash/zsh/fish or invoke commands
+directly. On Windows, the CLI binary is supported; shell completion is
+documented as unavailable for PowerShell.
+
 With --json, prints a JSON object with fields "shell" and "script"; on error,
 prints the versioned machine-readable error schema documented in README.md.
 

@@ -1,0 +1,40 @@
+{
+  "note": "Pull-request CI runtime budget (#632). Budget is wall-clock seconds of the critical path across PR-gating workflows, measured from GitHub Actions job timing (completed_at - started_at). This is not billed runner minutes. Included workflows are always-on PR-gating workflows; advisory, path-filtered, scheduled, manual, and release workflows are explicitly excluded with reasons. Update this file only with a fresh measurement named in the commit body; never lower coverage or remove a check to fit the budget.",
+  "budget_seconds": 1800,
+  "measurement": "Initial conservative ceiling set 2026-11-25 from observed PR workflow wall-clock durations. Refresh via cost-report and update with evidence in commit body.",
+  "included": [
+    "ci.yml",
+    "security.yml",
+    "spellcheck.yml",
+    "links.yml"
+  ],
+  "excluded": {
+    "ci-action.yml": "path-filtered or push-only advisory workflow; does not gate every PR",
+    "ci-adapters.yml": "path-filtered or push-only advisory workflow; does not gate every PR",
+    "ci-browser-offline.yml": "path-filtered PR workflow; excluded from always-on PR budget by design",
+    "ci-deploy.yml": "path-filtered PR workflow; excluded from always-on PR budget by design",
+    "ci-devcontainer.yml": "path-filtered or push-only advisory workflow; does not gate every PR",
+    "ci-freighter.yml": "path-filtered or push-only advisory workflow; does not gate every PR",
+    "ci-go.yml": "push-only advisory workflow; coverage/fuzz/bench are not PR gates",
+    "ci-grpc.yml": "path-filtered or push-only advisory workflow; does not gate every PR",
+    "ci-image.yml": "path-filtered or push-only advisory workflow; does not gate every PR",
+    "ci-jvm.yml": "path-filtered or push-only advisory workflow; does not gate every PR",
+    "ci-node.yml": "path-filtered or push-only advisory workflow; does not gate every PR",
+    "ci-openapi.yml": "path-filtered PR workflow; excluded from always-on PR budget by design",
+    "ci-otel-example.yml": "path-filtered or push-only advisory workflow; does not gate every PR",
+    "ci-packaging.yml": "path-filtered or push-only advisory workflow; does not gate every PR",
+    "ci-parity.yml": "path-filtered or push-only advisory workflow; does not gate every PR",
+    "ci-python.yml": "path-filtered or push-only advisory workflow; does not gate every PR",
+    "ci-rust.yml": "path-filtered or push-only advisory workflow; does not gate every PR",
+    "ci-sdk-main.yml": "scheduled/manual advisory workflow; not a PR gate",
+    "ci-wasm.yml": "path-filtered or push-only advisory workflow; does not gate every PR",
+    "cost-report.yml": "scheduled/manual reporting workflow; measures budget, does not gate PRs",
+    "e2e.yml": "scheduled/manual live-network workflow; not a PR gate",
+    "fuzz.yml": "scheduled/manual advisory workflow; not a PR gate",
+    "release-jvm.yml": "release workflow; runs on tags/manual dispatch, not PRs",
+    "release-python.yml": "release workflow; runs on tags/manual dispatch, not PRs",
+    "release.yml": "release workflow; runs on tags/manual dispatch, not PRs",
+    "reproducible.yml": "scheduled/manual release verification workflow; not a PR gate",
+    "verify-release.yml": "manual release verification workflow; not a PR gate"
+  }
+}

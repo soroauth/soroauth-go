@@ -8,71 +8,155 @@ on:
 
 permissions:
   contents: read
+  # Listing workflow runs needs this. Without it the API returns 403 and the
+  # report is silently empty rather than wrong-but-plausible.
+  actions: read
 
 jobs:
   report:
     name: Report CI cost per workflow
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
       - name: Fetch CI cost data from GitHub API
+        env:
+          # The token is not an environment variable by default; the previous
+          # version read ${GITHUB_TOKEN} under `set -u` and failed on the first
+          # line every time it ran.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          REPO="${GITHUB_REPOSITORY}"
-          TOKEN="${GITHUB_TOKEN}"
+          since="$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          echo "counting runs started since ${since}"
 
-          # List workflow runs (paginated, last 30 days window)
-          PAGE=1
-          TOTAL_SECONDS=0
-          declare -A WORKFLOW_MINUTES
+          # gh paginates and gives the fields directly. The previous version
+          # called the REST endpoint with curl and then read the response as if
+          # it were an array: `jq length` on {total_count, workflow_runs: [...]}
+          # returns 2, the number of keys, so the loop ran twice and read
+          # .[0]/.[1], which are a number and an array. It also read
+          # `duration_in_seconds`, which that endpoint does not return.
+          gh run list --repo "${GITHUB_REPOSITORY}" --limit 1000 \
+            --json databaseId,workflowName,startedAt,updatedAt,conclusion \
+            > runs.json
 
-          while [ $PAGE -le 20 ]; do
-            RESPONSE=$(curl -s -H "Authorization: token $TOKEN" \
-              "https://api.github.com/repos/$REPO/actions/runs?per_page=100&page=$PAGE")
+          jq -r --arg since "$since" '
+            [ .[]
+              | select(.startedAt >= $since)
+              | select(.conclusion != null and .conclusion != "")
+              | { name: .workflowName,
+                  id: .databaseId,
+                  secs: (((.updatedAt | fromdateiso8601) - (.startedAt | fromdateiso8601))) }
+              | select(.secs >= 0)
+            ]
+            | group_by(.name)
+            | map({ name: .[0].name,
+                    runs: length,
+                    minutes: ((map(.secs) | add) / 60 | floor) })
+            | sort_by(-.minutes)
+            | .[]
+            | "\(.minutes)\t\(.runs)\t\(.name)"
+          ' runs.json > report.tsv
 
-            PAGE_RUNS=$(echo "$RESPONSE" | jq 'length')
+          total=$(awk -F'\t' '{s+=$1} END {print s+0}' report.tsv)
 
-            if [ "$PAGE_RUNS" -eq 0 ]; then
-              break
-            fi
+          {
+            echo "## CI cost report"
+            echo
+            echo "Wall-clock duration of completed runs started in the last 30 days."
+            echo "This is elapsed time per run, not billed runner minutes: a job on a"
+            echo "larger runner or a matrix fanning out costs more than this shows."
+            echo "It is for comparing workflows against each other, not for billing."
+            echo
+            echo "| workflow | runs | minutes |"
+            echo "| --- | ---: | ---: |"
+            while IFS=$'\t' read -r minutes runs name; do
+              printf '| `%s` | %s | %s |\n' "$name" "$runs" "$minutes"
+            done < report.tsv
+            echo
+            echo "**Total: ${total} minutes across $(wc -l < report.tsv | tr -d ' ') workflows.**"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-            for i in $(seq 0 $((PAGE_RUNS - 1))); do
-              NAME=$(echo "$RESPONSE" | jq -r ".[$i].name // empty")
-              DUR=$(echo "$RESPONSE" | jq -r ".[$i].duration_in_seconds // 0")
-              STARTED=$(echo "$RESPONSE" | jq -r ".[$i].started_at // empty")
+          cat report.tsv
+          echo "total minutes: ${total}"
 
-              if [ -n "$DUR" ] && [ "$DUR" != "0" ]; then
-                # Only count runs that started in the last 30 days
-                if [ -n "$STARTED" ]; then
-                  MINUTES=$((DUR / 60))
-                  TOTAL_SECONDS=$((TOTAL_SECONDS + DUR))
-                  WORKFLOW_MINUTES[$NAME]=$(( ${WORKFLOW_MINUTES[$NAME]:-0} + MINUTES ))
-                fi
-              fi
-            done
+      - name: Build critical-path runtime report
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+          from datetime import datetime, timezone
+          budget=json.load(open('testdata/ci/runtime-budget.json'))
+          included=set(budget['included'])
+          runs=json.load(open('runs.json'))
+          # Pick latest completed run per included workflow name.
+          latest={}
+          for r in runs:
+            name=r.get('workflowName')
+            if name not in included: continue
+            if not r.get('conclusion'): continue
+            if name not in latest or r.get('startedAt','')>latest[name].get('startedAt',''):
+              latest[name]=r
+          missing=sorted(included - set(latest))
+          report={'generated_at':datetime.now(timezone.utc).isoformat(),'budget_seconds':budget['budget_seconds'],'included':budget['included'],'excluded':budget['excluded'],'workflows':[],'missing':missing}
+          for name in budget['included']:
+            r=latest.get(name)
+            if not r:
+              report['workflows'].append({'name':name,'run_id':0,'jobs':[],'error':'no completed run found in last 30 days'})
+              continue
+            rid=r['databaseId']
+            data=json.loads(subprocess.check_output(['gh','api',f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{rid}/jobs','--paginate','--jq','.jobs[]|{name:.name,started_at:.started_at,completed_at:.completed_at,conclusion:.conclusion}']))
+            jobs=[]
+            if isinstance(data, dict):
+              data=[data]
+            # gh --jq with paginate emits one object per line sometimes; handle robustly
+            out=subprocess.check_output(['gh','api',f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{rid}/jobs','--paginate'])
+            payload=json.loads(out)
+            for j in payload.get('jobs',[]):
+              s=j.get('started_at'); c=j.get('completed_at')
+              dur=0
+              if s and c:
+                from datetime import datetime
+                dur=int((datetime.fromisoformat(c.replace('Z','+00:00'))-datetime.fromisoformat(s.replace('Z','+00:00'))).total_seconds())
+              jobs.append({'name':j.get('name',''),'duration_seconds':max(dur,0),'conclusion':j.get('conclusion') or ''})
+            report['workflows'].append({'name':name,'run_id':rid,'jobs':jobs})
+          json.dump(report,open('runtime-report.json','w'),indent=2)
+          open('runtime-report.json','a').write('\n')
+          print(json.dumps({'missing':missing,'workflows':len(report['workflows'])}))
+          PY
 
-            PAGE=$((PAGE + 1))
-          done
-
-          # Output report
-          echo "========================================"
-          echo "CI Cost Report (trailing 30 days)"
-          echo "========================================"
-          echo "Total runner seconds: $TOTAL_SECONDS"
-          echo ""
-          # Sort workflows by minutes, highest first
-          for key in "${!WORKFLOW_MINUTES[@]}"; do
-            echo "  $key: ${WORKFLOW_MINUTES[$key]} minutes"
-          done | sort -t: -k2 -nr
-          echo ""
-          echo "This report informs decisions about which workflows to keep or remove."
-          echo "The report itself costs materially less than what it measures."
-          echo "No credential beyond the GITHUB_TOKEN was used."
-          echo "========================================"
+      - name: Enforce CI runtime budget
+        run: |
+          set -euo pipefail
+          go run ./scripts/cibudget -budget testdata/ci/runtime-budget.json -report runtime-report.json -out runtime-evaluation.json
+          python3 - <<'PY'
+          import json, os
+          ev=json.load(open('runtime-evaluation.json'))
+          lines=["## CI runtime budget","","| workflow | seconds |","| --- | ---: |"]
+          for w in ev['workflows']:
+            lines.append(f"| `{w['name']}` | {w['duration_seconds']} |")
+          lines += ["",f"**Critical path:** {ev['critical_path_seconds']}s","",f"**Budget:** {ev['budget_seconds']}s","",f"**Status:** {'PASS' if ev['pass'] else 'FAIL'}","", "Advisory/path-filtered/manual/scheduled/release workflows excluded by `testdata/ci/runtime-budget.json`:"]
+          for k,v in ev['excluded'].items():
+            lines.append(f"- `{k}`: {v}")
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+            f.write('\n'.join(lines)+'\n')
+          PY
 
       - name: Upload report artifact
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-cost-report
-          path: .github/workflows/cost-report.yml
+          path: |
+            report.tsv
+            runtime-report.json
+            runtime-evaluation.json
           retention-days: 30

@@ -4,9 +4,15 @@
 #
 #   scripts/supply-chain-scan.sh                 # HEAD vs origin/main
 #   scripts/supply-chain-scan.sh <base> <head>   # explicit range
+#   scripts/supply-chain-scan.sh --sarif <out> <base> <head>
 #
 # Runs in CI on every pull request. Exits non-zero when any BLOCK finding is
 # present; WARN findings are reported and do not fail the build.
+#
+# SARIF: --sarif <path> writes a SARIF 2.1.0 report with stable rule IDs
+# (SCS001..SCS012) and levels mapped from severities: BLOCK -> error,
+# WARN -> warning. Human-readable output is still printed to stdout. The SARIF
+# file is an addition, not a replacement.
 #
 # Why two severities: a check that cries wolf is one people learn to click
 # past, and that is how the real thing gets through. BLOCK is for patterns with
@@ -44,11 +50,19 @@ set -uo pipefail
 BLOCKS=0
 WARNS=0
 HERE="$(cd "$(dirname "$0")" && pwd)"
+SARIF_OUT=""
 
 if [ -n "${GITHUB_ACTIONS:-}" ]; then
   R=""; G=""; Y=""; B=""; N=""
 else
   R=$'\033[0;31m'; G=$'\033[0;32m'; Y=$'\033[0;33m'; B=$'\033[1m'; N=$'\033[0m'
+fi
+
+# --sarif <path> writes SARIF 2.1.0 in addition to human-readable output.
+if [ "${1:-}" = "--sarif" ]; then
+  [ -n "${2:-}" ] || { echo "usage: $0 --sarif <out> [base] [head]" >&2; exit 2; }
+  SARIF_OUT="$2"
+  shift 2
 fi
 
 # --pr <n> fetches a pull request and scans it, replacing the separate
@@ -69,11 +83,75 @@ if [ -z "$BASE" ]; then
   [ -z "$BASE" ] && { echo "cannot determine a base revision; pass one explicitly" >&2; exit 2; }
 fi
 
-section() { printf '\n%s==>%s %s\n' "$B" "$N" "$1"; }
+CURRENT_RULE=""
+CURRENT_RULE_ID=""
+FINDINGS_TSV="$(mktemp)"
+RULES_TSV="$(mktemp)"
+trap 'rm -f "$FINDINGS_TSV" "$RULES_TSV"' EXIT
+
+record_rule() {
+  local id="$1" name="$2" desc="$3" level="$4"
+  printf '%s\t%s\t%s\t%s\n' "$id" "$name" "$desc" "$level" >> "$RULES_TSV"
+}
+
+record_finding() {
+  local level="$1" rule="$2" msg="$3"
+  local file="" line="1"
+  if [[ "$msg" == *:* ]]; then
+    file="${msg%%:*}"
+    # only treat as file path if it looks like a repo path
+    if [[ "$file" == *"/"* || "$file" == *.* ]]; then
+      local rest="${msg#*: }"
+      local lineno
+      lineno="$(printf '%s' "$rest" | grep -oE '^[0-9]+' | head -1 || true)"
+      if [ -n "$lineno" ]; then line="$lineno"; fi
+    else
+      file=""
+    fi
+  fi
+  # escape tabs/newlines for TSV
+  msg="${msg//$'\t'/ }"
+  msg="${msg//$'\n'/ }"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$level" "$rule" "$file" "$line" "$msg" >> "$FINDINGS_TSV"
+}
+
+section() {
+  CURRENT_RULE="$1"
+  case "$CURRENT_RULE" in
+    "1. payload appended after a config file's export") CURRENT_RULE_ID="SCS001" ;;
+    "2. obfuscation and dynamic code execution") CURRENT_RULE_ID="SCS002" ;;
+    "3. npm lifecycle hooks") CURRENT_RULE_ID="SCS003" ;;
+    "4. credential and wallet harvesting") CURRENT_RULE_ID="SCS004" ;;
+    "5. exfiltration channels and dead-drop C2") CURRENT_RULE_ID="SCS005" ;;
+    "6. reverse shells and pipe-to-interpreter") CURRENT_RULE_ID="SCS006" ;;
+    "7. persistence and auto-run mechanisms") CURRENT_RULE_ID="SCS007" ;;
+    "8. workflow attack surface") CURRENT_RULE_ID="SCS008" ;;
+    "9. dependency changes and known-malicious packages") CURRENT_RULE_ID="SCS009" ;;
+    "10. new binary and executable files") CURRENT_RULE_ID="SCS010" ;;
+    "11. Go-specific risks in library code") CURRENT_RULE_ID="SCS011" ;;
+    "12. known campaign indicator strings") CURRENT_RULE_ID="SCS012" ;;
+    *) CURRENT_RULE_ID="SCS000" ;;
+  esac
+  printf '\n%s==>%s %s\n' "$B" "$N" "$1"
+}
 ok()      { printf '    %sok%s     %s\n' "$G" "$N" "$1"; }
-warn()    { printf '    %sWARN%s   %s\n' "$Y" "$N" "$1"; WARNS=$((WARNS+1)); }
-block()   { printf '    %sBLOCK%s  %s\n' "$R" "$N" "$1"; BLOCKS=$((BLOCKS+1)); }
+warn()    { printf '    %sWARN%s   %s\n' "$Y" "$N" "$1"; WARNS=$((WARNS+1)); record_finding warning "$CURRENT_RULE_ID" "$1"; }
+block()   { printf '    %sBLOCK%s  %s\n' "$R" "$N" "$1"; BLOCKS=$((BLOCKS+1)); record_finding error "$CURRENT_RULE_ID" "$1"; }
 detail()  { printf '           %s\n' "$1"; }
+
+# Stable rule registry: ID, name, description, default SARIF level.
+record_rule SCS001 "trailing-code-after-export" "Code appended after a JS/TS module export" error
+record_rule SCS002 "obfuscation-or-dynamic-exec" "Obfuscation or dynamic code execution markers" error
+record_rule SCS003 "npm-lifecycle-hook" "npm lifecycle hook that may execute during install" warning
+record_rule SCS004 "credential-harvesting" "Credential or wallet material access" error
+record_rule SCS005 "exfiltration-or-deaddrop" "Exfiltration channel or blockchain dead-drop endpoint" error
+record_rule SCS006 "reverse-shell-or-pipe-exec" "Reverse shell or download piped to interpreter" error
+record_rule SCS007 "persistence-mechanism" "Persistence or auto-run mechanism" error
+record_rule SCS008 "workflow-attack-surface" "GitHub Actions workflow attack surface" error
+record_rule SCS009 "dependency-risk" "Dependency change or known-malicious package" warning
+record_rule SCS010 "binary-or-executable-added" "Executable or binary file added to repository" error
+record_rule SCS011 "go-library-risk" "Process spawning or embedded binary in library Go code" error
+record_rule SCS012 "known-campaign-indicator" "Known campaign indicator string" error
 
 # Newline-delimited rather than an array: macOS ships bash 3.2, which has no
 # mapfile and treats an empty array as unbound under `set -u`.
@@ -86,6 +164,21 @@ printf '%ssupply-chain scan%s  base=%s head=%s  %s changed files\n' \
 
 if [ "${N_CHANGED:-0}" -eq 0 ]; then
   echo "nothing to scan"
+  if [ -n "$SARIF_OUT" ]; then
+    python3 - "$SARIF_OUT" "$RULES_TSV" "$FINDINGS_TSV" <<'PY'
+import json,sys
+out, rules_tsv, findings_tsv = sys.argv[1], sys.argv[2], sys.argv[3]
+rules=[]
+for line in open(rules_tsv):
+    line=line.rstrip('\n')
+    if not line: continue
+    i,n,d,l=line.split('\t')
+    rules.append({"id":i,"name":n,"shortDescription":{"text":n},"fullDescription":{"text":d},"defaultConfiguration":{"level":l}})
+sarif={"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"soroauth-supply-chain-scan","informationUri":"https://github.com/soroauth/soroauth-go","rules":rules}},"results":[]}]}
+json.dump(sarif, open(out,'w'), indent=2)
+open(out,'a').write('\n')
+PY
+  fi
   exit 0
 fi
 
@@ -352,14 +445,49 @@ else
   ok "no known indicator strings"
 fi
 
+write_sarif() {
+  [ -n "$SARIF_OUT" ] || return 0
+  python3 - "$SARIF_OUT" "$RULES_TSV" "$FINDINGS_TSV" <<'PY'
+import json,sys
+out, rules_tsv, findings_tsv = sys.argv[1], sys.argv[2], sys.argv[3]
+rules=[]
+for line in open(rules_tsv):
+    line=line.rstrip('\n')
+    if not line: continue
+    i,n,d,l=line.split('\t')
+    rules.append({"id":i,"name":n,"shortDescription":{"text":n},"fullDescription":{"text":d},"defaultConfiguration":{"level":l}})
+results=[]
+for line in open(findings_tsv):
+    line=line.rstrip('\n')
+    if not line: continue
+    level, rule, file, line_no, msg = line.split('\t',4)
+    loc={}
+    if file:
+        loc={"physicalLocation":{"artifactLocation":{"uri":file},"region":{"startLine":int(line_no) if line_no.isdigit() else 1}}}
+    result={"ruleId":rule,"level":level,"message":{"text":msg}}
+    if loc:
+        result["locations"]=[loc]
+    results.append(result)
+sarif={"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"soroauth-supply-chain-scan","informationUri":"https://github.com/soroauth/soroauth-go","rules":rules}},"results":results}]}
+json.dump(sarif, open(out,'w'), indent=2)
+open(out,'a').write('\n')
+PY
+  if [ $? -ne 0 ]; then
+    echo "::error title=SARIF generation failed::could not write SARIF report to $SARIF_OUT" >&2
+    return 1
+  fi
+}
+
 # ---------------------------------------------------------------------------
 echo
 if [ "$BLOCKS" -gt 0 ]; then
   printf '\n%s==> BLOCKED: %d blocking finding(s), %d warning(s)%s\n' "$R" "$BLOCKS" "$WARNS" "$N"
   echo "    Do not merge until each blocking finding is explained or removed."
+  write_sarif || true
   exit 1
 fi
 printf '\n%s==> clean: 0 blocking findings, %d warning(s)%s\n' "$G" "$WARNS" "$N"
 echo "    A clean run means no known shape is present in this diff. It is a floor,"
 echo "    not a guarantee — read the diff."
+write_sarif || exit 1
 exit 0
