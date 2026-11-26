@@ -62,8 +62,20 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: '1.25.4'
+      # Guarded, because this job checks out the released TAG rather than main,
+      # and the script was added after v0.1.0 was cut. Without the guard the
+      # step fails with exit 127 on every release older than #475, which is
+      # every release there is.
       - name: record tool versions
-        run: bash .github/scripts/record-tool-versions.sh go .
+        run: |
+          set -euo pipefail
+          if [ -f .github/scripts/record-tool-versions.sh ]; then
+            bash .github/scripts/record-tool-versions.sh go .
+          else
+            echo "no record-tool-versions.sh at this tag; recording inline"
+            go version
+            echo "git ref: $(git rev-parse --short HEAD)"
+          fi
 
       # The exact command a third party is told to run. It derives the build
       # metadata from the ref, so no wall-clock value enters the bytes.
