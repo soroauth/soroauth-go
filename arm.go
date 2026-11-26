@@ -24,6 +24,55 @@ const (
 	ArmAddressWithDelegates CredentialArm = "address_with_delegates"
 )
 
+// AuthorizedFunctionType is a typed vocabulary for the three authorized
+// function types defined by the protocol, mirroring how credential arms are
+// exposed. Using these constants avoids reaching into the SDK's generated enum,
+// whose names are doubled and awkward, and makes the library's vocabulary
+// consistent across arms and function types.
+type AuthorizedFunctionType string
+
+// The three SorobanAuthorizedFunctionType values defined by the protocol.
+// These parallel the XDR enum SorobanAuthorizedFunctionType from go-stellar-sdk.
+const (
+	// FunctionTypeContractFn is SOROBAN_AUTHORIZED_FUNCTION_TYPE_CONTRACT_FN (0).
+	FunctionTypeContractFn AuthorizedFunctionType = "contract_fn"
+	// FunctionTypeCreateContractHostFn is SOROBAN_AUTHORIZED_FUNCTION_TYPE_CREATE_CONTRACT_HOST_FN (1).
+	FunctionTypeCreateContractHostFn AuthorizedFunctionType = "create_contract_host_fn"
+	// FunctionTypeCreateContractV2HostFn is SOROBAN_AUTHORIZED_FUNCTION_TYPE_CREATE_CONTRACT_V2_HOST_FN (2).
+	FunctionTypeCreateContractV2HostFn AuthorizedFunctionType = "create_contract_v2_host_fn"
+)
+
+// AuthorizedFunctionTypeFromXDR converts an XDR SorobanAuthorizedFunctionType
+// to our typed AuthorizedFunctionType. Returns ErrUnsupportedFunctionType for
+// an unrecognised value, consistent with Inspect's error behaviour.
+func AuthorizedFunctionTypeFromXDR(t xdr.SorobanAuthorizedFunctionType) (AuthorizedFunctionType, error) {
+	switch t {
+	case xdr.SorobanAuthorizedFunctionTypeSorobanAuthorizedFunctionTypeContractFn:
+		return FunctionTypeContractFn, nil
+	case xdr.SorobanAuthorizedFunctionTypeSorobanAuthorizedFunctionTypeCreateContractHostFn:
+		return FunctionTypeCreateContractHostFn, nil
+	case xdr.SorobanAuthorizedFunctionTypeSorobanAuthorizedFunctionTypeCreateContractV2HostFn:
+		return FunctionTypeCreateContractV2HostFn, nil
+	default:
+		return "", ErrUnsupportedFunctionType
+	}
+}
+
+// ToXDR converts an AuthorizedFunctionType back to its XDR enum value.
+// Returns ErrUnsupportedFunctionType for an unrecognised value.
+func (f AuthorizedFunctionType) ToXDR() (xdr.SorobanAuthorizedFunctionType, error) {
+	switch f {
+	case FunctionTypeContractFn:
+		return xdr.SorobanAuthorizedFunctionTypeSorobanAuthorizedFunctionTypeContractFn, nil
+	case FunctionTypeCreateContractHostFn:
+		return xdr.SorobanAuthorizedFunctionTypeSorobanAuthorizedFunctionTypeCreateContractHostFn, nil
+	case FunctionTypeCreateContractV2HostFn:
+		return xdr.SorobanAuthorizedFunctionTypeSorobanAuthorizedFunctionTypeCreateContractV2HostFn, nil
+	default:
+		return 0, ErrUnsupportedFunctionType
+	}
+}
+
 // ArmBehavior defines the operations that vary by credential arm.
 // All methods are pure functions of the entry and parameters.
 type ArmBehavior interface {
@@ -71,6 +120,19 @@ type ArmBehavior interface {
 
 	// ValidateForSigning checks if this arm can be signed with the given target address.
 	ValidateForSigning(creds xdr.SorobanCredentials, targetAddress string) error
+}
+
+// String returns the stable identifier for this credential arm. The returned
+// value is stable and matches the identifiers EntryInfo.CredentialType carries,
+// so it is safe to persist in config, logs, or databases and to switch on.
+// An unknown arm returns a clearly-marked unknown value instead of an empty string.
+func (a CredentialArm) String() string {
+	switch a {
+	case ArmSourceAccount, ArmAddress, ArmAddressV2, ArmAddressWithDelegates:
+		return string(a)
+	default:
+		return "unknown(" + string(a) + ")"
+	}
 }
 
 // armBehaviors holds the concrete implementations for each arm.

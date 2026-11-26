@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/soroauth/soroauth-go"
+	soroauth "github.com/soroauth/soroauth-go"
 )
 
 // TestVersionFlagReportsBuildMetadata drives --version through the dispatcher
@@ -63,12 +63,13 @@ func TestVersionTextRendersInjectedMetadata(t *testing.T) {
 	}
 }
 
-// TestVersionDefaultsAreSelfDescribing pins the no-ldflags defaults. An empty
-// string would read as a parsing bug in a bug report; "unknown" says what
-// actually happened, while version defaults to soroauth.Version.
+// TestVersionDefaultsAreSelfDescribing pins the no-ldflags defaults. The
+// version default is soroauth.Version (the library constant) so a dev build
+// reports the same version as the library rather than the opaque string "dev".
+// commit and date remain "unknown" for a source build.
 func TestVersionDefaultsAreSelfDescribing(t *testing.T) {
 	if version != soroauth.Version {
-		t.Errorf("default version = %q, want %q", version, soroauth.Version)
+		t.Errorf("default CLI version = %q, want library Version %q", version, soroauth.Version)
 	}
 	if commit != "unknown" {
 		t.Errorf("default commit = %q, want %q", commit, "unknown")
@@ -78,11 +79,14 @@ func TestVersionDefaultsAreSelfDescribing(t *testing.T) {
 	}
 }
 
-// TestVersionMatchesLibraryVersionByDefault asserts that the CLI default
-// version agrees with the library version constant.
-func TestVersionMatchesLibraryVersionByDefault(t *testing.T) {
+// TestCLIVersionMatchesLibraryVersion asserts the CLI's version and the
+// library's Version constant cannot disagree. The ldflags-stamped value
+// overrides the default at release time; a test that checks the default
+// against the constant catches a release that updates one but not the other.
+func TestCLIVersionMatchesLibraryVersion(t *testing.T) {
 	if version != soroauth.Version {
-		t.Errorf("CLI default version = %q, want soroauth.Version = %q", version, soroauth.Version)
+		t.Errorf("CLI default version %q != library soroauth.Version %q; update soroauth.Version or the CLI default to match",
+			version, soroauth.Version)
 	}
 }
 
