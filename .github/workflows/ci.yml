@@ -155,6 +155,54 @@ jobs:
             exit 1
           fi
 
+  sbom-toolchain:
+    name: verify SBOM toolchain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: install syft
+        run: |
+          version="1.18.1"
+          url="https://github.com/anchore/syft/releases/download/v${version}/syft_${version}_linux_amd64.tar.gz"
+          checksum="f7b3cf827e4d5eab74a82294d3e5c0ab67b3b5e43c0d5a8c7fbb0b19df5bef42"
+          curl -fsSLo /tmp/syft.tar.gz "${url}"
+          echo "${checksum}  /tmp/syft.tar.gz" | sha256sum --check || {
+            echo "syft checksum mismatch" >&2
+            exit 1
+          }
+          tar -xzf /tmp/syft.tar.gz -C /usr/local/bin syft
+          syft version
+      - name: install cosign
+        run: |
+          version="v2.4.1"
+          url="https://github.com/sigstore/cosign/releases/download/${version}/cosign-linux-amd64"
+          checksum="e3f72e4a4e8a4cd5a8e0025c26b3d4c72a9d7d82b6bfae0e2f92d35e4a0c9e1a"
+          curl -fsSLo /usr/local/bin/cosign "${url}"
+          echo "${checksum}  /usr/local/bin/cosign" | sha256sum --check || {
+            echo "cosign checksum mismatch" >&2
+            exit 1
+          }
+          chmod +x /usr/local/bin/cosign
+          cosign version
+      - name: build CLI binary and generate test SBOM
+        run: |
+          go build -o soroauth ./cmd/soroauth
+          syft soroauth --output cyclonedx-json=soroauth.sbom.json
+          # Verify the SBOM is valid JSON and names at least one component.
+          python3 -c "
+          import json, sys
+          sbom = json.load(open('soroauth.sbom.json'))
+          components = sbom.get('components', [])
+          if not components:
+              print('SBOM has no components', file=sys.stderr)
+              sys.exit(1)
+          print(f'SBOM OK: {len(components)} components')
+          "
+
   # Third of the three pull-request checks ci.yml reports. The fixture contracts
   # are Rust and the
   # Go jobs do not compile them, which is how a contract that had never built
@@ -191,6 +239,7 @@ jobs:
         run: cargo test --workspace --locked
       - name: build every contract to wasm
         run: cargo build --release --target wasm32v1-none --workspace --locked
+
   # Fourth of the pull-request checks: CHANGELOG consistency.
   #
   # Checks feat and fix commits introduced by this PR or push against issue
@@ -210,3 +259,20 @@ jobs:
           check-latest: true
       - name: run CHANGELOG consistency check
         run: make changelog-check
+
+  bench:
+    name: signing-path budgets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      # ns/op is deliberately not gated: wall-clock on a shared runner is too
+      # noisy to be evidence. allocs/op and B/op are deterministic and are
+      # compared against testdata/bench/budgets.json.
+      - name: run signing-path benchmarks
+        run: go test -run '^$' -bench . -benchmem -count=1 . | tee bench.out
+      - name: fail on allocation or byte regression
+        run: go run ./scripts/checkbench bench.out testdata/bench/budgets.json

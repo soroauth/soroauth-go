@@ -1,0 +1,69 @@
+name: terraform
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform.yml'
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate:
+    name: validate and format-check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/aws
+    env:
+      TF_IN_AUTOMATION: "true"
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Install Terraform from the official release, verifying the SHA-256
+      # checksum before unzipping. The version is pinned in this step so that
+      # the minimum version declared in main.tf (>= 1.9.0) is what CI uses.
+      - name: install terraform 1.9.8
+        run: |
+          version="1.9.8"
+          url="https://releases.hashicorp.com/terraform/${version}/terraform_${version}_linux_amd64.zip"
+          checksum="82034f8db93b56bf44f15ce9f4eae38fc1cd3d41ec5a0de0a6fe2e8c0c48e6fe"
+          curl -fsSLo /tmp/terraform.zip "${url}"
+          echo "${checksum}  /tmp/terraform.zip" | sha256sum --check
+          sudo unzip -o -d /usr/local/bin /tmp/terraform.zip terraform
+          terraform version
+
+      # -backend=false skips any backend configuration, so the job can run
+      # without AWS credentials. init is still required for validate to resolve
+      # provider schemas.
+      - name: terraform init
+        run: terraform init -backend=false
+
+      - name: terraform validate
+        run: terraform validate
+
+      # -check exits non-zero if any file is not formatted. -recursive catches
+      # nested .tf files. No diff is printed; CI output names the files.
+      - name: terraform fmt check
+        run: terraform fmt -check -recursive ..
+
+      # Post a summary to the PR so reviewers can see what changed without
+      # drilling into the workflow log. The plan is intentionally mock — no
+      # credentials are available here, and the placeholder values demonstrate
+      # the variables parse correctly.
+      - name: post summary
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "## Terraform validate" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ \`terraform validate\` passed for \`terraform/aws\`." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "A full plan with real credentials runs from your deployment environment." >> $GITHUB_STEP_SUMMARY

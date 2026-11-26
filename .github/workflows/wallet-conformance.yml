@@ -1,0 +1,97 @@
+name: wallet-conformance
+
+on:
+  schedule:
+    # Weekly on Tuesday at 10:00 UTC — offset from the rpc-drift job (Monday)
+    # so both jobs do not compete for GitHub Actions concurrency at the same time.
+    - cron: '0 10 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  conformance:
+    name: wallet SDK adapter conformance tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache-dependency-path: adapters/walletsdk/go.sum
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: testdata/gen/package-lock.json
+
+      # The conformance tests read the golden vectors, so they need to exist on
+      # disk before the test runs. The vectors are committed but regenerating
+      # them first catches a golden-drift failure before the conformance test
+      # could pass for the wrong reason (a stale vector).
+      - name: regenerate golden vectors
+        working-directory: testdata/gen
+        run: |
+          npm ci
+          node gen.mjs
+      - name: fail if the committed vectors changed
+        run: |
+          if ! git diff --exit-code testdata/vectors; then
+            echo "Golden vectors changed — conformance tests would run against stale data."
+            echo "Regenerate and commit the vectors before running this workflow."
+            exit 1
+          fi
+
+      # Run the conformance tests for the wallet SDK adapter. These tests
+      # compare the OKX Go wallet SDK adapter against the golden vectors and
+      # verify that the full Sign → MarkEnforced → Envelope flow produces
+      # byte-identical results to the JS reference SDK.
+      - name: run wallet adapter conformance tests
+        id: conformance
+        working-directory: adapters/walletsdk
+        run: |
+          go test -v -race -run 'TestOKXAdapter|TestOKXKeypairEndToEnd' . 2>&1 | tee /tmp/conformance.out
+          exit "${PIPESTATUS[0]}"
+
+      # Open an issue when the scheduled conformance run finds a regression.
+      # An adapter regression means the OKX wallet SDK or the soroauth library
+      # changed in a way that breaks the byte-equality contract.
+      - name: open regression issue on failure
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          failed=$(grep -oP '(?<=--- FAIL: )\S+' /tmp/conformance.out | sort -u | tr '\n' ' ' || true)
+          if [ -z "${failed}" ]; then
+            failed="(could not parse; check the workflow log)"
+          fi
+
+          gh issue create \
+            --repo soroauth/soroauth-go \
+            --title "wallet-conformance: OKX adapter no longer matches golden vectors" \
+            --body "The weekly wallet-conformance run detected a regression: the OKX wallet SDK adapter no longer produces results that are byte-identical to the JS reference SDK's golden vectors.
+
+**Failed tests:** ${failed}
+
+This usually means one of:
+- The OKX Go wallet SDK (\`github.com/okx/go-wallet-sdk\`) updated a signing primitive.
+- The soroauth library changed how it builds preimages or writes credential nodes.
+- The golden vectors drifted (run the rpc-drift job to check).
+
+**Next steps:**
+1. Run the tests locally to confirm:
+   \`\`\`
+   cd adapters/walletsdk
+   go test -v -run 'TestOKXAdapter|TestOKXKeypairEndToEnd' .
+   \`\`\`
+2. Examine the diff: does the golden vector agree with the reference JS SDK? Does the OKX adapter agree with soroauth.NewEd25519Signer?
+3. File a bug against the component that regressed.
+
+**Workflow run:** https://github.com/soroauth/soroauth-go/actions/runs/${{ github.run_id }}" \
+            --label area:testing \
+            --label area:wallet-sdk \
+            || true

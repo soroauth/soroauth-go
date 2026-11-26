@@ -1,0 +1,79 @@
+name: rpc-drift
+
+on:
+  schedule:
+    # Weekly on Monday at 09:00 UTC. Testnet resets and protocol upgrades
+    # change RPC behaviour, so a weekly replay surfaces regressions quickly
+    # without overwhelming the issue tracker with noise.
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  replay:
+    name: replay RPC fixtures against testnet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: replay fixtures
+        id: replay
+        env:
+          SOROAUTH_RPC_URL: ${{ secrets.SOROAUTH_RPC_URL }}
+        run: |
+          go test -tags rpc_drift -v -timeout 5m ./rpcflow/... 2>&1 | tee /tmp/replay.out
+          exit "${PIPESTATUS[0]}"
+
+      # Open an issue when the scheduled replay detects drift. The issue body
+      # names every fixture that changed and links to the workflow run so the
+      # maintainer can inspect the full log without navigating CI manually.
+      - name: open drift issue on failure
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Collect the fixture names that failed from the test output.
+          failed=$(grep -oP '(?<=--- FAIL: TestRPCFixtures/)\S+' /tmp/replay.out | sort -u | tr '\n' ' ' || true)
+          if [ -z "${failed}" ]; then
+            # Fallback: the job failed but grep found nothing specific —
+            # the RPC endpoint may be unreachable.
+            failed="(unable to parse; check the workflow log)"
+          fi
+
+          gh issue create \
+            --repo soroauth/soroauth-go \
+            --title "rpc-drift: fixture mismatch detected on testnet" \
+            --body "The weekly RPC fixture replay detected a change in testnet behaviour.
+
+**Failed fixtures:** ${failed}
+
+This usually means one of:
+- A testnet reset changed the expected state.
+- A protocol upgrade changed how the RPC endpoint processes authorization entries.
+- An RPC API change altered the error format or response shape.
+
+**Next steps:**
+1. Run the replay locally to confirm:
+   \`\`\`
+   SOROAUTH_RPC_URL=https://soroban-testnet.stellar.org \\
+   go test -tags rpc_drift -v ./rpcflow/...
+   \`\`\`
+2. If the change is legitimate (e.g. a known protocol upgrade), re-record:
+   \`\`\`
+   SOROAUTH_RPC_URL=... SOROAUTH_RECORD=true \\
+   go test -tags rpc_drift -run TestRPCFixtures ./rpcflow/...
+   \`\`\`
+   Review the diff in \`testdata/rpcflow/\`, then commit and push.
+3. If the change is unexpected, investigate the RPC endpoint or open a Stellar issue.
+
+**Workflow run:** https://github.com/soroauth/soroauth-go/actions/runs/${{ github.run_id }}" \
+            --label area:testing \
+            --label area:network \
+            || true

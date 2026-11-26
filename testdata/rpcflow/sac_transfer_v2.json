@@ -1,0 +1,12 @@
+{
+  "name": "sac_transfer_v2",
+  "description": "SAC transfer authorized with a V2 (address-bound) credential. The entry is signed by the account that owns the authorization, using a deterministic test key. This fixture detects drift in how the testnet simulates V2-credential entries.",
+  "network_passphrase": "Test SDF Network ; September 2015",
+  "signed_entry_xdr": "",
+  "valid_until_ledger": 0,
+  "expected_outcome": "rejected",
+  "expected_error_code": "",
+  "pending": true,
+  "recorded_at": "",
+  "_note": "Record this fixture by running: SOROAUTH_RECORD=true go test -tags rpc_drift -run TestRPCFixtures ./rpcflow/... with SOROAUTH_RPC_URL set to the testnet RPC endpoint. The pending flag is cleared automatically on first recording."
+}
