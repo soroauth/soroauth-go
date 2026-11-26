@@ -154,6 +154,9 @@ func TestEveryExportedEntryFunctionPreservesInput(t *testing.T) {
 			r := &forbiddenSACAdminConfigRule{name: "test", code: "TEST", severity: SeverityWarning, forbidden: map[string]bool{"set_admin": true}}
 			_, _ = r.Evaluate(entry)
 		},
+		"CheckProtocolCompatibility": func(entry xdr.SorobanAuthorizationEntry) {
+			_, _ = CheckProtocolCompatibility(entry, 28)
+		},
 	}
 
 	discovered := make(map[string]bool, len(functions))
