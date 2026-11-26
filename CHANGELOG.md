@@ -10,6 +10,15 @@ this project adheres to
 
 ### Added
 
+- `CheckEnvelopeCorrespondence` verifies that each authorization entry's root
+  invocation matches the `InvokeHostFunction` operation it accompanies field by
+  field, reporting mismatches with field paths as well as unmatched operations
+  or entries. (#619)
+- `CheckProtocolCompatibility` checks whether an authorization entry (including
+  nested delegates) is accepted, rejected, or accepted with different semantics
+  on a target Stellar protocol version, citing CAP-46-11, CAP-71-01, and
+  CAP-71-02. (#618)
+
 - `HostRules` enumerates every rule the Soroban host enforces on an
   authorization entry, each with its `rs-soroban-env` source citation, and marks
   the rules that cannot be checked offline with the reason instead of omitting

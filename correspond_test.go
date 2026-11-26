@@ -1,17 +1,26 @@
 package soroauth_test
 
-import "github.com/stellar/go-stellar-sdk/xdr"
+import (
+	"testing"
 
-func init() {
-	_ = xdr.Hash{}
-}
+	"github.com/stellar/go-stellar-sdk/xdr"
+)
 
 // entryForFunction builds an entry whose root invocation uses the given
 // function type, for exercising every arm of the correspondence check.
 func entryForFunction(t *testing.T, fnType xdr.SorobanAuthorizedFunctionType) xdr.SorobanAuthorizationEntry {
 	t.Helper()
-	account := mustParse(t, testKeypair(t, "soroauth-correspond-account").Address())
-	contract := mustParse(t, testContractAddress(t, "soroauth-correspond-contract"))
+	var accID xdr.AccountId
+	_ = accID.SetAddress("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF")
+	account := xdr.ScAddress{
+		Type:      xdr.ScAddressTypeScAddressTypeAccount,
+		AccountId: &accID,
+	}
+	contractID := xdr.ContractId{1, 2, 3}
+	contract := xdr.ScAddress{
+		Type:       xdr.ScAddressTypeScAddressTypeContract,
+		ContractId: &contractID,
+	}
 
 	root := xdr.SorobanAuthorizedInvocation{
 		Function: xdr.SorobanAuthorizedFunction{
@@ -44,9 +53,7 @@ func entryForFunction(t *testing.T, fnType xdr.SorobanAuthorizedFunctionType) xd
 			},
 			Executable: xdr.ContractExecutable{
 				Type: xdr.ContractExecutableTypeContractExecutableWasm,
-				WasmHash: &xdr.Hash{
-					Hash: [32]byte{1, 2, 3},
-				},
+				WasmHash: &xdr.Hash{1, 2, 3},
 			},
 			ConstructorArgs: []xdr.ScVal{{Type: xdr.ScValTypeScvI64, I64: func() *xdr.Int64 { v := xdr.Int64(1); return &v }()}},
 		}

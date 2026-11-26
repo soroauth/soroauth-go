@@ -45,7 +45,7 @@ func compatEntry(t *testing.T, credType xdr.SorobanCredentialsType) xdr.SorobanA
 				ContractFn: &xdr.InvokeContractArgs{
 					ContractAddress: contract,
 					FunctionName:    xdr.ScSymbol("transfer"),
-					Args:            []xdr.ScVal{{Type: xdr.ScValTypeScvI64, I64: &xdr.Int64{1}}},
+					Args:            []xdr.ScVal{{Type: xdr.ScValTypeScvI64, I64: func() *xdr.Int64 { v := xdr.Int64(1); return &v }()}},
 				},
 			},
 		},
