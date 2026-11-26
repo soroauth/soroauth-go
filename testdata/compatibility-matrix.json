@@ -1,0 +1,32 @@
+{
+  "go": {
+    "version": "1.26.3",
+    "toolchain": ""
+  },
+  "go-stellar-sdk": {
+    "resolved": "v0.7.3"
+  },
+  "protocol": {
+    "SourceAccount": 20,
+    "Address": 20,
+    "AddressV2": 27,
+    "AddressWithDelegates": 27
+  },
+  "bindings": {
+    "node": "0.0.0",
+    "rust": "0.1.0",
+    "python": "0.1.0",
+    "jvm": "unknown",
+    "wasm-ts": "0.0.0"
+  },
+  "supportLevels": {
+    "go": "tested",
+    "go-stellar-sdk": "tested",
+    "protocol": "tested",
+    "node-binding": "best-effort",
+    "rust-binding": "best-effort",
+    "python-binding": "best-effort",
+    "jvm-binding": "best-effort",
+    "wasm-ts": "best-effort"
+  }
+}
