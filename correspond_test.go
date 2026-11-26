@@ -52,7 +52,7 @@ func entryForFunction(t *testing.T, fnType xdr.SorobanAuthorizedFunctionType) xd
 				},
 			},
 			Executable: xdr.ContractExecutable{
-				Type: xdr.ContractExecutableTypeContractExecutableWasm,
+				Type:     xdr.ContractExecutableTypeContractExecutableWasm,
 				WasmHash: &xdr.Hash{1, 2, 3},
 			},
 			ConstructorArgs: []xdr.ScVal{{Type: xdr.ScValTypeScvI64, I64: func() *xdr.Int64 { v := xdr.Int64(1); return &v }()}},
