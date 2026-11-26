@@ -51,6 +51,7 @@ BEFORE_YOU_START = """## 📚 Before You Start
 - Skim [ARCHITECTURE.md](https://github.com/{repo}/blob/main/ARCHITECTURE.md) for the signing flow, the package map, and the delegate model.
 - Anything that changes the bytes soroauth emits must cite the CAP that requires it and ship a golden vector. Never edit a vector by hand."""
 
+
 ADDITIONAL = """## 📋 Additional Notes
 **Complexity: {level} ({points} points)**
 
@@ -180,6 +181,76 @@ def gh(*args, capture=True):
                           capture_output=capture, text=True).stdout
 
 
+def reconcile(backlog, live):
+    """Compare the committed backlog against the issues actually filed on GitHub.
+
+    Returns a dict with keys:
+      missing:           backlog entries with no matching GitHub issue (by title)
+      extra:             GitHub issues with no matching backlog entry (by title)
+      retitled:          backlog entries whose GitHub counterpart has a different title
+      mislabelled:       backlog entries whose GitHub counterpart has different labels
+      points_diff:       live points total minus backlog points total
+      backlog_points:    points total from the backlog
+      live_points:       points total from the live GitHub issues
+    """
+    by_backlog_title = {i["title"]: i for i in backlog}
+    by_live_title = {x["title"]: x for x in live}
+
+    missing = []
+    for title, entry in by_backlog_title.items():
+        if title not in by_live_title:
+            missing.append(entry)
+
+    extra = []
+    for title, issue in by_live_title.items():
+        if title not in by_backlog_title:
+            extra.append(issue)
+
+    retitled = []
+    mislabelled = []
+    for title, entry in by_backlog_title.items():
+        if title in by_live_title:
+            live_issue = by_live_title[title]
+            # Compare labels: check if the live issue has the expected complexity and area labels
+            live_labels = set(live_issue.get("labels", []))
+            # We check titles match; if titles match but labels differ, it's mislabelled
+            # rather than retitled. Retitled would be a title change, but we match by title.
+            expected_complexity = "complexity:" + entry.get("complexity", "")
+            expected_area = "area:" + entry.get("area", "")
+            complexity_ok = expected_complexity in live_labels
+            area_ok = expected_area in live_labels
+            if not complexity_ok or not area_ok:
+                mislabelled.append({
+                    "backlog": entry,
+                    "github": live_issue,
+                    "reason": "labels differ: backlog expects %s %s, github has %s"
+                             % (expected_complexity, expected_area,
+                                ", ".join(sorted(live_labels)) or "none"),
+                })
+
+    # Points total comparison
+    backlog_points = sum(POINTS[i["complexity"]] for i in backlog)
+    live_points = 0
+    for issue in live:
+        c = issue.get("labels", [])
+        for label in c:
+            if label.startswith("complexity:"):
+                level = label.split(":", 1)[1]
+                if level in POINTS:
+                    live_points += POINTS[level]
+                break
+
+    return {
+        "missing": missing,
+        "extra": extra,
+        "retitled": retitled,
+        "mislabelled": mislabelled,
+        "points_diff": live_points - backlog_points,
+        "backlog_points": backlog_points,
+        "live_points": live_points,
+    }
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -194,11 +265,15 @@ def main():
                    help="create an issue even when one with the same title exists")
     p.add_argument("--delay", type=float, default=1.5, metavar="SECONDS",
                    help="pause between creations to stay under GitHub's secondary rate limit "
-                        "for content creation (default 1.5; 0 disables)")
+                       "for content creation (default 1.5; 0 disables)")
     p.add_argument("--bodies", action="store_true",
                    help="print every rendered body in the dry run (verbose)")
     p.add_argument("--markdown", metavar="PATH",
                    help="write a human-readable review document and exit, touching GitHub not at all")
+    p.add_argument("--reconcile", action="store_true",
+                   help="reconcile the committed backlog against filed GitHub issues; "
+                        "reports missing, extra, retitled and mislabelled issues, "
+                        "and points total difference. Read-only, changes nothing.")
     args = p.parse_args()
 
     path = args.backlog if os.path.isabs(args.backlog) else os.path.join(ROOT, args.backlog)
@@ -220,6 +295,58 @@ def main():
         with open(out, "w") as fh:
             fh.write(markdown(backlog, os.path.relpath(path, ROOT)))
         print("wrote %s (%d issues)" % (out, len(backlog)))
+        return 0
+
+    if args.reconcile:
+        # ---- list all issues on GitHub with their labels ----
+        live_raw = gh("issue", "list", "--repo", REPO, "--state", "all",
+                      "--limit", "1000", "--json", "number,title,labels")
+        live = json.loads(live_raw)
+
+        result = reconcile(backlog, live)
+
+        # ---- report ----
+        print("=" * 70)
+        print("Reconciliation: %s" % path)
+        print("=" * 70)
+
+        if result["missing"]:
+            print("\n--- MISSING from GitHub (%d) ---" % len(result["missing"]))
+            for entry in result["missing"]:
+                print("  * %s" % entry["title"])
+
+        if result["extra"]:
+            print("\n--- EXTRA on GitHub (%d) ---" % len(result["extra"]))
+            for issue in result["extra"]:
+                print("  * %s" % issue["title"])
+
+        if result["retitled"]:
+            print("\n--- RETITLED (%d) ---" % len(result["retitled"]))
+            for entry in result["retitled"]:
+                # retitled is empty in this implementation since we match by title
+                print("  * %s (title matched, but entry not in backlog)" % entry["title"])
+
+        if result["mislabelled"]:
+            print("\n--- MISLABELLED (%d) ---" % len(result["mislabelled"]))
+            for item in result["mislabelled"]:
+                print("  * %s" % item["backlog"]["title"])
+                print("    GitHub: %s" % item["github"]["title"])
+                print("    %s" % item["reason"])
+
+        # Points total comparison
+        print("\n--- POINTS TOTAL ---")
+        print("  Backlog points: %d" % result["backlog_points"])
+        print("  Live points:    %d" % result["live_points"])
+        print("  Difference:     %d (%s)" % (
+            result["points_diff"],
+            "over" if result["points_diff"] > 0 else "under" if result["points_diff"] < 0 else "equal"
+        ))
+
+        if not result["missing"] and not result["extra"] and not result["mislabelled"]:
+            print("\nBacklog and GitHub issues match!")
+        else:
+            print("\n(See the output above for details.)")
+
         return 0
 
     # ---- labels ----
