@@ -1,6 +1,7 @@
 package soroauth
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stellar/go-stellar-sdk/xdr"
@@ -91,7 +92,17 @@ func TestCheckProtocolCompatibility(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			entry := compatEntry(t, c.arm)
+			var entry xdr.SorobanAuthorizationEntry
+			if c.arm == xdr.SorobanCredentialsType(99) {
+				entry = xdr.SorobanAuthorizationEntry{
+					Credentials: xdr.SorobanCredentials{Type: c.arm},
+				}
+			} else {
+				entry = compatEntry(t, c.arm)
+			}
+			if c.name == "unknown_function_type" {
+				entry.RootInvocation.Function.Type = xdr.SorobanAuthorizedFunctionType(99)
+			}
 			report, err := CheckProtocolCompatibility(entry, c.version)
 			if err != nil {
 				t.Fatalf("CheckProtocolCompatibility: %v", err)
@@ -154,15 +165,21 @@ func TestCheckProtocolCompatibilityNestedDelegates(t *testing.T) {
 	if got := len(report.Findings); got < 2 {
 		t.Fatalf("delegate findings = %d, want at least 2 (top + nested)", got)
 	}
+	topLevelCount := 0
 	for _, f := range report.Findings {
 		if f.Path == "credentials" {
-			t.Fatalf("top-level finding should carry the arm verdict only once")
+			topLevelCount++
 		}
+	}
+	if topLevelCount != 1 {
+		t.Fatalf("top-level finding count = %d, want 1", topLevelCount)
 	}
 }
 
 func TestCheckProtocolCompatibilityUnknownArmRejectNoSecondGuess(t *testing.T) {
-	entry := compatEntry(t, xdr.SorobanCredentialsType(99))
+	entry := xdr.SorobanAuthorizationEntry{
+		Credentials: xdr.SorobanCredentials{Type: xdr.SorobanCredentialsType(99)},
+	}
 	report, err := CheckProtocolCompatibility(entry, 28)
 	if err != nil {
 		t.Fatalf("CheckProtocolCompatibility: %v", err)
@@ -170,7 +187,15 @@ func TestCheckProtocolCompatibilityUnknownArmRejectNoSecondGuess(t *testing.T) {
 	if report.Verdict != ProtocolVerdictUnknown {
 		t.Fatalf("verdict = %s, want unknown", report.Verdict)
 	}
-	if report.Verdict != ProtocolVerdictUnknown {
-		t.Fatalf("verdict = %s, want unknown", report.Verdict)
+}
+
+func TestCheckProtocolCompatibilityPreservesInput(t *testing.T) {
+	entry := compatEntry(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressWithDelegates)
+	snapshot := compatEntry(t, xdr.SorobanCredentialsTypeSorobanCredentialsAddressWithDelegates)
+	if _, err := CheckProtocolCompatibility(entry, 28); err != nil {
+		t.Fatalf("CheckProtocolCompatibility: %v", err)
+	}
+	if !reflect.DeepEqual(entry, snapshot) {
+		t.Fatalf("CheckProtocolCompatibility mutated input entry")
 	}
 }
