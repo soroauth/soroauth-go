@@ -13,7 +13,7 @@
   "devDependencies": {
     "@viz-js/viz": "3.31.0",
     "cspell": "^10.4.0",
-    "prettier": "3.9.10"
+    "prettier": "3.10.1"
   },
   "engines": {
     "node": ">=22.12.0"
