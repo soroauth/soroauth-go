@@ -15,7 +15,7 @@ require (
 	github.com/stellar/go-stellar-sdk v0.7.3
 	github.com/stellar/go-xdr v0.0.0-20260806060815-dc590f17552a
 	github.com/stretchr/testify v1.12.1
-	go.yaml.in/yaml/v3 v3.0.5
+	go.yaml.in/yaml/v3 v3.0.6
 )
 
 require (
