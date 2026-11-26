@@ -58,6 +58,32 @@ type Signer interface {
 	Sign(ctx context.Context, preimage xdr.HashIdPreimage, payload [32]byte) (xdr.ScVal, error)
 }
 
+// VersionedSigner extends Signer to report the key version used to produce
+// each signature. Implement it when the underlying key material can change
+// under the same address — for example, an HSM key alias that is rotated to a
+// new version — and the library should detect and refuse a mid-batch rotation
+// rather than producing a batch signed by two different keys without saying so.
+//
+// Address must not change on rotation: it identifies the account, not the key
+// material. KeyVersion is the extra signal that identifies the material.
+//
+// For a classic Stellar account the public key is embedded in the signature
+// itself, so a rotation that changes the public key changes who can authorize
+// the account: document that consequence clearly when surfacing this interface
+// to end users.
+type VersionedSigner interface {
+	Signer
+
+	// KeyVersion returns a string that identifies the specific key material
+	// used to produce the most recent signature. It is called once after
+	// each Sign returns without error. For a KMS, this is typically the key
+	// version resource name; for an Ed25519 key, the public key address.
+	//
+	// KeyVersion must return the version that produced the last signature,
+	// not a future or current version unrelated to the last call.
+	KeyVersion() string
+}
+
 // ed25519Keypair is the part of keypair.Full that signing needs. It exists so
 // that the self-verification guard below can be tested: a test can supply a
 // keypair whose Sign returns a signature that does not match, while Verify

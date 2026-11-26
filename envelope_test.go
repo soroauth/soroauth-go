@@ -494,9 +494,40 @@ func TestAuthorizeEnvelopeRejectsAnUnsignedEntry(t *testing.T) {
 	if !strings.Contains(err.Error(), "operation 1") {
 		t.Errorf("the error %q does not name the operation the entry is in", err)
 	}
+	if !strings.Contains(err.Error(), "entry 0") {
+		t.Errorf("the error %q does not name the entry index within the operation", err)
+	}
 
 	if !reflect.DeepEqual(signed, xdr.TransactionEnvelope{}) {
 		t.Error("a failed AuthorizeEnvelope returned a partial envelope, want the zero value")
+	}
+}
+
+// TestAuthorizeEnvelopeSourceOnlyRoundTrip verifies that an envelope whose
+// every authorization entry is on the source-account arm passes through
+// unchanged — read-and-write with no address signers is byte-identical.
+func TestAuthorizeEnvelopeSourceOnlyRoundTrip(t *testing.T) {
+	src := entryForArm(t, xdr.SorobanCredentialsTypeSorobanCredentialsSourceAccount, 0)
+
+	envelope := transactionEnvelope(t, invokeOperation(t, src))
+
+	before, err := xdr.MarshalBase64(envelope)
+	if err != nil {
+		t.Fatalf("encoding input: %v", err)
+	}
+
+	signed, err := AuthorizeEnvelope(context.Background(), envelope, nil,
+		testValidUntilLedger, network.TestNetworkPassphrase)
+	if err != nil {
+		t.Fatalf("AuthorizeEnvelope: %v", err)
+	}
+
+	after, err := xdr.MarshalBase64(signed)
+	if err != nil {
+		t.Fatalf("encoding output: %v", err)
+	}
+	if before != after {
+		t.Error("source-account-only envelope was not byte-identical after round trip")
 	}
 }
 

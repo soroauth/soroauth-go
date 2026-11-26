@@ -210,6 +210,12 @@ func AuthorizeAll(
 		return nil, fmt.Errorf("soroauth: authorize all: %w", err)
 	}
 
+	// Check for nonce collisions before any signer runs, so a hardware wallet
+	// is never asked to approve a batch that the host would reject on-chain.
+	if err := CheckBatchNonces(entries); err != nil {
+		return nil, fmt.Errorf("soroauth: authorize all: %w", err)
+	}
+
 	var config authorizeAllConfig
 	for _, opt := range opts {
 		if opt != nil {
@@ -291,6 +297,16 @@ func AuthorizeAll(
 	}
 
 	// Phase 2: Execution - sign each entry, stopping on first signing failure.
+	//
+	// seenVersions tracks the first key version each address reported, so a
+	// mid-batch rotation (a different version for the same address) can be
+	// refused before the batch is submitted.
+	type seenVersion struct {
+		version    string
+		entryIndex int
+	}
+	seenVersions := make(map[string]seenVersion)
+
 	out := make([]xdr.SorobanAuthorizationEntry, 0, len(entries))
 	for i := range entries {
 		// Source account entries were already copied in validation phase.
@@ -307,6 +323,26 @@ func AuthorizeAll(
 			if err != nil {
 				return nil, fmt.Errorf("soroauth: authorize all: entry %d (%s): signer %s: %w",
 					i, topAddresses[i], signer.Address(), err)
+			}
+			// Detect key rotation: if the signer reports a version, compare it
+			// to what it reported for earlier entries in this batch.
+			if vs, ok := signer.(VersionedSigner); ok {
+				version := vs.KeyVersion()
+				addr := signer.Address()
+				if prev, seen := seenVersions[addr]; seen {
+					if prev.version != version {
+						return nil, fmt.Errorf("soroauth: authorize all: %w",
+							&SignerRotationError{
+								Address:       addr,
+								FirstEntry:    prev.entryIndex,
+								SecondEntry:   i,
+								FirstVersion:  prev.version,
+								SecondVersion: version,
+							})
+					}
+				} else {
+					seenVersions[addr] = seenVersion{version: version, entryIndex: i}
+				}
 			}
 		}
 

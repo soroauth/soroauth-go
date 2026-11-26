@@ -178,6 +178,17 @@ var (
 	// consumed elsewhere.
 	ErrNonceAlreadyReserved = errors.New("nonce already reserved for this address")
 
+	// ErrNonceDuplicate is returned by CheckBatchNonces and by AuthorizeAll when
+	// two address entries for the same address carry the same nonce.
+	//
+	// The host consumes a nonce per address so an entry cannot be replayed:
+	// verify_and_consume_nonce (rs-soroban-env soroban-env-host/src/auth.rs)
+	// rejects a repeat at apply time, after fees are paid, so a collision in a
+	// batch assembled from several sources is caught here — before any signer
+	// runs — rather than discovered on-chain. The wrapped error names the
+	// address, both entry indices and the nonce that collided.
+	ErrNonceDuplicate = errors.New("nonce used more than once for the same address in this batch")
+
 	// ErrWebAuthnMalformedJSON is returned by ParseWebAuthnAssertion when the
 	// assertion is not valid JSON, or when its clientDataJSON is not valid
 	// JSON.
@@ -340,6 +351,19 @@ var (
 	// is wrong, and the chain does not guess which.
 	ErrQuorumDisagreement = errors.New("signers disagree on the signature")
 
+	// ErrSignerRotation is returned by AuthorizeAll when a VersionedSigner
+	// reports a different key version for a second entry in the same batch than
+	// it reported for the first.
+	//
+	// A rotation mid-batch means the first entries were signed by one key and
+	// later entries by another. The resulting batch is not safe to submit: the
+	// account can only verify one of the two key versions, and there is no
+	// guarantee both are still authorized. The caller should simulate again and
+	// rebuild the batch, then sign it in a single pass.
+	//
+	// Address, the two entry indices and both versions are available through the
+	// wrapped SignerRotationError.
+	ErrSignerRotation = errors.New("signer key was rotated during this batch; resubmit with a fresh simulation")
 	// ErrMergePayloadMismatch is returned by MergeEntries when the entries
 	// to be merged have different signing payloads — that is, when at least
 	// one of the payload-affecting fields (arm, address, nonce, expiration
@@ -556,3 +580,53 @@ func (e *NonceAlreadyReservedError) Error() string {
 func (e *NonceAlreadyReservedError) Unwrap() error {
 	return ErrNonceAlreadyReserved
 }
+
+// SignerRotationError is returned by AuthorizeAll when a VersionedSigner
+// reports a different key version for a second entry in the same batch. It
+// exposes the address, both entry indices and both key versions as fields so
+// callers can recover them with errors.As instead of parsing the error string.
+//
+// It wraps ErrSignerRotation, so errors.Is keeps matching the sentinel.
+type SignerRotationError struct {
+	// Address is the signer address whose key version changed mid-batch.
+	Address string
+	// FirstEntry is the index of the entry the first version signed.
+	FirstEntry int
+	// SecondEntry is the index of the entry that produced the rotation.
+	SecondEntry int
+	// FirstVersion is the key version reported after signing FirstEntry.
+	FirstVersion string
+	// SecondVersion is the key version reported after signing SecondEntry.
+	SecondVersion string
+}
+
+// Error implements error.
+func (e *SignerRotationError) Error() string { return ErrSignerRotation.Error() }
+
+// Unwrap returns ErrSignerRotation so errors.Is keeps working.
+func (e *SignerRotationError) Unwrap() error { return ErrSignerRotation }
+
+// NonceDuplicateError is returned by CheckBatchNonces and by AuthorizeAll when
+// two address entries for the same address carry the same nonce. It exposes the
+// address, both entry indices and the nonce as fields so callers can recover
+// them with errors.As instead of parsing the error string.
+//
+// It wraps ErrNonceDuplicate, so errors.Is keeps matching the sentinel. The
+// Error text is exactly the sentinel's text; the detail is in the surrounding
+// message and in these fields.
+type NonceDuplicateError struct {
+	// Address is the address whose two entries share a nonce.
+	Address string
+	// FirstIndex is the index of the first entry with this address and nonce.
+	FirstIndex int
+	// SecondIndex is the index of the later entry that collides with it.
+	SecondIndex int
+	// Nonce is the value that appeared twice.
+	Nonce int64
+}
+
+// Error implements error.
+func (e *NonceDuplicateError) Error() string { return ErrNonceDuplicate.Error() }
+
+// Unwrap returns ErrNonceDuplicate so errors.Is keeps working.
+func (e *NonceDuplicateError) Unwrap() error { return ErrNonceDuplicate }

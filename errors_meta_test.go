@@ -80,6 +80,8 @@ func TestSentinelValuesAndMessagesAreDistinct(t *testing.T) {
 		"ErrUnsignedCredentialNode":             ErrUnsignedCredentialNode,
 		"ErrDelegatePlanUnmatched":              ErrDelegatePlanUnmatched,
 		"ErrNonceAlreadyReserved":               ErrNonceAlreadyReserved,
+		"ErrNonceDuplicate":                     ErrNonceDuplicate,
+		"ErrSignerRotation":                     ErrSignerRotation,
 		"ErrWebAuthnMalformedJSON":              ErrWebAuthnMalformedJSON,
 		"ErrWebAuthnMissingField":               ErrWebAuthnMissingField,
 		"ErrWebAuthnMalformedField":             ErrWebAuthnMalformedField,
