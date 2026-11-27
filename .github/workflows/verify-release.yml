@@ -88,7 +88,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
         if: steps.release.outputs.skip != '1'
       - name: download the release assets
         if: steps.release.outputs.skip != '1'
@@ -184,7 +184,7 @@ jobs:
         with:
           subject-path: self-test-dist/soroauth-linux-amd64
           sbom-path: self-test-dist/soroauth-linux-amd64.spdx.json
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
       - name: keyless-sign it
         run: |
           set -euo pipefail

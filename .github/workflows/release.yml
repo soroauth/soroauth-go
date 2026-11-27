@@ -177,7 +177,7 @@ jobs:
       # against the workflow's OIDC identity, so no long-lived key exists in CI
       # or in this repository. The bundle carries everything a verifier needs
       # (signature, certificate, chain, transparency-log entry) in one file.
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
       - name: keyless-sign the binary
         run: |
           set -euo pipefail
@@ -244,7 +244,7 @@ jobs:
           # repository's attestation store, so a consumer who only has the
           # registry can run `gh attestation verify oci://…`.
           push-to-registry: true
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
       - name: keyless-sign the image digest
         run: |
           set -euo pipefail
@@ -706,7 +706,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
       - name: download the published release assets
         env:
           GH_TOKEN: ${{ github.token }}
