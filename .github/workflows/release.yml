@@ -95,7 +95,7 @@ jobs:
       - name: rebuild the wasm twice from the tag and write its digest
         run: bash scripts/reproduce-wasm.sh "${GITHUB_REF_NAME}" "$PWD/reproduced-wasm"
       - name: upload the published digest
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@4cea712361b7b04dd794828b8131379b33a59817 # v7.0.2
         with:
           name: soroauth-wasm-checksums
           path: reproduced-wasm/soroauth-wasm-checksums.txt

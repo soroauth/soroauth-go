@@ -115,6 +115,7 @@ rather than across several documents. Run `make help` for the list.
 | Target               | What it runs                                                                                          |
 | -------------------- | ----------------------------------------------------------------------------------------------------- |
 | `make` (default)     | `fmt`, `vet` and `test`                                                                               |
+| `make audit`         | runs the supply-chain scan against the current branch against origin/main                             |
 | `make fmt`           | fails if `gofmt -l .` reports anything                                                                |
 | `make vet`           | `go vet ./...`                                                                                        |
 | `make test`          | `go test ./...`                                                                                       |
@@ -517,3 +518,5 @@ issues for security bugs. The scope includes signature-correctness bugs
 ## Questions?
 
 Open an issue or start a discussion in the GitHub repository.
+
+- `make audit` runs the supply-chain security scan.

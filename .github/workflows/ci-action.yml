@@ -61,7 +61,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       # A fully signed v2 entry must pass, including the expected-arm check.
       - name: a good entry passes
-        uses: ./integrations/action
+        uses: ./integrations/action@v1
         with:
           entry: ${{ steps.vectors.outputs.signed }}
           network: testnet
@@ -73,7 +73,7 @@ jobs:
       - name: a bad entry fails
         id: bad
         continue-on-error: true
-        uses: ./integrations/action
+        uses: ./integrations/action@v1
         with:
           entry: ${{ steps.vectors.outputs.unsigned }}
           network: testnet
@@ -91,7 +91,7 @@ jobs:
       - name: a wrong expected arm fails
         id: wrongarm
         continue-on-error: true
-        uses: ./integrations/action
+        uses: ./integrations/action@v1
         with:
           entry: ${{ steps.vectors.outputs.signed }}
           network: testnet

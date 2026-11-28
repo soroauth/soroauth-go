@@ -13,6 +13,7 @@
 # Node (golden-vector generator, typescript wrapper)
 node_modules/
 .tools/
+bindings/node/prebuilds/
 
 # Node binding build output and pack-time staging. prebuilds/ is produced by
 # scripts/build.mjs (or unpacked from a CI artifact), and LICENSE is copied into

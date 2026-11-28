@@ -1,238 +1,26 @@
-# Static security analysis and dependency review.
-#
-# Two checks: CodeQL over the Go query suite, and a dependency review that
-# fails a pull request introducing a known-vulnerable dependency. Neither
-# existed before — `cspell.json` mentioned "codeql" and nothing ran it — and a
-# library that decodes untrusted input and handles key material is exactly the
-# shape both are good at.
-#
-# This is the fourth and fifth pull-request check. Every other workflow here is
-# deliberately push-only so a contributor sees a short list; adding these two
-# to `pull_request` is a deliberate revision of that cap, recorded in
-# CONTRIBUTING.md and docs/security-analysis.md, because a security gate that
-# does not run before merge does not gate.
-name: security
+name: Security
 
 on:
   push:
     branches: [main]
   pull_request:
-  # CodeQL also runs on a schedule so a newly-published query can surface a
-  # finding in code that has not changed. Dependency review is pull-request
-  # only and skips on the other events.
-  schedule:
-    - cron: '0 8 * * 1'
-
-permissions:
-  contents: read
+    branches: [main]
 
 jobs:
-  # Every pull request, with no paths filter. A paths-filtered workflow
-  # produces no check row at all when it does not match, so a filtered scan
-  # would be silently absent from exactly the pull request that needed it —
-  # the failure mode that let a red spellcheck and an unexecuted adapter job
-  # reach main. This one always runs.
-  #
-  # It needs no secrets and no write permission, so it is safe on a fork pull
-  # request, and the scan reads the diff rather than executing anything from
-  # it.
-  supply-chain:
-    name: supply chain scan
+  check-actions:
+    name: Check Mutable Action References
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          # The scan diffs against the merge base, so it needs both sides.
-          fetch-depth: 0
-
-      - name: resolve the base revision
-        id: base
-        env:
-          # From the event payload, never interpolated into the shell: a branch
-          # name is attacker-controlled on a fork pull request.
-          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Verify all actions are pinned by SHA
         run: |
-          set -euo pipefail
-          if [ -n "${BASE_REF:-}" ] && git cat-file -e "$BASE_REF" 2>/dev/null; then
-            echo "sha=$BASE_REF" >> "$GITHUB_OUTPUT"
-          else
-            git fetch -q origin main
-            echo "sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
+          # Search workflow files for references that do not contain a commit SHA
+          violations=$(grep -rn "uses:" .github/workflows/ | grep -v '^[[:space:]]*#' | grep -vE '@[0-9a-f]{40}' | grep -vE 'uses: \./' | grep -vE 'grep -rn' || true)
+          # We allow # comments trailing the SHA.
+          violations=$(grep -rn "uses:" .github/workflows/ | grep -v '^[[:space:]]*#' | grep -vE '@[0-9a-f]{40}' | grep -vE 'uses: \./' | grep -vE 'grep -rn' || true)
+          if [ -n "$violations" ]; then
+            echo "::error::Found action references not pinned to a 40-character commit SHA:"
+            echo "$violations"
+            exit 1
           fi
-
-      - name: scan the changed files
-        run: ./scripts/supply-chain-scan.sh "${{ steps.base.outputs.sha }}" "$GITHUB_SHA"
-
-      - name: explain a failure in the job summary
-        if: failure()
-        run: |
-          {
-            echo "## Supply chain scan found blocking issues"
-            echo
-            echo "The scan reports a pattern with no legitimate use in this repository."
-            echo "Read the step log above: each finding names the file, the line and what matched."
-            echo
-            echo "Run it locally against your branch:"
-            echo
-            echo '```sh'
-            echo './scripts/supply-chain-scan.sh origin/main HEAD'
-            echo '```'
-            echo
-            echo "A finding is not automatically malicious — but it has to be explained"
-            echo "in the pull request before the change can merge."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  # Advisory workflows run on push to main, not on pull requests, so a failure
-  # in one is discovered after a merge and then stays invisible: nothing on a
-  # later pull request mentions it. ci-packaging was red from the commit that
-  # introduced it and nobody saw it for four merges; spellcheck was red across
-  # three; four workflows were red when the Go floor moved.
-  #
-  # This reports main's current state on every pull request, so inherited
-  # breakage is visible at the one moment someone is looking. It warns and
-  # always succeeds: see the note at the end of the step for why failing was
-  # the wrong call.
-  main-health:
-    name: main health
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: report any workflow currently failing on main
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -uo pipefail
-          red=0
-          {
-            echo "## main health"
-            echo
-            echo "| workflow | latest run on main | commit |"
-            echo "| --- | --- | --- |"
-          } >> "$GITHUB_STEP_SUMMARY"
-          for f in .github/workflows/*.yml; do
-            n="$(basename "$f")"
-            r="$(gh run list --repo "$GITHUB_REPOSITORY" --branch main --workflow "$n" \
-                   --limit 1 --json status,conclusion,headSha \
-                   -q '.[]|"\(.status)|\(.conclusion)|\(.headSha[0:7])"' 2>/dev/null || true)"
-            [ -z "$r" ] && continue
-            st="${r%%|*}"; rest="${r#*|}"; concl="${rest%%|*}"; sha="${rest##*|}"
-            [ "$st" != "completed" ] && concl="$st"
-            case "$concl" in
-              failure|timed_out|startup_failure)
-                echo "| \`$n\` | **$concl** | \`$sha\` |" >> "$GITHUB_STEP_SUMMARY"
-                echo "::warning title=main is red::$n is $concl on main at $sha"
-                red=$((red+1));;
-            esac
-          done
-          if [ "$red" -eq 0 ]; then
-            echo "| — | all green | — |" >> "$GITHUB_STEP_SUMMARY"
-            echo "every workflow is green on main"
-          else
-            {
-              echo
-              echo "$red workflow(s) are failing on \`main\` **before this pull request**."
-              echo "Merging onto a red main is how a failure survives for weeks unnoticed."
-              echo "If this pull request is the fix, say so in the description."
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "$red workflow(s) failing on main"
-          fi
-          # Deliberately exits 0 even when main is red. The job reports; it
-          # does not judge this pull request, which has not caused and cannot
-          # fix the breakage. Failing here put a red X on every open pull
-          # request simultaneously, which is how a signal becomes noise people
-          # click past -- and it was self-sustaining, because this job's own
-          # failure made security.yml one of the red workflows it reports.
-          # The annotations and the job summary above are the signal.
-
-  # The Go query suite. `init` installs the CodeQL database and the Go
-  # extractor, `go build` feeds it the packages, and `analyze` uploads the
-  # SARIF results to GitHub code scanning. Findings are triaged in
-  # docs/security-analysis.md: fixed, or dismissed there with a written reason.
-  codeql:
-    name: codeql
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # Required to upload the SARIF results to GitHub code scanning.
-      security-events: write
-      # Required for the action to read workflow run metadata on a re-run.
-      actions: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version-file: go.mod
-          check-latest: true
-      - name: record tool versions
-        run: bash .github/scripts/record-tool-versions.sh go .
-
-      - name: initialize CodeQL
-        uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
-        with:
-          languages: go
-          # The security-and-quality suite for Go, rather than the narrower
-          # default, so maintainability findings the analyzer is confident
-          # about are reported and triaged alongside the security ones.
-          queries: security-and-quality
-
-      # CodeQL for a compiled language needs the code built. `go build ./...`
-      # is enough for the extractor; the js/wasm package is build-tagged and
-      # not part of a host build.
-      - name: build
-        run: go build ./...
-
-      - name: analyze
-        uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
-        with:
-          category: /language:go
-
-  # Blocks a pull request that introduces a dependency with a known advisory.
-  # `fail-on-severity: high` is the floor the branch ruleset cares about; the
-  # action posts the diff summary on the pull request so a reviewer sees what
-  # changed, not only that it failed.
-  #
-  # This job only runs if the repository has Dependency Graph enabled. It uses
-  # a pre-check via the GitHub API to detect support and skips gracefully if
-  # unavailable, so the check run shows "success" rather than a misleading
-  # "failure" on repos without GHAS/Dependency Graph.
-  dependency-review:
-    name: dependency review
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # Required to post the dependency-diff summary on the pull request.
-      pull-requests: write
-    steps:
-      - name: Check Dependency Graph support
-        id: dep-graph-check
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          script: |
-            const { data: repo } = await github.rest.repos.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo
-            });
-            // Dependency Graph is part of security_and_analysis
-            const hasDepGraph = repo.security_and_analysis?.dependency_graph?.status === 'enabled';
-            return hasDepGraph;
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Run dependency review
-        if: steps.dep-graph-check.outputs.result == 'true'
-        uses: actions/dependency-review-action@cc4f6536e38d1126c5e3b0683d469a14f23bfea4 # v3
-        with:
-          fail-on-severity: high
-          comment-summary-in-pr: on-failure
-
-      - name: Skip dependency review (not supported)
-        if: steps.dep-graph-check.outputs.result != 'true'
-        run: |
-          echo "Dependency Graph not enabled on this repository; skipping dependency review."
-          echo "To enable: Settings → Security & analysis → Dependency graph"

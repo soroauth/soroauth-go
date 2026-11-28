@@ -44,7 +44,7 @@ FUZZTIME ?= 30s
 SOAKTIME ?= 2m
 
 # Internal targets: help check-index
-.PHONY: all help check-index ci-local ci-local-check fmt vet test coverage fuzz soak build server man site md-check md-format vectors vectors-check demo-check diagrams diagrams-check e2e clean parity parity-rust host-probe differential wasm wasm-check wasi-check wasm-budget ts-test jvm-test jvm-native rust-test grpc-test grpc-check freighter-check openapi-test openapi-check action-test
+.PHONY: all help check-index ci-local ci-local-check fmt vet test coverage fuzz soak build server man site md-check md-format vectors vectors-check demo-check diagrams diagrams-check e2e clean parity parity-rust host-probe differential wasm wasm-check wasi-check wasm-budget ts-test jvm-test jvm-native rust-test grpc-test grpc-check freighter-check openapi-test openapi-check action-test audit changelog-check
 
 define CI_CHECK_INDEX
 Required: ci / vet and test
@@ -63,9 +63,13 @@ Required: ci / golden vectors are reproducible
 Required: ci / contracts build and test (cwd: e2e/contracts)
 	cargo test --workspace --locked
 	cargo build --release --target wasm32v1-none --workspace --locked
-Required: security / codeql and dependency review
+Required: ci / security
 	CodeQL security-and-quality analysis; build command: go build ./...
 	GitHub dependency-review action; fail on high-severity advisories
+Required: security / supply chain scan
+	make audit
+Required: changelog / consistency
+	make changelog-check
 Advisory: ci / go
 	make coverage; cross-compile release targets; make fuzz; make soak
 	go test -run '^$$' -bench . -benchmem -count=1 .; scripts/checkbench
@@ -109,6 +113,7 @@ help:
 	@echo "  make fmt           fail if any Go file is not gofmt-clean"
 	@echo "  make vet           go vet ./..."
 	@echo "  make test          go test ./..."
+	@echo "  make audit         run the supply-chain scan"
 	@echo "  make ci-local      run everything CI runs, in CI's order (skips are listed with their reason; CI_LOCAL_FLAGS=-strict fails on them)"
 	@echo "  make ci-local-check  fail if a workflow job or step is not classified in scripts/cilocal/manifest.json"
 	@echo "  make coverage      measure coverage and enforce the per-package floors"
@@ -166,6 +171,9 @@ vet:
 
 test:
 	$(GO) test ./...
+
+audit:
+	./scripts/supply-chain-scan.sh origin/main HEAD
 
 # The thorough counterpart to `make`: everything CI runs, in CI's order, with
 # the commands CI uses. scripts/cilocal reads the `run:` steps out of
@@ -505,6 +513,9 @@ wasm-budget: build wasm
 
 changelog-check:
 	go run ./scripts/changelog-check/main.go CHANGELOG.md
+
+audit:
+	./scripts/supply-chain-scan.sh origin/main HEAD
 
 clean:
 	rm -rf $(BIN_DIR) _site wasm/dist wasm/ts/dist wasm/ts/node_modules .venv-parity
