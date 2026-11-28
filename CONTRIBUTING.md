@@ -26,7 +26,9 @@ the section that explains it.
 - [ ] **6. Never hand-edit a golden vector.** If your change moves the bytes,
       regenerate with `make vectors` and say in the commit body which CAP
       requires the move — see [Golden vectors](#golden-vectors).
-- [ ] **7. Run `make`** — that is `fmt`, `vet` and `test`. If you touched any
+- [ ] **7. Run `make`** — that is `fmt`, `vet` and `test`. Also run the
+      pre-merge supply-chain audit:
+      `./scripts/supply-chain-scan.sh origin/main HEAD`. If you touched any
       Markdown, also run `npx prettier --write '**/*.md'`, because the build
       checks it. `golangci-lint run ./...` is a local gate worth running too —
       see [Make targets](#make-targets) and [Running Tests](#running-tests).
@@ -52,6 +54,40 @@ Issues carry a complexity label and an area label, and those two are how work is
 chosen; complexity is also what an issue's Stellar Wave points are counted from.
 What each label means, who applies it, and who has the final say on complexity
 is documented in [docs/labels.md](docs/labels.md).
+
+## The ci-local manifest and classification vocabulary
+
+When a contributor adds a workflow job or step that cannot run as written on a
+local machine, `make ci-local` or `go test ./scripts/cilocal` fails with a
+message like:
+
+```text
+cilocal: the manifest and the CI workflows disagree, so a check could be missing from this run:
+  - ci.yml/new-job: missing from manifest.json
+fix scripts/cilocal/manifest.json (see its "note")
+```
+
+To fix this, classify the job or step in `scripts/cilocal/manifest.json`. The
+manifest's terms and classification vocabulary are defined as follows:
+
+- **`requires`**: Names tools whose absence skips the job with that reason.
+- **`skip`**: Explains why a whole job or step cannot run on a developer
+  machine. **Rule:** Never add a `skip` to make a failing check go away; a skip
+  is only for what a laptop cannot do.
+- **`os`**: Limits a job to the listed `GOOS` values (CI runs on Linux). On any
+  other host, the job is reported as skipped with that reason.
+- **`steps`**: Classifies single steps by name with exactly one of:
+  - **`skip`**: A check that did not run, counted and shown in the summary.
+  - **`command`**: A local stand-in command, accompanied by `why` explaining the
+    difference from CI.
+  - **`covered`**: Indicates another step's command already does this step's
+    work, so nothing is lost.
+  - **`bookkeeping`**: CI plumbing with no check in it (such as uploading
+    artifacts or writing job summaries).
+
+Actions that only set a runner up are listed under `plumbing`; any other action
+in a runnable job must be classified because an action cannot be executed
+locally.
 
 ## Setup
 
@@ -106,6 +142,38 @@ build half of `make e2e` work from a clean start (the e2e scenarios themselves
 need testnet). The `ci / devcontainer` workflow builds the container and runs
 that script when a pin or the container changes, and weekly, so it cannot rot
 silently.
+
+### Pre-Merge Supply-Chain Audit
+
+The repository runs `scripts/supply-chain-scan.sh` as a required status check
+before any merge. You should run it locally against your branch before opening a
+pull request.
+
+To run the scan against a pull request (comparing against `origin/main`):
+
+```sh
+./scripts/supply-chain-scan.sh origin/main HEAD
+```
+
+To run it against your working tree changes:
+
+```sh
+./scripts/supply-chain-scan.sh origin/main
+```
+
+- **Blocking:** Patterns with no legitimate use in this repository (e.g.,
+  specific risk indicators or forbidden constructs). A blocking finding causes
+  the scan to fail and blocks merge. If encountered, remove the offending
+  pattern or explain it thoroughly in the pull request description if it is a
+  false positive.
+- **Warning:** Suspicious constructs or patterns requiring human review.
+  Warnings should be inspected and addressed or clarified before review.
+
+Always capture the exit status directly from the script invocation, never
+through a pipe. Reading `$?` or piping the output (e.g.,
+`./scripts/supply-chain-scan.sh ... | cat`) hides the script's actual exit code
+and gives the status of the right-hand side of the pipe (`cat`), which has
+caused real mistakes.
 
 ## Make targets
 

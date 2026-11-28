@@ -8,6 +8,21 @@ this project adheres to
 
 ## [Unreleased]
 
+- docs: record the pre-merge supply-chain audit in CONTRIBUTING (#658)
+- docs: document the credential arm constants (#656)
+- docs: document the ci-local manifest's classification vocabulary (#660)
+
+- docs: record pre-merge supply-chain audit, document credential arm constants,
+  and explain ci-local manifest classification vocabulary (#658, #656, #660, PR #700)
+
+- Fix #658: docs: record the pre-merge supply-chain audit in CONTRIBUTING
+- Fix #656: docs: document the credential arm constants
+- Fix #660: docs: document the ci-local manifest's classification vocabulary
+
+- Fix #658: docs: record the pre-merge supply-chain audit in CONTRIBUTING
+- Fix #656: docs: document the credential arm constants
+- Fix #660: docs: document the ci-local manifest's classification vocabulary
+
 ### Added
 
 - Publish `@soroauth/node` from a version tag with a prebuilt bindings pair for
@@ -1287,3 +1302,7 @@ First release. Unaudited.
   `Signed` flags before submitting.
 
 [0.1.0]: https://github.com/soroauth/soroauth-go/releases/tag/v0.1.0
+
+- Fix #658, #656 and #660: docs: record the pre-merge supply-chain audit in
+  CONTRIBUTING, document credential arm constants, and explain ci-local manifest
+  classification vocabulary.

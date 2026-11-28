@@ -18,9 +18,24 @@ type CredentialArm string
 // same four values CredentialTypeName reports and Inspect's credential_type
 // field carries.
 const (
-	ArmSourceAccount        CredentialArm = "source_account"
-	ArmAddress              CredentialArm = "address"
-	ArmAddressV2            CredentialArm = "address_v2"
+	// ArmSourceAccount represents the source account credentials arm.
+	// Preimage variant: none (the transaction envelope covers it, CAP-46-11).
+	// Address is in signed bytes: n/a.
+	ArmSourceAccount CredentialArm = "source_account"
+
+	// ArmAddress represents the legacy V1 address credentials arm.
+	// Preimage variant: ENVELOPE_TYPE_SOROBAN_AUTHORIZATION (9, CAP-46-11).
+	// Address is in signed bytes: no.
+	ArmAddress CredentialArm = "address"
+
+	// ArmAddressV2 represents the V2 address credentials arm.
+	// Preimage variant: ENVELOPE_TYPE_SOROBAN_AUTHORIZATION_WITH_ADDRESS (10, CAP-71-01).
+	// Address is in signed bytes: yes.
+	ArmAddressV2 CredentialArm = "address_v2"
+
+	// ArmAddressWithDelegates represents the delegated signer address credentials arm.
+	// Preimage variant: ENVELOPE_TYPE_SOROBAN_AUTHORIZATION_WITH_ADDRESS (10, CAP-71-01), bound to the top-level address.
+	// Address is in signed bytes: yes.
 	ArmAddressWithDelegates CredentialArm = "address_with_delegates"
 )
 
