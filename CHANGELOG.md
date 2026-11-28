@@ -13,7 +13,7 @@ this project adheres to
 - docs: document the ci-local manifest's classification vocabulary (#660)
 
 - docs: record pre-merge supply-chain audit, document credential arm constants,
-  and explain ci-local manifest classification vocabulary (#658, #656, #660)
+  and explain ci-local manifest classification vocabulary (#658, #656, #660, PR #700)
 
 - Fix #658: docs: record the pre-merge supply-chain audit in CONTRIBUTING
 - Fix #656: docs: document the credential arm constants
