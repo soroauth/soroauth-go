@@ -1,0 +1,46 @@
+name: ci / meta
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-timeouts:
+    name: check workflow job timeouts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: check all workflow jobs have timeout-minutes
+        run: |
+          python3 -c '
+          import glob, yaml
+          failed = False
+          for path in glob.glob(".github/workflows/*.yml"):
+              with open(path) as f:
+                  try:
+                      doc = yaml.safe_load(f)
+                  except Exception as e:
+                      print(f"Error parsing {path}: {e}")
+                      continue
+              if not doc or "jobs" not in doc:
+                  continue
+              for job_name, job_def in doc["jobs"].items():
+                  if not isinstance(job_def, dict):
+                      continue
+                  if "timeout-minutes" not in job_def:
+                      print(f"Job \"{job_name}\" in {path} is missing timeout-minutes")
+                      failed = True
+          if failed:
+              exit(1)
+          print("All workflow jobs have timeout-minutes set.")
+          '

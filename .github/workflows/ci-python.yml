@@ -22,6 +22,7 @@ jobs:
   typecheck:
     name: stubs are type-correct
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Python 3.9 is the binding's stated minimum (see pyproject.toml),

@@ -17,6 +17,50 @@ const repoRoot = "../.."
 // no longer exists. It runs against the real workflows, so adding a job to a
 // workflow without touching scripts/cilocal/manifest.json fails the build.
 func TestManifestAccountsForEveryWorkflow(t *testing.T) {
+	for _, workflowPath := range []string{
+		"../../.github/workflows/ci.yml",
+		"../../.github/workflows/ci-adapters.yml",
+		"../../.github/workflows/ci-devcontainer.yml",
+		"../../.github/workflows/e2e.yml",
+		"../../.github/workflows/security.yml",
+	} {
+		content, err := os.ReadFile(workflowPath)
+		if err != nil {
+			t.Fatalf("failed to read workflow %s: %v", workflowPath, err)
+		}
+		lines := strings.Split(string(content), "\n")
+		var inJobs bool
+		var currentJob string
+		var hasTimeout bool
+		var jobIndent int
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "jobs:" {
+				inJobs = true
+				continue
+			}
+			if inJobs && strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "    ") && strings.HasSuffix(trimmed, ":") {
+				if currentJob != "" && !hasTimeout {
+					t.Errorf("workflow %s job %q lacks timeout-minutes", workflowPath, currentJob)
+				}
+				currentJob = strings.TrimSuffix(trimmed, ":")
+				hasTimeout = false
+				jobIndent = len(line) - len(strings.TrimLeft(line, " "))
+			}
+			if currentJob != "" {
+				indent := len(line) - len(strings.TrimLeft(line, " "))
+				if indent <= jobIndent && (strings.HasSuffix(trimmed, ":") || trimmed == "" || strings.HasPrefix(trimmed, "#")) && trimmed != "jobs:" {
+					// outside current job block
+				}
+				if strings.HasPrefix(trimmed, "timeout-minutes:") {
+					hasTimeout = true
+				}
+			}
+		}
+		if currentJob != "" && !hasTimeout {
+			t.Errorf("workflow %s job %q lacks timeout-minutes", workflowPath, currentJob)
+		}
+	}
 	workflows, err := LoadWorkflows(filepath.Join(repoRoot, ".github/workflows"))
 	if err != nil {
 		t.Fatal(err)

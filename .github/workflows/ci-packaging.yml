@@ -41,6 +41,7 @@ permissions:
 jobs:
   homebrew:
     name: homebrew (${{ matrix.os }})
+    timeout-minutes: 20
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -115,6 +116,7 @@ jobs:
 
   nix:
     name: nix (${{ matrix.os }})
+    timeout-minutes: 20
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

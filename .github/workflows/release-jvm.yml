@@ -29,6 +29,7 @@ permissions:
 jobs:
   guard:
     name: refuse to proceed off a version tag
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - name: enforce tag ref
@@ -54,6 +55,7 @@ jobs:
   native:
     name: build native library (${{ matrix.target }})
     needs: guard
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -98,6 +100,7 @@ jobs:
   deploy:
     name: sign and publish to Central
     needs: native
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
     environment:
@@ -164,7 +167,7 @@ jobs:
           - target: macos-aarch64
             os: macos-14
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0

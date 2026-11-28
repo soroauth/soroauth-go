@@ -31,7 +31,8 @@
     "verify-release.yml",
     "release.yml",
     "release-python.yml",
-    "release-jvm.yml"
+    "release-jvm.yml",
+    "ci-meta.yml"
   ],
   "plumbing": [
     "actions/checkout",
@@ -212,6 +213,7 @@
     "release-jvm.yml/guard": { "skip": "release workflow: runs when a version tag is pushed" },
     "release-jvm.yml/native": { "skip": "release workflow: builds per-platform native libraries for the Maven artifact" },
     "release-jvm.yml/deploy": { "skip": "release workflow: signs and publishes the JVM artifact to Maven Central" },
-    "release-jvm.yml/verify-consumer": { "skip": "release workflow: resolves the published artifact from Central and replays goldens" }
+    "release-jvm.yml/verify-consumer": { "skip": "release workflow: resolves the published artifact from Central and replays goldens" },
+    "ci-meta.yml/check-timeouts": { "requires": ["python3"] }
   }
 }

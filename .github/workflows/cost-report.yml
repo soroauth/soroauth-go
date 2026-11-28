@@ -12,6 +12,7 @@ permissions:
 jobs:
   report:
     name: Report CI cost per workflow
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - name: Fetch CI cost data from GitHub API

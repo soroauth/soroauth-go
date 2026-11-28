@@ -55,12 +55,9 @@ permissions:
   contents: read
 
 jobs:
-  # The JS drift check. It is in this matrix rather than repeated here from
-  # ci.yml because this job's audience is the parity story: the golden vectors
-  # must regenerate from the pinned JS SDK unchanged, or the committed evidence
-  # no longer says what it claims to.
   js-drift:
-    name: js sdk vector drift
+    name: javascript sdk parity
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -94,6 +91,7 @@ jobs:
 
   python-parity:
     name: python sdk parity
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -110,7 +108,8 @@ jobs:
           python3 testdata/parity-python/test_parity.py
 
   rust-parity:
-    name: rust xdr parity
+    name: rust sdk parity
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -146,7 +145,8 @@ jobs:
   # harness then have to reproduce every one. All three agreeing is the claim;
   # any disagreement is a release blocker. See testdata/differential/README.md.
   differential:
-    name: differential fuzzing (go, js, python)
+    name: differential fuzzing harness
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

@@ -10,6 +10,8 @@ this project adheres to
 
 ### Added
 
+- Add `timeout-minutes` bounds to CI workflow jobs and enforce workflow timeouts
+  in `scripts/cilocal` tests. (#663, PR #705)
 - Publish `@soroauth/node` from a version tag with a prebuilt bindings pair for
   `linux-x64`, `linux-arm64`, `darwin-x64` and `darwin-arm64`, so `npm install`
   no longer needs a Go toolchain. Publishing is tag-gated and carries npm
@@ -72,6 +74,11 @@ this project adheres to
   root `go.mod`, ships `cmd/trace-transfer` for testnet with a real captured
   trace in its README, and asserts that no span carries a secret, an entry or a
   signature. (#422)
+
+- Add a `timeout-minutes` configuration to every CI and release workflow job,
+  and enforce via a meta-check that any workflow job added without one fails the
+  build. (#663)
+
 - Add a per-caller token-bucket rate limit to the verification service, checked
   before the body is read and before a concurrency slot is taken. A refusal is
   `429` with `Retry-After`; `AUTH_TOKEN` accepts a comma-separated list so
