@@ -10,6 +10,14 @@ this project adheres to
 
 ### Added
 
+<<<<<<< HEAD
+- Runnable Go examples show how to compare canonical JSON, distinguish entries
+  by signature, mutate a cloned entry, and reserve a nonce before signing.
+  (#649, #650, #651, PR #702)
+- Add a verification-service capacity guide with measured request costs by entry
+  shape and a repeatable benchmark. (#648)
+
+=======
 - Publish `@soroauth/node` from a version tag with a prebuilt bindings pair for
   `linux-x64`, `linux-arm64`, `darwin-x64` and `darwin-arm64`, so `npm install`
   no longer needs a Go toolchain. Publishing is tag-gated and carries npm
@@ -17,6 +25,7 @@ this project adheres to
   and each binary matches the architecture its directory names. Installing on a
   platform without a prebuild still falls back to the source build, and CI
   exercises that fallback as well as the prebuild path.
+>>>>>>> origin/main
 - `HostRules` enumerates every rule the Soroban host enforces on an
   authorization entry, each with its `rs-soroban-env` source citation, and marks
   the rules that cannot be checked offline with the reason instead of omitting
@@ -202,6 +211,9 @@ this project adheres to
   `RateLimitMode`, for remote signers behind a provider quota. (#329)
 
 ### Fixed
+
+- `Clone` decodes the binary XDR produced by its encoder so it can return an
+  independent copy of the original authorization entry. (#650)
 
 - The `delegates_chain_depth_57` golden vector claimed to be the deepest
   delegate nesting the library accepts end to end, but soroauth signed that

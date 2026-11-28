@@ -28,6 +28,9 @@ public bind without authentication, which is an intentional fail-closed rule.
 
 ## Signals and alerts
 
+Use the [capacity guide](verification-service-capacity.md) to size the service
+for your entry mix and interpret its rate and concurrency limits.
+
 Alert on process restarts, failure of `/healthz`, sustained 5xx responses, 503
 responses from the concurrency limit, a sustained 429 rate (a caller is being
 shed), and a sharp increase in request latency.

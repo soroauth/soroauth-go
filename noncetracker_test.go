@@ -3,7 +3,6 @@ package soroauth
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"testing"
 )
@@ -129,25 +128,4 @@ func TestInMemoryNonceTrackerConcurrentDistinctNoncesAllSucceed(t *testing.T) {
 			t.Errorf("nonce %d: unexpected error: %v", i, err)
 		}
 	}
-}
-
-// ExampleNewInMemoryNonceTracker shows the collision-avoidance pattern: try
-// to reserve a freshly generated nonce, and pick another on
-// ErrNonceAlreadyReserved.
-func ExampleNewInMemoryNonceTracker() {
-	tracker := NewInMemoryNonceTracker()
-	ctx := context.Background()
-	const address = "GBEXAMPLE"
-
-	if err := tracker.Reserve(ctx, address, 1); err != nil {
-		fmt.Println("error:", err)
-		return
-	}
-
-	// A second reservation of the same nonce for the same address is
-	// refused; a caller generating nonces would retry with a fresh one.
-	err := tracker.Reserve(ctx, address, 1)
-	fmt.Println("collision detected:", errors.Is(err, ErrNonceAlreadyReserved))
-	// Output:
-	// collision detected: true
 }
