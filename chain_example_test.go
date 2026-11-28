@@ -15,12 +15,13 @@ func ExampleNewFallbackSigner() {
 	seedHash := sha256.Sum256([]byte("signer-fallback-example"))
 	kp1, _ := keypair.FromRawSeed(seedHash)
 	s1 := soroauth.NewEd25519Signer(kp1)
+	s2 := soroauth.NewEd25519Signer(kp1)
 
-	seedHash2 := sha256.Sum256([]byte("signer-fallback-example-2"))
-	kp2, _ := keypair.FromRawSeed(seedHash2)
-	s2 := soroauth.NewEd25519Signer(kp2)
-
-	chain := soroauth.NewFallbackSigner([]soroauth.Signer{s1, s2})
+	chain, err := soroauth.NewFallbackSigner([]soroauth.Signer{s1, s2})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	_ = chain
 	fmt.Println("fallback chain constructed")
 	// Output:
@@ -31,12 +32,9 @@ func ExampleNewQuorumSigner() {
 	seedHash := sha256.Sum256([]byte("signer-quorum-example"))
 	kp1, _ := keypair.FromRawSeed(seedHash)
 	s1 := soroauth.NewEd25519Signer(kp1)
+	s2 := soroauth.NewEd25519Signer(kp1)
 
-	seedHash2 := sha256.Sum256([]byte("signer-quorum-example-2"))
-	kp2, _ := keypair.FromRawSeed(seedHash2)
-	s2 := soroauth.NewEd25519Signer(kp2)
-
-	chain, err := soroauth.NewQuorumSigner(2, s1, s2)
+	chain, err := soroauth.NewQuorumSigner(2, []soroauth.Signer{s1, s2})
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -46,7 +44,9 @@ func ExampleNewQuorumSigner() {
 	preimage, _ := soroauth.Preimage(entry, 1000, network.TestNetworkPassphrase)
 	payload, _ := soroauth.Payload(preimage)
 
-	_, err = chain.Sign(context.Background(), preimage, payload)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = chain.Sign(ctx, preimage, payload)
 	if err != nil {
 		fmt.Println("quorum not met or error:", err != nil)
 	}

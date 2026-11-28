@@ -16,8 +16,10 @@ import (
 // with enough participants contributing valid shares.
 func ExampleThresholdSigner_success() {
 	account := "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
-	partyA := "GBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWK2L"
-	partyB := "GCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=================WK2M"
+	kpA, _ := keypair.FromRawSeed(sha256.Sum256([]byte("threshold-party-a")))
+	kpB, _ := keypair.FromRawSeed(sha256.Sum256([]byte("threshold-party-b")))
+	partyA := kpA.Address()
+	partyB := kpB.Address()
 
 	signer, err := soroauth.NewThresholdSigner(account, 2, partyA, partyB)
 	if err != nil {
@@ -66,8 +68,10 @@ func ExampleThresholdSigner_success() {
 // refuses cleanly with no partial result.
 func ExampleThresholdSigner_refusalBelowThreshold() {
 	account := "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
-	partyA := "GBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWK2L"
-	partyB := "GCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=================WK2M"
+	kpA, _ := keypair.FromRawSeed(sha256.Sum256([]byte("threshold-party-a")))
+	kpB, _ := keypair.FromRawSeed(sha256.Sum256([]byte("threshold-party-b")))
+	partyA := kpA.Address()
+	partyB := kpB.Address()
 
 	signer, err := soroauth.NewThresholdSigner(account, 2, partyA, partyB)
 	if err != nil {
