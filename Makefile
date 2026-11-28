@@ -44,7 +44,7 @@ FUZZTIME ?= 30s
 SOAKTIME ?= 2m
 
 # Internal targets: help check-index
-.PHONY: all help check-index ci-local ci-local-check fmt vet test coverage fuzz soak build server man site md-check md-format vectors vectors-check demo-check diagrams diagrams-check e2e clean parity parity-rust host-probe differential wasm wasm-check wasi-check wasm-budget ts-test jvm-test jvm-native rust-test grpc-test grpc-check freighter-check openapi-test openapi-check action-test
+.PHONY: all help check-index ci-local ci-local-check fmt vet test coverage fuzz soak mutation build server man site md-check md-format vectors vectors-check demo-check diagrams diagrams-check e2e clean parity parity-rust host-probe differential wasm wasm-check wasi-check wasm-budget ts-test jvm-test jvm-native rust-test grpc-test grpc-check freighter-check openapi-test openapi-check action-test changelog-check
 
 define CI_CHECK_INDEX
 Required: ci / vet and test
@@ -52,6 +52,8 @@ Required: ci / vet and test
 	go run ./cmd/gencorpus
 	git diff --exit-code testdata/fuzz testdata/wasm-parity
 	go test -race -v -run TestAuthorizeEntryExpirationProperty ./...
+	go test -race -v -run TestGoldenVectorSchemaVersion ./...
+	go test -race ./...
 	go test -race ./...
 	go test -tags e2e -run TestParityReportRegression ./e2e
 	npm ci; npx prettier --check '**/*.md'
@@ -99,6 +101,9 @@ Advisory: ci / spellcheck and release proofs
 	scripts/verify-release.sh --repo <repo> --dir release-assets --tamper-demo
 endef
 
+changelog-check:
+	go run ./scripts/changelog-check/main.go CHANGELOG.md
+
 # The default target runs exactly what a pull request has to pass before the
 # golden-vector drift check, which needs Node and the network.
 all: fmt vet test
@@ -114,6 +119,7 @@ help:
 	@echo "  make coverage      measure coverage and enforce the per-package floors"
 	@echo "  make fuzz          run every fuzz target for \$$(FUZZTIME) each (default 30s)"
 	@echo "  make soak          soak the batch signing path for \$$(SOAKTIME) (default 2m, race detector on)"
+	@echo "  make mutation      run the mutation testing suite in mutation/ (default timeout 5m, scoped with MUTATION_PACKAGE=...)"
 	@echo "  make md-check      fail if any Markdown file is not prettier-clean"
 	@echo "  make md-format     format every Markdown file in place"
 	@echo "  make build         build the CLI to $(BIN)"
@@ -230,6 +236,12 @@ fuzz:
 soak:
 	$(GO) test -race -tags soak -run TestSoakBatchSigning -soak-duration $(SOAKTIME) -timeout 30m .
 
+# mutation testing suite (mutation/): expects ~5m runtime. Runs mutation
+# testing over the core packages to catch unasserted mutants. Pass
+# MUTATION_PACKAGE to scope the run, e.g. `make mutation MUTATION_PACKAGE=./pkg/...`.
+MUTATION_PACKAGE ?= .
+mutation:
+	cd mutation && $(GO) test -v $(MUTATION_PACKAGE)
 # Markdown is normalised so a prose diff stays about content rather than about
 # re-wrapping. The formatter, its version and its config are committed
 # (package.json, .prettierrc.json, .prettierignore); run `npm ci` at the
@@ -288,7 +300,8 @@ site:
 vectors:
 	cd testdata/gen && $(NPM) ci && $(NODE) gen.mjs && $(NODE) gen-passkey.mjs
 
-vectors-check: vectors
+vectors-check:
+	cd testdata/vectors && $(NPM) ci && $(NODE) gen.mjs && $(NODE) gen-passkey.mjs
 	@if ! git diff --exit-code -- testdata/vectors testdata/frozen; then \
 		echo; \
 		echo "The committed golden vectors differ from freshly generated ones, or"; \

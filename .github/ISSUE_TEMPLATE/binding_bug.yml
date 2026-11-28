@@ -1,0 +1,68 @@
+name: Binding or Adapter Bug
+description: Report a problem with a language binding or KMS adapter
+title: "[Binding]: "
+labels: [bug, bindings]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check the [known issues](https://github.com/soroauth/soroauth-go/blob/main/docs/known-issues.md) before filing a new bug.
+  - type: input
+    id: binding
+    attributes:
+      label: Binding / Adapter
+      description: Which binding or adapter are you using? (e.g. Node, JVM, Python, AWS KMS)
+      placeholder: e.g. Node
+    validations:
+      required: true
+  - type: input
+    id: os_arch
+    attributes:
+      label: Operating System and Architecture
+      description: What OS and architecture are you running on? (e.g. macOS Apple Silicon, Linux x86_64)
+      placeholder: e.g. macOS arm64
+    validations:
+      required: true
+  - type: input
+    id: runtime_version
+    attributes:
+      label: Language Runtime Version
+      description: What version of the language runtime or SDK are you using?
+      placeholder: e.g. Node v20.10.0
+    validations:
+      required: true
+  - type: dropdown
+    id: build_method
+    attributes:
+      label: Build Method
+      description: Did you use a prebuilt artifact or build from source?
+      options:
+        - Prebuilt binary / package
+        - Built from source
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: Clear description of what happened.
+    validations:
+      required: true
+  - type: dropdown
+    id: intermittent
+    attributes:
+      label: Is the problem intermittent?
+      description: Does this happen every time or only sometimes?
+      options:
+        - No, happens every time
+        - Yes, intermittent
+    validations:
+      required: true
+  - type: input
+    id: rate
+    attributes:
+      label: Failure Rate
+      description: If intermittent, approximately what rate? (e.g. 1 in 5 runs)
+      placeholder: e.g. 1 in 5 runs
+    validations:
+      required: false

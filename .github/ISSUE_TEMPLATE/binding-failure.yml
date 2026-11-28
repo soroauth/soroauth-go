@@ -1,0 +1,104 @@
+name: Platform-Specific Binding Failure
+description: Report a binding failure or crash across Node, Python, JVM, Rust, or C bindings
+title: "[Binding Failure] "
+labels: ['binding-failure', 'triage']
+assignees: ''
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Please search existing issues and the [Known Issues](https://github.com/soroauth/soroauth-go/blob/main/docs/ISSUE_BACKLOG.md) section first** to avoid duplicates.
+
+  - type: input
+    id: binding
+    attributes:
+      label: Binding / Language
+      description: Which language runtime or binding failed?
+      placeholder: e.g. Node (@soroauth/node), Python, JVM, Rust, C
+    validations:
+      required: true
+
+  - type: input
+    id: runtime_version
+    attributes:
+      label: Language Runtime Version
+      description: Exact version of the language runtime (e.g. Node 22.12.0, Python 3.11.4, Java 22, Go 1.26.3)
+      placeholder: e.g. Node v22.12.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operating_system
+    attributes:
+      label: Operating System
+      description: Host operating system where the failure occurs
+      options:
+        - macOS
+        - Linux
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: architecture
+    attributes:
+      label: CPU Architecture
+      description: Processor architecture
+      options:
+        - arm64 / aarch64
+        - x86_64 / amd64
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: build_method
+    attributes:
+      label: Build Method
+      description: Were you using a prebuilt binary/wheel/package or did you build from source?
+      options:
+        - Prebuilt binary / published package
+        - Source build
+    validations:
+      required: true
+
+  - type: dropdown
+    id: intermittent
+    attributes:
+      label: Intermittency
+      description: Is the problem intermittent or does it happen every time?
+      options:
+        - No, happens 100% of the time (deterministic)
+        - Yes, intermittent
+    validations:
+      required: true
+
+  - type: input
+    id: failure_rate
+    attributes:
+      label: Failure Rate (if intermittent)
+      description: Approximate failure rate if intermittent (e.g. 1 in 5 runs, ~20%)
+      placeholder: e.g. 1 in 5 runs
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description of the Problem
+      description: A clear and concise description of what went wrong.
+      placeholder: Stack trace, panic, incorrect signature bytes, or crash logs...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce / Minimal Example
+      description: Steps or code snippet to reproduce the issue.
+      placeholder: |
+        1. Run ...
+        2. Call ...
+    validations:
+      required: true

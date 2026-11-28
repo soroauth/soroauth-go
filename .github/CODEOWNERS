@@ -7,7 +7,7 @@
 # waiting to be noticed.
 
 # Everything, unless a more specific rule below wins.
-*                           @ciscokwiz
+*                           @soroauth/core
 
 # The signing path. These files decide what bytes get signed, so a change here
 # is the one most worth a second pair of eyes.
@@ -28,3 +28,16 @@
 
 # The build brief. Not to be modified; ownership here makes an attempt visible.
 /CLAUDE.md                  @ciscokwiz
+
+# Bindings
+/bindings/c/                @soroauth/bindings-maintainers
+/bindings/jvm/              @soroauth/bindings-maintainers
+/bindings/node/             @soroauth/bindings-maintainers
+/bindings/python/           @soroauth/bindings-maintainers
+/bindings/rust/             @soroauth/bindings-maintainers
+
+# Adapters
+/adapters/awskms/           @soroauth/adapters-maintainers
+/adapters/gcpkms/           @soroauth/adapters-maintainers
+/adapters/walletsdk/        @soroauth/adapters-maintainers
+

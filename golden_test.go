@@ -11,11 +11,43 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stellar/go-stellar-sdk/keypair"
 	"github.com/stellar/go-stellar-sdk/xdr"
 )
+
+func TestGoldenVectorSchemaVersion(t *testing.T) {
+	files, err := os.ReadDir("testdata/vectors")
+	if err != nil {
+		t.Fatalf("failed to read vectors dir: %v", err)
+	}
+	for _, f := range files {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join("testdata/vectors", f.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("failed to read %s: %v", path, err)
+		}
+		var v struct {
+			SchemaVersion *int `json:"schema_version"`
+		}
+		if err := json.Unmarshal(data, &v); err != nil {
+			t.Fatalf("failed to parse %s: %v", path, err)
+		}
+		if v.SchemaVersion == nil {
+			t.Errorf("vector %s is missing schema_version", path)
+		} else if *v.SchemaVersion != currentSchemaVersion {
+			t.Errorf("vector %s has incorrect schema_version: got %d, want %d", path, *v.SchemaVersion, currentSchemaVersion)
+		}
+	}
+}
+
+// currentSchemaVersion is the required schema version for all golden vectors.
+const currentSchemaVersion = 1
 
 // referenceSDK is the exact reference build the vectors must come from. A
 // vector recorded by any other version is not evidence about this one, so the
@@ -94,8 +126,8 @@ func loadVectorsFrom(t testing.TB, directory string) []vector {
 		if err := decoder.Decode(&v); err != nil {
 			t.Fatalf("decoding %s: %v", path, err)
 		}
-		if v.SchemaVersion != 1 {
-			t.Fatalf("%s has unsupported schema version %d, want 1", path, v.SchemaVersion)
+		if v.SchemaVersion != currentSchemaVersion {
+			t.Fatalf("%s has unsupported schema version %d, want %d", path, v.SchemaVersion, currentSchemaVersion)
 		}
 		if v.Name == "" {
 			t.Fatalf("%s has no name", path)

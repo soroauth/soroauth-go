@@ -8,6 +8,10 @@ this project adheres to
 
 ## [Unreleased]
 
+- Fix #668, #666, #665, #667: test: assert every golden vector declares the
+  current schema version, add binding failure template, mutation target, and
+  CODEOWNERS entries
+
 ### Added
 
 - Publish `@soroauth/node` from a version tag with a prebuilt bindings pair for
@@ -72,6 +76,11 @@ this project adheres to
   root `go.mod`, ships `cmd/trace-transfer` for testnet with a real captured
   trace in its README, and asserts that no span carries a secret, an entry or a
   signature. (#422)
+- test: assert every golden vector declares the current schema version (#668)
+- chore: issue template for a platform-specific binding failure (#666)
+- chore: a make target for the mutation suite (#665)
+- chore: CODEOWNERS entries for the bindings and adapters (#667)
+- Fix CI on PR #701: add issue reference for commits (#668)
 - Add a per-caller token-bucket rate limit to the verification service, checked
   before the body is read and before a concurrency slot is taken. A refusal is
   `429` with `Retry-After`; `AUTH_TOKEN` accepts a comma-separated list so

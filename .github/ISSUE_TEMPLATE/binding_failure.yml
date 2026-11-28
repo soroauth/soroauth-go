@@ -1,0 +1,79 @@
+name: Platform Binding / Runtime Failure
+description: Report a problem with a language binding or runtime adapter
+title: "[Binding Failure]: "
+labels: ["bug", "bindings"]
+body:
+  - type: checkboxes
+    id: known-issues
+    attributes:
+      label: Before filing
+      description: Please check if your issue is already addressed
+      options:
+        - label: I have checked the known issues and ARCHITECTURE.md.
+          required: true
+  - type: dropdown
+    id: binding
+    attributes:
+      label: Binding / Adapter
+      options:
+        - Node.js / WASI
+        - TypeScript
+        - Python
+        - Rust
+        - JVM (Java)
+        - Go (Remote / client)
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating System
+      description: e.g., macOS 14.5, Ubuntu 22.04, Windows 11
+    validations:
+      required: true
+  - type: input
+    id: arch
+    attributes:
+      label: Architecture
+      description: e.g., arm64, x86_64
+    validations:
+      required: true
+  - type: input
+    id: runtime_version
+    attributes:
+      label: Runtime Version
+      description: e.g., Node 20.11.0, JDK 22, Python 3.11
+    validations:
+      required: true
+  - type: dropdown
+    id: build_method
+    attributes:
+      label: Build Method
+      options:
+        - Prebuilt binary / package
+        - Built from source
+    validations:
+      required: true
+  - type: dropdown
+    id: intermittent
+    attributes:
+      label: Intermittent
+      options:
+        - "No, happens every time"
+        - "Yes, occurs occasionally"
+    validations:
+      required: true
+  - type: input
+    id: rate
+    attributes:
+      label: Failure Rate
+      description: If intermittent, approximately what rate? (e.g., 1 in 5 runs)
+    validations:
+      required: false
+  - type: textarea
+    id: description
+    attributes:
+      label: Symptom / Stack trace
+      description: Describe what happened and paste relevant logs or stack traces.
+    validations:
+      required: true
