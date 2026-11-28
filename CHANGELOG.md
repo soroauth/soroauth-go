@@ -10,6 +10,8 @@ this project adheres to
 
 ### Added
 
+- Add runnable Go documentation examples across signers, policy, and threshold
+  signing. (#652, #653, #655, #654, PR #703)
 - Publish `@soroauth/node` from a version tag with a prebuilt bindings pair for
   `linux-x64`, `linux-arm64`, `darwin-x64` and `darwin-arm64`, so `npm install`
   no longer needs a Go toolchain. Publishing is tag-gated and carries npm
@@ -72,6 +74,9 @@ this project adheres to
   root `go.mod`, ships `cmd/trace-transfer` for testnet with a real captured
   trace in its README, and asserts that no span carries a secret, an entry or a
   signature. (#422)
+
+- Add Go doc examples for signer chain fallback/quorum, threshold signer, policy package, and document authorized function types. (#652, #653, #654, #655, #703)
+
 - Add a per-caller token-bucket rate limit to the verification service, checked
   before the body is read and before a concurrency slot is taken. A refusal is
   `429` with `Retry-After`; `AUTH_TOKEN` accepts a comma-separated list so

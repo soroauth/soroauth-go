@@ -111,3 +111,20 @@ func TestMakefilePhonyTargetsHaveHelpLines(t *testing.T) {
 	t.Logf("Makefile help check: %d phony targets, %d help targets, %d internal targets excluded",
 		len(phonyTargets), len(helpTargets), len(internalMap))
 }
+
+// TestAuthorizedFunctionTypesDocumented enforces that doc.go and docs/glossary.md
+// mention all three authorized function types derived from the SDK's xdr package.
+func TestAuthorizedFunctionTypesDocumented(t *testing.T) {
+	for _, path := range []string{"../../doc.go", "../glossary.md"} {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("reading %s: %v", path, err)
+		}
+		content := string(raw)
+		for _, fnType := range []string{"ContractFn", "CreateContractHostFn", "CreateContractV2HostFn"} {
+			if !strings.Contains(content, fnType) {
+				t.Errorf("%s is missing documentation for authorized function type %s (derived from github.com/stellar/go-stellar-sdk/xdr)", path, fnType)
+			}
+		}
+	}
+}

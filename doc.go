@@ -1,4 +1,22 @@
-// Package soroauth builds, signs, and inspects Soroban authorization entries.
+// Package soroauth builds, signs, and inspects Soroban authorization entries
+//
+// # Authorized Function Types
+//
+// Soroban authorization entries carry a root invocation whose function type determines
+// what the entry authorizes. Per the Stellar SDK XDR definitions
+// (github.com/stellar/go-stellar-sdk/xdr, file xdr/Stellar-transaction.go), there are three
+// authorized function types:
+//
+//   - ContractFn (SorobanAuthorizedFunctionTypeContractFn): Authorizes the invocation
+//     of a specific function on a Soroban contract with a given set of arguments.
+//   - CreateContractHostFn (SorobanAuthorizedFunctionTypeCreateContractHostFn): Authorizes
+//     the creation of a new Soroban contract using legacy V1 mechanics. Constructor arguments
+//     are passed directly to the deployed contract's constructor via ContractIdPreimage and
+//     associated deployment parameters.
+//   - CreateContractV2HostFn (SorobanAuthorizedFunctionTypeCreateContractV2HostFn): Authorizes
+//     the creation of a new Soroban contract using CAP-71 V2 address-bound credentials. Includes
+//     address-bound ContractIdPreimage and specific constructor arguments required for V2
+//     contract deployment verification..
 //
 // When a Soroban contract calls require_auth() on an address that is not the
 // transaction's source account, the transaction must carry a

@@ -34,6 +34,14 @@ the expiration ledger itself is still valid. The host also refuses a value above
 its own `max_live_until_ledger`, a network setting this library cannot know
 offline, which is why it caps nothing itself.
 
+## The three authorized function types
+
+Derived from the Stellar SDK's `xdr` package (`github.com/stellar/go-stellar-sdk/xdr`, file `xdr/Stellar-transaction.go`), the three authorized function types determine what an invocation permits:
+
+- **ContractFn** (`SorobanAuthorizedFunctionTypeContractFn`) — authorizes calling a specific function on a Soroban contract with given arguments.
+- **CreateContractHostFn** (`SorobanAuthorizedFunctionTypeCreateContractHostFn`) — authorizes creating a new contract via legacy mechanics, including contract ID preimage and legacy constructor arguments.
+- **CreateContractV2HostFn** (`SorobanAuthorizedFunctionTypeCreateContractV2HostFn`) — authorizes creating a new contract using CAP-71 V2 address-bound mechanics, including address-bound contract ID preimage and V2 constructor arguments.
+
 ## The four credential arms
 
 The arm decides which **preimage** is signed, and therefore what the signature
