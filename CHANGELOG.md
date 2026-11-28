@@ -25,6 +25,13 @@ this project adheres to
 
 ### Added
 
+- Publish `@soroauth/node` from a version tag with a prebuilt bindings pair for
+  `linux-x64`, `linux-arm64`, `darwin-x64` and `darwin-arm64`, so `npm install`
+  no longer needs a Go toolchain. Publishing is tag-gated and carries npm
+  provenance, and the tarball is refused unless every platform pair is present
+  and each binary matches the architecture its directory names. Installing on a
+  platform without a prebuild still falls back to the source build, and CI
+  exercises that fallback as well as the prebuild path.
 - `HostRules` enumerates every rule the Soroban host enforces on an
   authorization entry, each with its `rs-soroban-env` source citation, and marks
   the rules that cannot be checked offline with the reason instead of omitting

@@ -439,6 +439,14 @@ script rather than prose, so it can run in CI:
     --ref <branch> -f self_test=true
   ```
 
+The tag also publishes `@soroauth/node`. `release.yml`'s `node-prebuilds` job
+calls `ci-node.yml` on the tagged commit, and `npm-node` refuses to publish
+unless all four platform pairs (`linux-x64`, `linux-arm64`, `darwin-x64`,
+`darwin-arm64`) are present and each binary's header matches the directory it is
+in, then runs `npm publish --provenance --access public`. Nothing in
+`bindings/node` is published from a branch, so a release always carries the
+prebuilds for the commit the tag names.
+
 Signing is keyless: the certificate comes from the workflow's GitHub OIDC
 identity, so no key exists in CI to leak or rotate. The flip side is that an
 action added to a job that can mint an OIDC token in these workflows runs with

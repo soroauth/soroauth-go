@@ -453,6 +453,85 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --provenance --access public
 
+  # Builds the four platform pairs for @soroauth/node on the tagged commit by
+  # calling ci-node.yml rather than downloading an earlier main run's
+  # artifacts: the bits in the package must come from the commit the tag names,
+  # and an artifact from a previous push can be expired or simply unrelated.
+  node-prebuilds:
+    name: node prebuilds for the tagged commit
+    uses: ./.github/workflows/ci-node.yml
+
+  # The native Node binding, published the same way the wasm package is: only
+  # from a tag, only from the commit that tag points at, and with a signed
+  # provenance statement. The four prebuilds travel inside the tarball, so a
+  # consumer's `npm install` never needs a Go toolchain.
+  npm-node:
+    name: publish @soroauth/node
+    needs: [release-preflight, node-prebuilds]
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+          cache-dependency-path: bindings/node/package-lock.json
+      - name: refuse to publish anything but the tagged commit
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "refusing to publish: GITHUB_REF_TYPE=${GITHUB_REF_TYPE}, expected 'tag'" >&2
+            exit 1
+          fi
+          head_sha="$(git rev-parse HEAD)"
+          tag_sha="$(git rev-parse "${GITHUB_REF_NAME}^{commit}")"
+          if [ "$head_sha" != "$tag_sha" ]; then
+            echo "refusing to publish: HEAD ${head_sha} is not ${GITHUB_REF_NAME} (${tag_sha})" >&2
+            exit 1
+          fi
+      - name: derive the package version from the tag
+        working-directory: bindings/node
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          npm version "$version" --no-git-tag-version --allow-same-version
+          echo "publishing @soroauth/node@${version}"
+      - name: download the prebuilt pairs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: node-prebuild-*
+          path: bindings/node/prebuilds
+          merge-multiple: true
+      # A partial set is an error, not a smaller package: a tarball missing one
+      # platform installs fine there and then throws on the first call, which is
+      # the failure this whole change exists to remove. The format check reads
+      # the binary headers, so a mislabelled artifact cannot slip through.
+      - name: verify the four-platform prebuild layout
+        run: node bindings/node/scripts/verify-prebuilds.mjs bindings/node/prebuilds
+      - name: check the tarball before publishing
+        working-directory: bindings/node
+        run: |
+          set -euo pipefail
+          # Stage the license the way prepack does, then pack with
+          # --ignore-scripts: npm 10 prints lifecycle output before the JSON,
+          # which would make the report unparseable here.
+          node scripts/stage-license.mjs
+          npm pack --json --ignore-scripts > /tmp/pack.json
+          node scripts/verify-prebuilds.mjs prebuilds --tarball /tmp/pack.json
+      # --provenance attaches a signed statement tying the tarball to this
+      # repository, commit and workflow run. npm rejects it unless the package
+      # is public and its repository field matches, which is why publishConfig
+      # and package.json's repository entry are load-bearing.
+      - name: publish with provenance
+        working-directory: bindings/node
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
+
   docs-site:
     name: build and publish documentation site
     needs: golden-drift
