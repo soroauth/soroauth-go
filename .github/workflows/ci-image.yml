@@ -37,6 +37,7 @@ jobs:
   multi-arch:
     name: build and run the CLI on amd64 and arm64
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # QEMU is what lets the amd64 runner execute the arm64 image below.

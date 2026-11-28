@@ -10,6 +10,8 @@ this project adheres to
 
 ### Added
 
+- Add `timeout-minutes` bounds to CI workflow jobs and enforce workflow timeouts
+  in `scripts/cilocal` tests. (#663, PR #706)
 - Publish `@soroauth/node` from a version tag with a prebuilt bindings pair for
   `linux-x64`, `linux-arm64`, `darwin-x64` and `darwin-arm64`, so `npm install`
   no longer needs a Go toolchain. Publishing is tag-gated and carries npm

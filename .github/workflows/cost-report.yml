@@ -13,6 +13,7 @@ jobs:
   report:
     name: Report CI cost per workflow
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Fetch CI cost data from GitHub API
         run: |

@@ -39,6 +39,7 @@ jobs:
   action:
     name: the action passes a good entry and fails a bad one
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # The action never installs Go; it runs the CLI from the image. Building
